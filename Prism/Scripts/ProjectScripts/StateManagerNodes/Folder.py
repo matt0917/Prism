@@ -54,8 +54,8 @@ class FolderClass(object):
                 listType = "Export"
 
         self.listType = listType
-
         self.connectEvents()
+        self.core.callback("onStateStartup", self)
 
         if stateData is not None:
             self.loadData(stateData)
@@ -135,9 +135,11 @@ class FolderClass(object):
         return result
 
     def getStateProps(self):
-        return {
+        stateProps = {
             "statename": self.e_name.text(),
             "listtype": self.listType,
             "stateenabled": self.core.getCheckStateValue(self.state.checkState(0)),
             "stateexpanded": self.state.isExpanded(),
         }
+        self.core.callback("onStateGetSettings", self, stateProps)
+        return stateProps

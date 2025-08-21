@@ -383,6 +383,8 @@ class Projects(object):
             dft=False,
             configPath=configPath,
         )
+        self.refreshUseEpisode(configPath=configPath)
+
         expPath = self.core.getConfig(
             "globals",
             "expectedPrjPath",
@@ -396,6 +398,7 @@ class Projects(object):
         self.core._scenePath = None
         self.core._shotPath = None
         self.core._sequencePath = None
+        self.core._episodePath = None
         self.core._assetPath = None
         self.core._texturePath = None
 
@@ -435,7 +438,10 @@ class Projects(object):
 
         pluginPath = self.getPluginFolder()
         if os.path.exists(pluginPath):
-            self.core.plugins.loadPlugins(directories=[pluginPath], recursive=True)
+            if os.getenv("PRISM_LOAD_PRJ_PLUGINS_RECURSIVE", "0") == "1":
+                self.core.plugins.loadPlugins(directories=[pluginPath], recursive=True)
+            else:
+                self.core.plugins.loadPlugins(directories=[pluginPath], recursive=False, singleFilePlugins=True)
 
         self.setRecentPrj(configPath)
         self.core.checkCommands()
@@ -465,6 +471,41 @@ class Projects(object):
 
         QApplication.setQuitOnLastWindowClosed(quitOnLastWindowClosed)
         return self.core.projectPath
+
+    @err_catcher(name=__name__)
+    def getUseEpisodes(self):
+        useEpisodes = self.core.getConfig(
+            "globals",
+            "useEpisodes",
+            config="project",
+        ) or False
+        return useEpisodes
+
+    @err_catcher(name=__name__)
+    def refreshUseEpisode(self, configPath=None):
+        if configPath:
+            config = None
+        else:
+            config = "project"
+
+        useEpisodes = self.core.getConfig(
+            "globals",
+            "useEpisodes",
+            dft=False,
+            configPath=configPath,
+            config=config
+        )
+        if useEpisodes:
+            data = {
+                "label": "Episodes",
+                "key": "@episode_path@",
+                "value": "@project_path@/03_Production/Shots/@episode@",
+                "requires": ["project_path"],
+                "idx": 2,
+            }
+            self.core.projects.addProjectStructureItem("episodes", data)
+        else:
+            self.core.projects.removeProjectStructureItem("episodes")
 
     @err_catcher(name=__name__)
     def refreshLocalFiles(self):
@@ -498,11 +539,17 @@ class Projects(object):
         self.core.callback(name="updatedEnvironmentVars", args=["unloadProject", self.environmentVariables, beforeRefresh])
 
     @err_catcher(name=__name__)
-    def refreshProjectEnvironment(self):
+    def getProjectEnvironment(self, appPluginName=None):
         variables = self.core.getConfig(
             "environmentVariables", config="project", dft={}
         )
-        self.environmentVariables = []
+        envVars = []
+        if not appPluginName:
+            if getattr(self.core, "appPlugin", None):
+                appPluginName = self.core.appPlugin.pluginName
+            else:
+                appPluginName = ""
+
         for key in variables:
             val = os.path.expandvars(str(variables[key]))
             res = self.core.callback(name="expandEnvVar", args=[val])
@@ -510,7 +557,7 @@ class Projects(object):
                 if r:
                     val = r
 
-            if key.lower().startswith("ocio") and self.core.appPlugin and self.core.appPlugin.pluginName.lower() == key.split("_")[-1]:
+            if key.lower().startswith("ocio") and appPluginName.lower() == key.split("_")[-1]:
                 key = "OCIO"
 
             item = {
@@ -518,8 +565,17 @@ class Projects(object):
                 "value": val,
                 "orig": os.getenv(key),
             }
-            self.environmentVariables.append(item)
-            os.environ[str(key)] = val
+            envVars.append(item)
+
+        return envVars
+
+    @err_catcher(name=__name__)
+    def refreshProjectEnvironment(self):
+        self.environmentVariables = []
+        envVars = self.getProjectEnvironment()
+        for envVar in envVars:
+            self.environmentVariables.append(envVar)
+            os.environ[envVar["key"]] = envVar["value"]
 
         self.core.callback(name="updatedEnvironmentVars", args=["refreshProject", self.environmentVariables])
 
@@ -552,18 +608,23 @@ class Projects(object):
                 projectName = ""
 
         if platform.system() == "Windows":
-            defaultLocalPath = os.path.join(
-                self.core.getWindowsDocumentsPath(), "LocalProjects", projectName
+            base = os.path.join(
+                self.core.getWindowsDocumentsPath(), "LocalProjects"
             )
         elif platform.system() == "Linux":
-            defaultLocalPath = os.path.join(
-                os.path.expanduser("~"), "Documents", "LocalProjects", projectName
+            base = os.path.join(
+                os.path.expanduser("~"), "Documents", "LocalProjects"
             )
         elif platform.system() == "Darwin":
-            defaultLocalPath = os.path.join(
-                os.path.expanduser("~"), "Documents", "LocalProjects", projectName
+            base = os.path.join(
+                os.path.expanduser("~"), "Documents", "LocalProjects"
             )
 
+        envDft = os.getenv("PRISM_DFT_LOCAL_PATH")
+        if envDft:
+            base = envDft
+
+        defaultLocalPath = os.path.normpath(os.path.join(base, projectName))
         return defaultLocalPath
 
     @err_catcher(name=__name__)
@@ -658,7 +719,7 @@ class Projects(object):
         return projects
 
     @err_catcher(name=__name__)
-    def createProjectDialog(self, name=None, path=None, settings=None):
+    def createProjectDialog(self, name=None, path=None, settings=None, enforcedSettings=None):
         settings = settings or {}
         if eval(os.getenv("PRISM_DEBUG", "False")):
             try:
@@ -675,7 +736,7 @@ class Projects(object):
 
         if name is not None and path is not None:
             return ProjectWidgets.CreateProject(
-                core=self.core, name=name, path=path, settings=settings
+                core=self.core, name=name, path=path, settings=settings, enforcedSettings=enforcedSettings
             )
         else:
             self.cp = ProjectWidgets.CreateProject(core=self.core)
@@ -736,6 +797,7 @@ class Projects(object):
                             ),
                             ("requirePublishComment", True),
                             ("publishCommentLength", 3),
+                            ("versionPadding", 4),
                             ("defaultImportStateName", "{entity}_{product}_{version}"),
                             ("useStrictAssetDetection", False),
                         ]
@@ -803,7 +865,7 @@ class Projects(object):
                 return
 
         elif os.listdir(prjPath):
-            msg = "The project folder is not empty. How do you want to continue?"
+            msg = "The project folder is not empty:\n\n%s\n\nHow do you want to continue?" % prjPath
             result = self.core.popupQuestion(
                 msg,
                 icon=QMessageBox.Warning,
@@ -817,7 +879,43 @@ class Projects(object):
             if result == "Cancel":
                 return
             elif result == "Clear folder before creating the project":
+                while self.core.countFilesInFolder(prjPath, maximum=1000) >= 1000:
+                    msg = "There are more than 1000 files in the project folder.\n\n%s\n\nAs a security measurement Prism cannot delete this folder.\nDelete the folder manually in your file explorer to continue." % prjPath
+                    result = self.core.popupQuestion(
+                        msg,
+                        icon=QMessageBox.Warning,
+                        buttons=["Continue", "Cancel"],
+                        parent=parent
+                    )
+                    if result == "Continue":
+                        continue
+                    elif result == "Cancel":
+                        return
+
+                while (self.core.getFolderSize(prjPath)["size"] / 1024.0 / 1024.0) >= 1:
+                    msg = "The project folder size is more than 1 GB.\n\n%s\n\nAs a security measurement Prism cannot delete this folder.\nDelete the folder manually in your file explorer to continue." % prjPath
+                    result = self.core.popupQuestion(
+                        msg,
+                        icon=QMessageBox.Warning,
+                        buttons=["Continue", "Cancel"],
+                        parent=parent
+                    )
+                    if result == "Continue":
+                        continue
+                    elif result == "Cancel":
+                        return
+
                 while os.path.exists(prjPath):
+                    msg = "Are you really sure you want to delete this folder?\n\n%s\n\nThis will PERMANENTLY REMOVE the folder and it's content.\nThis cannot be undone!" % prjPath
+                    result = self.core.popupQuestion(
+                        msg,
+                        icon=QMessageBox.Warning,
+                        buttons=["Yes", "No"],
+                        parent=parent
+                    )
+                    if result != "Yes":
+                        return False
+
                     try:
                         shutil.rmtree(prjPath)
                     except Exception as e:
@@ -1102,7 +1200,7 @@ class Projects(object):
             "label": "Sequences",
             "key": "@sequence_path@",
             "value": "@project_path@/03_Production/Shots/@sequence@",
-            "requires": ["project_path", "sequence"],
+            "requires": ["sequence"],
         }
         structure["shots"] = {
             "label": "Shots",
@@ -1231,7 +1329,19 @@ class Projects(object):
             "requires": ["playblastversion_path"],
         }
         for key in self.extraStructureItems:
-            structure[key] = self.extraStructureItems[key].copy()
+            data = self.extraStructureItems[key].copy()
+            if "idx" in data:
+                structure[key] = data
+                structure.move_to_end(key, last=False)
+                revstruct = reversed(structure)
+                start = -(data["idx"]+1)
+                for idx, skey in enumerate(list(revstruct)[start:]):
+                    if idx >= data["idx"]:
+                        break
+
+                    structure.move_to_end(skey, last=False)
+            else:
+                structure[key] = data
 
         return structure
 
@@ -1324,6 +1434,14 @@ class Projects(object):
     def addProjectStructureItem(self, key, value):
         self.extraStructureItems[key] = value
         return True
+
+    @err_catcher(name=__name__)
+    def removeProjectStructureItem(self, key):
+        if key in self.extraStructureItems:
+            self.extraStructureItems.pop(key)
+            return True
+        else:
+            return False
 
     @err_catcher(name=__name__)
     def getProjectStructure(self, projectPath=None, projectStructure=None):
@@ -1580,15 +1698,12 @@ class Projects(object):
                     for resolvedPiece in resolvedPieces:
                         for resolvedPath in resolvedPaths:
                             if resolvedPiece is None:
-                                print(piece)
-                                print(context)
+                                logger.warning("couldn't resolve. piece: %s context: %s" % (piece, context))
                             try:
                                 newPath = resolvedPath + resolvedPiece
                             except:
-                                print(piece)
-                                print(context)
-                                print(resolvedPath)
-                                print(resolvedPiece)
+                                logger.warning("couldn't resolve. piece: %s context: %s resolvedPath: %s resolvedPiece %s" % (piece, context, resolvedPath, resolvedPiece))
+
                             newResolvedPaths.append(newPath)
 
                     resolvedPaths = newResolvedPaths
@@ -1708,6 +1823,19 @@ class Projects(object):
         return data
 
     @err_catcher(name=__name__)
+    def espaceBrackets(self, path):
+        escapedPath = ""
+        for char in path:
+            if char == "[":
+                escapedPath += "[[]"
+            elif char == "]":
+                escapedPath += "[]]"
+            else:
+                escapedPath += char
+
+        return escapedPath
+
+    @err_catcher(name=__name__)
     def getMatchingPaths(self, template):
         template = os.path.normpath(template)
         keys = self.getTemplateKeys(template)
@@ -1715,6 +1843,7 @@ class Projects(object):
         for key in keys:
             globPath = globPath.replace("@%s@" % key, "*")
 
+        globPath = self.espaceBrackets(globPath)
         matches = glob.glob(globPath)
 
         extKey = "@extension@"
@@ -1797,6 +1926,7 @@ class Projects(object):
         paths = []
         paths.append(self.getRootPresetPath())
         paths.append(self.getUserPresetPath())
+        self.core.callback("getProjectPresetPaths", args=[paths])
         return paths
 
     @err_catcher(name=__name__)
@@ -2151,6 +2281,27 @@ class Projects(object):
                     {
                         "name": "CharFX",
                         "tasks": ["CharacterEffects"]
+                    },
+                    {
+                        "name": "Lighting",
+                        "tasks": ["Lighting"]
+                    },
+                    {
+                        "name": "Compositing",
+                        "tasks": ["Compositing"]
+                    }
+                ]
+            },
+            {
+                "name": "Default",
+                "departments": [
+                    {
+                        "name": "Layout",
+                        "tasks": ["Layout"]
+                    },
+                    {
+                        "name": "Animation",
+                        "tasks": ["Animation"]
                     },
                     {
                         "name": "Lighting",

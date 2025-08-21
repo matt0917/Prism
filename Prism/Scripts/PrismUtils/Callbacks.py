@@ -54,6 +54,8 @@ class Callbacks(object):
         self.currentCallback = {"plugin": "", "function": ""}
         self.registeredCallbacks = {}
         self.registeredHooks = {}
+        self.availableCallbacks = []
+        self.availableCallbacks += self.getCoreCallbacks() 
         self.callbackNum = 0
         self.hookNum = 0
 
@@ -145,6 +147,29 @@ class Callbacks(object):
         return hooks
 
     @err_catcher(name=__name__)
+    def createProjectHook(self, name, content=None):
+        if not name.endswith(".py"):
+            name += ".py"
+
+        hookFolder = self.core.projects.getHookFolder()
+        hookPath = os.path.join(hookFolder, name)
+        if os.path.exists(hookPath):
+            msg = "The hook \"%s\" exists already." % name
+            self.core.popup(msg)
+            return
+
+        if not os.path.exists(hookFolder):
+            try:
+                os.makedirs(hookFolder)
+            except Exception as e:
+                self.core.popup("Failed to create folder:\n\n%s\n\n%s" % (hookFolder, e))
+                return
+
+        with open(hookPath, "w") as f:
+            if content:
+                f.write(content)
+
+    @err_catcher(name=__name__)
     def callback(self, name="", *args, **kwargs):
         if "args" in kwargs:
             args = list(args)
@@ -206,3 +231,20 @@ class Callbacks(object):
                     pass
 
         return result
+
+    @err_catcher(name=__name__)
+    def getCoreCallbacks(self):
+        return [
+            "prePublish",
+            "postExport",
+            "postImport",
+            "postPlayblast",
+            "postRender",
+            "postSaveScene",
+            "preExport",
+            "preImport",
+            "prePlayblast",
+            "preRender",
+            "preSaveScene",
+            "postPublish",
+        ]

@@ -92,6 +92,8 @@ class DependencyViewer(QDialog, DependencyViewer_ui.Ui_dlg_DependencyViewer):
             rootName = self.core.getConfig("filename", configPath=self.depRoot)
 
         self.l_root.setText(rootName)
+        self.clearItem(self.tw_dependencies.invisibleRootItem())
+        self.dependencies = {}
         self.updateDependencies("0", self.depRoot)
 
     @err_catcher(name=__name__)
@@ -107,13 +109,13 @@ class DependencyViewer(QDialog, DependencyViewer_ui.Ui_dlg_DependencyViewer):
 
     @err_catcher(name=__name__)
     def mouseClickEvent(self, event, uielement):
-        if QEvent != None:
+        if QEvent is not None:
             if event.type() == QEvent.MouseButtonRelease:
                 if event.button() == Qt.LeftButton:
                     if uielement == "deps":
                         self.tw_dependencies.mouseClickEvent(event)
                         index = self.tw_dependencies.indexAt(event.pos())
-                        if index.data() == None:
+                        if index.data() is not None:
                             self.tw_dependencies.setCurrentIndex(
                                 self.tw_dependencies.model().createIndex(-1, 0)
                             )
@@ -172,11 +174,7 @@ class DependencyViewer(QDialog, DependencyViewer_ui.Ui_dlg_DependencyViewer):
             depItem = self.dependencies[depID][1]
 
         for i in deps:
-            if sys.version[0] == "2":
-                existText = unicode("█", "utf-8")
-            else:
-                existText = "█"
-
+            existText = "█"
             depPath = i
             if depPath in ignore:
                 continue
@@ -234,11 +232,7 @@ class DependencyViewer(QDialog, DependencyViewer_ui.Ui_dlg_DependencyViewer):
             if i in deps:
                 continue
 
-            if sys.version[0] == "2":
-                existText = unicode("█", "utf-8")
-            else:
-                existText = "█"
-
+            existText = "█"
             if os.path.exists(i):
                 cdate = datetime.datetime.fromtimestamp(os.path.getmtime(i))
                 cdate = cdate.replace(microsecond=0)

@@ -61,6 +61,7 @@ class ExportClass(object):
         self.canSetVersion = True
         self.customContext = None
         self.allowCustomContext = False
+        self.shotCamsInitialized = False
 
         self.e_name.setText(state.text(0) + " ({product})")
 
@@ -83,7 +84,7 @@ class ExportClass(object):
 
         self.nodes = []
 
-        self.rangeTypes = ["Scene", "Shot", "Single Frame", "Custom"]
+        self.rangeTypes = ["Scene", "Shot", "Shot + 1", "Single Frame", "Custom"]
         self.cb_rangeType.addItems(self.rangeTypes)
         for idx, rtype in enumerate(self.rangeTypes):
             self.cb_rangeType.setItemData(
@@ -133,7 +134,9 @@ class ExportClass(object):
         if "customContext" in data:
             self.customContext = data["customContext"]
         if "taskname" in data:
-            self.setTaskname(data["taskname"])
+            self.setProductname(data["taskname"])
+        if "productname" in data:
+            self.setProductname(data["productname"])
         if "connectednodes" in data:
             self.nodes = eval(data["connectednodes"])
 
@@ -167,6 +170,9 @@ class ExportClass(object):
         if "additionaloptions" in data:
             self.chb_additionalOptions.setChecked(eval(data["additionaloptions"]))
         if "currentcam" in data:
+            if not self.shotCamsInitialized:
+                self.refreshShotCameras()
+
             camName = getattr(self.core.appPlugin, "getCamName", lambda x, y: "")(
                 self, data["currentcam"]
             )
@@ -247,21 +253,11 @@ class ExportClass(object):
         )
         if not self.stateManager.standalone:
             self.b_add.clicked.connect(self.addObjects)
-        self.b_pathLast.clicked.connect(self.showLastPathMenu)
+        self.b_pathLast.clicked.connect(lambda: self.stateManager.showLastPathMenu(self))
 
     @err_catcher(name=__name__)
     def initializeContextBasedSettings(self):
         context = self.getCurrentContext()
-        if (
-            context.get("type") == "shot"
-            and "sequence" in context
-        ):
-            self.refreshShotCameras()
-            shotName = self.core.entities.getShotName(context)
-            idx = self.cb_sCamShot.findText(shotName)
-            if idx != -1:
-                self.cb_sCamShot.setCurrentIndex(idx)
-
         startFrame, endFrame = self.getFrameRange("Scene")
         if startFrame is not None:
             self.sp_rangeStart.setValue(startFrame)
@@ -280,7 +276,7 @@ class ExportClass(object):
             self.setRangeType("Scene")
 
         if context.get("task"):
-            self.setTaskname(context.get("task"))
+            self.setProductname(context.get("task"))
 
         getattr(self.core.appPlugin, "sm_export_updateObjects", lambda x: None)(
             self
@@ -290,26 +286,26 @@ class ExportClass(object):
             self.addObjects()
 
     @err_catcher(name=__name__)
-    def showLastPathMenu(self):
+    def getLastPathOptions(self):
         path = self.l_pathLast.text()
         if path == "None":
             return
 
-        menu = QMenu(self)
-
-        act_open = QAction("Open in Product Browser", self)
-        act_open.triggered.connect(lambda: self.openInProductBrowser(path))
-        menu.addAction(act_open)
-
-        act_open = QAction("Open in explorer", self)
-        act_open.triggered.connect(lambda: self.core.openFolder(path))
-        menu.addAction(act_open)
-
-        act_copy = QAction("Copy", self)
-        act_copy.triggered.connect(lambda: self.core.copyToClipboard(path, file=True))
-        menu.addAction(act_copy)
-
-        menu.exec_(QCursor.pos())
+        options = [
+            {
+                "label": "Open in Product Browser...",
+                "callback": lambda: self.openInProductBrowser(path)
+            },
+            {
+                "label": "Open in Explorer...",
+                "callback": lambda: self.core.openFolder(path)
+            },
+            {
+                "label": "Copy",
+                "callback": lambda: self.core.copyToClipboard(path, file=True)
+            },
+        ]
+        return options
 
     @err_catcher(name=__name__)
     def openInProductBrowser(self, path):
@@ -360,7 +356,7 @@ class ExportClass(object):
         if self.getOutputType() == "ShotCam":
             context["product"] = "ShotCam - %s" % self.cb_cam.currentText()
         else:
-            context["product"] = self.getTaskname() or "None"
+            context["product"] = self.getProductname() or "None"
 
         num = 0
         try:
@@ -438,34 +434,42 @@ class ExportClass(object):
         return False
 
     @err_catcher(name=__name__)
-    def getTaskname(self):
+    def getProductname(self):
         if self.getOutputType() == "ShotCam":
-            taskName = "_ShotCam"
+            productName = "_ShotCam"
         else:
-            taskName = self.l_taskName.text()
+            productName = self.l_taskName.text()
 
-        return taskName
+        return productName
+
+    @err_catcher(name=__name__)
+    def getTaskname(self):
+        return self.getProductname()
+
+    @err_catcher(name=__name__)
+    def setProductname(self, productname):
+        prevProductName = self.getProductname()
+        default_func = lambda x1, x2, newTaskName: productname
+        productname = getattr(self.core.appPlugin, "sm_export_setTaskText", default_func)(
+            self, prevProductName, productname
+        )
+        self.l_taskName.setText(productname)
+        self.updateUi()
+        return productname
 
     @err_catcher(name=__name__)
     def setTaskname(self, taskname):
-        prevTaskName = self.getTaskname()
-        default_func = lambda x1, x2, newTaskName: taskname
-        taskname = getattr(self.core.appPlugin, "sm_export_setTaskText", default_func)(
-            self, prevTaskName, taskname
-        )
-        self.l_taskName.setText(taskname)
-        self.updateUi()
-        return taskname
+        return self.setProductname(taskname)
 
     @err_catcher(name=__name__)
     def getSortKey(self):
-        return self.getTaskname()
+        return self.getProductname()
 
     @err_catcher(name=__name__)
     def changeTask(self):
         from PrismUtils import PrismWidgets
         self.nameWin = PrismWidgets.CreateItem(
-            startText=self.getTaskname(),
+            startText=self.getProductname(),
             showTasks=True,
             taskType="export",
             core=self.core,
@@ -478,7 +482,7 @@ class ExportClass(object):
         result = self.nameWin.exec_()
 
         if result == 1:
-            self.setTaskname(self.nameWin.e_item.text())
+            self.setProductname(self.nameWin.e_item.text())
             self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
@@ -540,9 +544,12 @@ class ExportClass(object):
     def refreshShotCameras(self):
         curShot = self.cb_sCamShot.currentText()
         self.cb_sCamShot.clear()
-        _, shots = self.core.entities.getShots()
+        shots = self.core.entities.getShots()
         for shot in sorted(shots, key=lambda s: self.core.entities.getShotName(s).lower()):
             shotData = {"type": "shot", "sequence": shot["sequence"], "shot": shot["shot"]}
+            if "episode" in shot:
+                shotData["episode"] = shot["episode"]
+
             shotName = self.core.entities.getShotName(shot)
             self.cb_sCamShot.addItem(shotName, shotData)
 
@@ -552,6 +559,19 @@ class ExportClass(object):
         else:
             self.cb_sCamShot.setCurrentIndex(0)
             self.stateManager.saveStatesToScene()
+
+        if not self.shotCamsInitialized:
+            self.shotCamsInitialized = True
+            context = self.getCurrentContext()
+            if (
+                context.get("type") == "shot"
+                and "sequence" in context
+            ):
+                shotName = self.core.entities.getShotName(context)
+                idx = self.cb_sCamShot.findText(shotName)
+                if idx != -1:
+                    self.cb_sCamShot.setCurrentIndex(idx)
+                    self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
     def updateUi(self):
@@ -578,10 +598,12 @@ class ExportClass(object):
         self.w_context.setHidden(not self.allowCustomContext)
         self.refreshContext()
         self.updateRange()
-        self.refreshShotCameras()
+        if self.getOutputType() == "ShotCam":
+            self.refreshShotCameras()
+
         self.updateObjectList()
 
-        if self.getTaskname():
+        if self.getProductname():
             self.b_changeTask.setPalette(self.oldPalette)
 
         self.refreshSubmitUi()
@@ -594,7 +616,10 @@ class ExportClass(object):
         self.lw_objects.clear()
 
         newObjList = []
-        getattr(self.core.appPlugin, "sm_export_updateObjects", lambda x: None)(self)
+        result = getattr(self.core.appPlugin, "sm_export_updateObjects", lambda x: None)(self)
+        if result is False:
+            return
+
         if not self.stateManager.standalone:
             for node in self.nodes:
                 if self.core.appPlugin.isNodeValid(self, node):
@@ -621,7 +646,7 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def getCurrentContext(self):
-        context = None
+        context = {}
         if self.allowCustomContext:
             ctype = self.getContextType()
             if ctype == "Custom":
@@ -630,7 +655,7 @@ class ExportClass(object):
         if not context:
             if self.getOutputType() == "ShotCam":
                 context = self.cb_sCamShot.currentData()
-                if self.core.getConfig("globals", "productTasks", config="project"):
+                if context and self.core.getConfig("globals", "productTasks", config="project"):
                     context["department"] = os.getenv("PRISM_SHOTCAM_DEPARTMENT", "Layout")
                     context["task"] = os.getenv("PRISM_SHOTCAM_TASK", "Cameras")
 
@@ -638,13 +663,13 @@ class ExportClass(object):
                 fileName = self.core.getCurrentFileName()
                 context = self.core.getScenefileData(fileName)
 
-        if "username" in context:
+        if context and "username" in context:
             del context["username"]
 
-        if "user" in context:
+        if context and "user" in context:
             del context["user"]
 
-        return context
+        return context or {}
 
     @err_catcher(name=__name__)
     def updateObjectListStyle(self, warn=True):
@@ -717,6 +742,14 @@ class ExportClass(object):
                 frange = self.core.entities.getShotRange(context)
                 if frange:
                     startFrame, endFrame = frange
+        elif rangeType == "Shot + 1":
+            context = self.getCurrentContext()
+            if context.get("type") == "shot" and "sequence" in context:
+                frange = self.core.entities.getShotRange(context)
+                if frange:
+                    startFrame, endFrame = frange
+                    startFrame -= 1
+                    endFrame += 1
         elif rangeType == "Single Frame":
             if hasattr(self.core.appPlugin, "getCurrentFrame"):
                 startFrame = self.core.appPlugin.getCurrentFrame()
@@ -816,7 +849,7 @@ class ExportClass(object):
             if self.curCam is None:
                 warnings.append(["No camera specified.", "", 3])
         else:
-            if not self.getTaskname():
+            if not self.getProductname():
                 warnings.append(["No productname is given.", "", 3])
 
             if not self.chb_wholeScene.isChecked() and len(self.nodes) == 0:
@@ -837,8 +870,8 @@ class ExportClass(object):
         if "type" not in context:
             return
 
-        task = self.getTaskname()
-        if not task:
+        product = self.getProductname()
+        if not product:
             return
 
         if self.getOutputType() == "ShotCam":
@@ -863,7 +896,7 @@ class ExportClass(object):
 
         outputPathData = self.core.products.generateProductPath(
             entity=context,
-            task=task,
+            task=product,
             extension=extension,
             framePadding=framePadding,
             comment=self.stateManager.publishComment,
@@ -963,7 +996,7 @@ class ExportClass(object):
 
             details["version"] = hVersion
             details["sourceScene"] = fileName
-            details["product"] = self.getTaskname()
+            details["product"] = self.getProductname()
             details["resolution"] = self.core.appPlugin.getResolution()
             details["comment"] = self.stateManager.publishComment
 
@@ -1023,7 +1056,7 @@ class ExportClass(object):
                 return [self.state.text(0) + " - unknown error"]
         else:
 
-            if not self.getTaskname():
+            if not self.getProductname():
                 return [
                     self.state.text(0)
                     + ": error - No productname is given. Skipped the activation of this state."
@@ -1085,7 +1118,7 @@ class ExportClass(object):
 
             details["version"] = hVersion
             details["sourceScene"] = fileName
-            details["product"] = self.getTaskname()
+            details["product"] = self.getProductname()
             details["comment"] = self.stateManager.publishComment
 
             if startFrame != endFrame:
@@ -1097,6 +1130,7 @@ class ExportClass(object):
             self.core.saveVersionInfo(filepath=infoPath, details=details)
             updateMaster = True
             try:
+                submitResult = None
                 if not self.gb_submit.isHidden() and self.gb_submit.isChecked():
                     handleMaster = "product" if self.isUsingMasterVersion() else False
                     plugin = self.core.plugins.getRenderfarmPlugin(self.cb_manager.currentText())
@@ -1142,6 +1176,7 @@ class ExportClass(object):
                 "startframe": startFrame,
                 "endframe": endFrame,
                 "outputpath": outputName,
+                "result": submitResult,
             }
 
             result = self.core.callback("postExport", **kwargs)
@@ -1176,7 +1211,7 @@ class ExportClass(object):
                 "stateName": self.e_name.text(),
                 "contextType": self.getContextType(),
                 "customContext": self.customContext,
-                "taskname": self.getTaskname(),
+                "productname": self.getProductname(),
                 "rangeType": str(self.cb_rangeType.currentText()),
                 "startframe": self.sp_rangeStart.value(),
                 "endframe": self.sp_rangeEnd.value(),

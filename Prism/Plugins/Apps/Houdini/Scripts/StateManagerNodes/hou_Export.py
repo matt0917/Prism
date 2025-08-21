@@ -68,8 +68,9 @@ class ExportClass(object):
         self.node = None
         self.curCam = None
         self.initsim = True
+        self.shotCamsInitialized = False
 
-        self.setTaskname("")
+        self.setProductname("")
         self.cb_outType.addItems(self.core.appPlugin.outputFormats)
         self.export_paths = self.core.paths.getExportProductBasePaths()
 
@@ -103,6 +104,7 @@ class ExportClass(object):
         self.rangeTypes = [
             "Scene",
             "Shot",
+            "Shot + 1",
             "Node",
             "Single Frame",
             "Custom",
@@ -158,7 +160,7 @@ class ExportClass(object):
         if stateData is not None:
             self.loadData(stateData)
         else:
-            context = self.getOutputEntity()
+            context = self.getOutputEntity() or {}
             if (
                 context.get("type") == "shot"
                 and "sequence" in context
@@ -180,7 +182,7 @@ class ExportClass(object):
                     self.setRangeType("Scene")
 
             if context.get("task") and not self.isPrismFilecacheNode(self.node):
-                self.setTaskname(context.get("task"))
+                self.setProductname(context.get("task"))
 
     @err_catcher(name=__name__)
     def loadData(self, data):
@@ -190,7 +192,9 @@ class ExportClass(object):
             name = data["statename"] + " - {product} ({node})"
             self.e_name.setText(name)
         if "taskname" in data:
-            self.setTaskname(data["taskname"])
+            self.setProductname(data["taskname"])
+        if "productname" in data:
+            self.setProductname(data["productname"])
         if "rangeType" in data:
             idx = self.cb_rangeType.findText(data["rangeType"])
             if idx != -1:
@@ -414,7 +418,7 @@ class ExportClass(object):
         self.b_osSlaves.clicked.connect(self.openSlaves)
         self.cb_cam.activated.connect(self.setCam)
         self.cb_sCamShot.activated.connect(self.stateManager.saveStatesToScene)
-        self.b_pathLast.clicked.connect(self.showLastPathMenu)
+        self.b_pathLast.clicked.connect(lambda: self.stateManager.showLastPathMenu(self))
 
         if not self.stateManager.standalone:
             self.b_goTo.clicked.connect(self.goToNode)
@@ -423,26 +427,26 @@ class ExportClass(object):
             self.b_connect.customContextMenuRequested.connect(self.onConnectMenuTriggered)
 
     @err_catcher(name=__name__)
-    def showLastPathMenu(self):
+    def getLastPathOptions(self):
         path = self.l_pathLast.text()
         if path == "None":
             return
-        
-        menu = QMenu(self)
 
-        act_open = QAction("Open in Product Browser", self)
-        act_open.triggered.connect(lambda: self.openInProductBrowser(path))
-        menu.addAction(act_open)
-
-        act_open = QAction("Open in explorer", self)
-        act_open.triggered.connect(lambda: self.core.openFolder(path))
-        menu.addAction(act_open)
-
-        act_copy = QAction("Copy", self)
-        act_copy.triggered.connect(lambda: self.core.copyToClipboard(path, file=True))
-        menu.addAction(act_copy)
-
-        menu.exec_(QCursor.pos())
+        options = [
+            {
+                "label": "Open in Product Browser...",
+                "callback": lambda: self.openInProductBrowser(path)
+            },
+            {
+                "label": "Open in Explorer...",
+                "callback": lambda: self.core.openFolder(path)
+            },
+            {
+                "label": "Copy",
+                "callback": lambda: self.core.copyToClipboard(path, file=True)
+            },
+        ]
+        return options
 
     @err_catcher(name=__name__)
     def openInProductBrowser(self, path):
@@ -468,7 +472,7 @@ class ExportClass(object):
             context["product"] = "Shotcam"
             context["node"] = self.curCam
         else:
-            context["product"] = self.getTaskname(expanded=True)
+            context["product"] = self.getProductname(expanded=True)
             if self.isNodeValid():
                 context["node"] = self.node
             else:
@@ -516,7 +520,7 @@ class ExportClass(object):
     def changeTask(self):
         from PrismUtils import PrismWidgets
         self.nameWin = PrismWidgets.CreateItem(
-            startText=self.getTaskname(),
+            startText=self.getProductname(),
             showTasks=True,
             taskType="export",
             core=self.core,
@@ -529,15 +533,15 @@ class ExportClass(object):
         result = self.nameWin.exec_()
 
         if result == 1:
-            taskName = self.nameWin.e_item.text()
-            self.setTaskname(taskName)
+            productName = self.nameWin.e_item.text()
+            self.setProductname(productName)
             self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def setTaskname(self, taskname):
-        self.l_taskName.setText(taskname)
+    def setProductname(self, productname):
+        self.l_taskName.setText(productname)
         self.nameChanged(self.e_name.text())
-        if taskname:
+        if productname:
             self.b_changeTask.setStyleSheet("")
         else:
             self.b_changeTask.setStyleSheet(
@@ -545,35 +549,43 @@ class ExportClass(object):
             )
 
         if self.isPrismFilecacheNode(self.node):
-            self.core.appPlugin.setNodeParm(self.node, "task", taskname, clear=True)
+            self.core.appPlugin.setNodeParm(self.node, "task", productname, clear=True)
 
         self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def getTaskname(self, expanded=False):
+    def setTaskname(self, taskname):
+        self.setProductname(taskname)
+
+    @err_catcher(name=__name__)
+    def getProductname(self, expanded=False):
         if self.isPrismFilecacheNode(self.node) and self.node.parm("showUsdSettings").eval():
             usdPlug = self.core.getPlugin("USD")
             if not usdPlug:
                 self.core.popup("USD plugin is not loaded.")
                 return
 
-            return usdPlug.api.usdExport.getTaskname(self, expanded)
+            return usdPlug.api.usdExport.getProductName(self.node)
 
         if self.getOutputType() == "ShotCam":
-            taskName = "_ShotCam"
+            productName = "_ShotCam"
         else:
-            taskName = self.l_taskName.text()
+            productName = self.l_taskName.text()
             if expanded:
                 if self.node:
-                    taskName = taskName.replace("$OS", self.node.name())
+                    productName = productName.replace("$OS", self.node.name())
 
-                taskName = hou.text.expandString(taskName)
+                productName = hou.text.expandString(productName)
 
-        return taskName
+        return productName
+
+    @err_catcher(name=__name__)
+    def getTaskname(self, expanded=False):
+        return self.getProductname(expanded=expanded)
 
     @err_catcher(name=__name__)
     def getSortKey(self):
-        return self.getTaskname(expanded=True)
+        return self.getProductname(expanded=True)
 
     @err_catcher(name=__name__)
     def getOutputType(self):
@@ -705,6 +717,7 @@ class ExportClass(object):
 
         if self.getOutputType() == "ShotCam":
             self.refreshShotCameras()
+            self.refreshShotCamShots()
 
         if self.isPrismFilecacheNode(self.node):
             self.core.appPlugin.filecache.nodeInit(self.node, self.state)
@@ -714,11 +727,18 @@ class ExportClass(object):
         if not self.core.products.getUseMaster():
             self.w_master.setVisible(False)
 
+        self.nameChanged(self.e_name.text())
+
+    @err_catcher(name=__name__)
+    def refreshShotCamShots(self):
         curShot = self.cb_sCamShot.currentText()
         self.cb_sCamShot.clear()
-        _, shots = self.core.entities.getShots()
+        shots = self.core.entities.getShots()
         for shot in sorted(shots, key=lambda s: self.core.entities.getShotName(s).lower()):
-            shotData = {"sequence": shot["sequence"], "shot": shot["shot"], "type": "shot"}
+            shotData = {"type": "shot", "sequence": shot["sequence"], "shot": shot["shot"]}
+            if "episode" in shot:
+                shotData["episode"] = shot["episode"]
+
             shotName = self.core.entities.getShotName(shot)
             self.cb_sCamShot.addItem(shotName, shotData)
 
@@ -729,7 +749,18 @@ class ExportClass(object):
             self.cb_sCamShot.setCurrentIndex(0)
             self.stateManager.saveStatesToScene()
 
-        self.nameChanged(self.e_name.text())
+        if not self.shotCamsInitialized:
+            self.shotCamsInitialized = True
+            context = self.getOutputEntity()
+            if (
+                context.get("type") == "shot"
+                and "sequence" in context
+            ):
+                shotName = self.core.entities.getShotName(context)
+                idx = self.cb_sCamShot.findText(shotName)
+                if idx != -1:
+                    self.cb_sCamShot.setCurrentIndex(idx)
+                    self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
     def updateRange(self):
@@ -759,6 +790,14 @@ class ExportClass(object):
                 frange = self.core.entities.getShotRange(context)
                 if frange:
                     startFrame, endFrame = frange
+        elif rangeType == "Shot + 1":
+            context = self.getOutputEntity()
+            if context.get("type") == "shot" and "sequence" in context:
+                frange = self.core.entities.getShotRange(context)
+                if frange:
+                    startFrame, endFrame = frange
+                    startFrame -= 1
+                    endFrame += 1
         elif rangeType == "Node" and self.node:
             api = self.core.appPlugin.getApiFromNode(self.node)
             if api:
@@ -1120,10 +1159,14 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def managerChanged(self, text=None):
+        if getattr(self.cb_manager, "prevManager", None):
+            self.cb_manager.prevManager.unsetManager(self)
+
         plugin = self.core.plugins.getRenderfarmPlugin(self.cb_manager.currentText())
         if plugin:
             plugin.sm_houExport_activated(self)
 
+        self.cb_manager.prevManager = plugin
         self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
@@ -1190,7 +1233,7 @@ class ExportClass(object):
             if str(hou.licenseCategory()) == "licenseCategoryType.Apprentice":
                 warnings.append(["Shotcam exports are not supported in Houdini Apprentice.", "", 3])
         else:
-            if not self.getTaskname(expanded=True):
+            if not self.getProductname(expanded=True):
                 warnings.append(["No productname is given.", "", 3])
 
             if not self.isNodeValid():
@@ -1336,11 +1379,14 @@ class ExportClass(object):
             return usdPlug.api.usdExport.getOutputName(self, useVersion)
 
         entity = self.getOutputEntity()
+        if not entity:
+            return
+
         location = self.cb_outPath.currentText()
         version = useVersion if useVersion != "next" else None
 
-        task = self.getTaskname(expanded=True)
-        if not task:
+        product = self.getProductname(expanded=True)
+        if not product:
             return
 
         if self.getOutputType() == "ShotCam":
@@ -1366,7 +1412,7 @@ class ExportClass(object):
         wedge = self.getCurrentWedgeIndex()
         outputPathData = self.core.products.generateProductPath(
             entity=entity,
-            task=task,
+            task=product,
             extension=extension,
             framePadding=framePadding,
             comment=self.stateManager.publishComment,
@@ -1474,7 +1520,7 @@ class ExportClass(object):
 
             details["version"] = hVersion
             details["sourceScene"] = fileName
-            details["product"] = self.getTaskname(expanded=True)
+            details["product"] = self.getProductname(expanded=True)
             details["comment"] = self.stateManager.publishComment
 
             details.update(self.cb_sCamShot.currentData())
@@ -1562,7 +1608,7 @@ class ExportClass(object):
                 return [self.state.text(0) + " - unknown error (files do not exist)"]
 
         else:
-            if not self.getTaskname(expanded=True):
+            if not self.getProductname(expanded=True):
                 return [
                     self.state.text(0)
                     + ": error - No productname is given. Skipped the activation of this state."
@@ -1591,6 +1637,13 @@ class ExportClass(object):
                 ropNode = self.node
 
             fileName = self.core.getCurrentFileName()
+            entity = self.getOutputEntity()
+            if not entity:
+                return [
+                        self.state.text(0)
+                        + ": error - Invalid output entity."
+                    ]
+
             outputName, outputPath, hVersion = self.getOutputName(useVersion=useVersion)
 
             outLength = len(outputName)
@@ -1647,7 +1700,7 @@ class ExportClass(object):
                 if not self.core.appPlugin.setNodeParm(ropNode, "filemethod", val=1):
                     return [self.state.text(0) + ": error - Publish canceled"]
 
-            if self.chb_useTake.isChecked():
+            if self.chb_useTake.isChecked() and ropNode.parm("take"):
                 pTake = self.cb_take.currentText()
                 takeLabels = [x.strip() for x in ropNode.parm("take").menuLabels()]
                 if pTake in takeLabels:
@@ -1709,7 +1762,7 @@ class ExportClass(object):
 
             details["version"] = hVersion
             details["sourceScene"] = fileName
-            details["product"] = self.getTaskname(expanded=True)
+            details["product"] = self.getProductname(expanded=True)
             details["comment"] = self.stateManager.publishComment
 
             if startFrame != endFrame:
@@ -1811,6 +1864,7 @@ class ExportClass(object):
                 "startframe": startFrame,
                 "endframe": endFrame,
                 "outputpath": expandedOutputName,
+                "result": result,
             }
 
             self.core.callback("postExport", **kwargs)
@@ -1872,7 +1926,7 @@ class ExportClass(object):
         if isWedging:
             return
 
-        self.core.products.updateMasterVersion(outputName)
+        return self.core.products.updateMasterVersion(outputName)
 
     @err_catcher(name=__name__)
     def getStateProps(self):
@@ -1890,7 +1944,7 @@ class ExportClass(object):
 
         stateProps = {
             "stateName": self.e_name.text(),
-            "taskname": self.getTaskname(),
+            "productname": self.getProductname(),
             "rangeType": str(self.cb_rangeType.currentText()),
             "startframe": self.sp_rangeStart.value(),
             "endframe": self.sp_rangeEnd.value(),

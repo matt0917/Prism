@@ -212,7 +212,7 @@ class Prism_Houdini_externalAccess_Functions(object):
         if self.core.getConfig("houdini", "openInManual"):
             if not appPath:
                 if not self.houdiniPath:
-                    self.houdiniPath = self.core.getDefaultWindowsAppByExtension(".hip")
+                    self.houdiniPath = self.core.getDefaultAppByExtension(".hip")
                     if self.houdiniPath and self.houdiniPath.endswith("hview.exe"):
                         hexe = os.path.join(os.path.dirname(self.houdiniPath), "houdini.exe")
                         if os.path.exists(hexe):

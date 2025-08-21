@@ -1,1 +1,0 @@
-# PrismPlugin_3dsMax

@@ -38,11 +38,6 @@ import platform
 import logging
 from datetime import datetime
 
-if sys.version[0] == "3":
-    pVersion = 3
-else:
-    pVersion = 2
-
 prismRoot = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 if __name__ == "__main__":
@@ -122,10 +117,13 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
         self.actionCheckForUpdates.toggled.connect(self.triggerUpdates)
         self.actionCheckForShotFrameRange.toggled.connect(self.triggerFrameranges)
         self.actionCloseAfterLoad.toggled.connect(self.triggerCloseLoad)
-        self.actionAutoplay.toggled.connect(self.mediaBrowser.triggerAutoplay)
+        if hasattr(self, "mediaBrowser"):
+            self.actionAutoplay.toggled.connect(self.mediaBrowser.triggerAutoplay)
+
         self.act_filesizes.toggled.connect(self.triggerShowFileSizes)
         self.act_rememberTab.toggled.connect(self.triggerRememberTab)
         self.act_rememberWidgetSizes.toggled.connect(self.triggerRememberWidgetSizes)
+        self.act_clearConfigCache.toggled.connect(self.triggerClearConfigCacheOnRefresh)
         self.tbw_project.currentChanged.connect(self.tabChanged)
 
     def enterEvent(self, event):
@@ -216,17 +214,22 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
         self.act_rememberWidgetSizes.setChecked(False)
         self.menuTools.insertAction(self.actionAutoplay, self.act_rememberWidgetSizes)
 
+        self.act_clearConfigCache = QAction("Clear config cache on refresh", self)
+        self.act_clearConfigCache.setCheckable(True)
+        self.act_clearConfigCache.setChecked(False)
+        self.menuTools.insertAction(self.actionAutoplay, self.act_clearConfigCache)
+
         path = os.path.join(self.core.prismRoot, "Scripts", "UserInterfacesPrism", "configure.png")
         icon = self.core.media.getColoredIcon(path)
         self.actionPrismSettings.setIcon(icon)
 
-        if self.core.debugMode:
-            self.act_console = QAction("Console...", self)
-            self.act_console.triggered.connect(self.core.openConsole)
-            path = os.path.join(self.core.prismRoot, "Scripts", "UserInterfacesPrism", "console.png")
-            icon = self.core.media.getColoredIcon(path)
-            self.act_console.setIcon(icon)
-            self.menuTools.addAction(self.act_console)
+        self.act_console = QAction("Console...", self)
+        self.act_console.triggered.connect(self.core.openConsole)
+        path = os.path.join(self.core.prismRoot, "Scripts", "UserInterfacesPrism", "console.png")
+        icon = self.core.media.getColoredIcon(path)
+        self.act_console.setIcon(icon)
+        self.menuTools.addAction(self.act_console)
+        self.act_console.setVisible(self.core.debugMode)
 
         self.recentMenu = QMenu("Recent", self)
         path = os.path.join(self.core.prismRoot, "Scripts", "UserInterfacesPrism", "history.png")
@@ -332,6 +335,9 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
 
         if "rememberWidgetSizes" in brsData:
             self.act_rememberWidgetSizes.setChecked(brsData["rememberWidgetSizes"])
+
+        if "clearConfigCacheOnRefresh" in brsData:
+            self.act_clearConfigCache.setChecked(brsData["clearConfigCacheOnRefresh"])
 
         self.sceneBrowser = SceneBrowser.SceneBrowser(
             core=self.core, projectBrowser=self, refresh=False
@@ -587,6 +593,9 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
 
     @err_catcher(name=__name__)
     def refreshUiTriggered(self, state=None):
+        if self.act_clearConfigCache.isChecked():
+            self.core.configs.clearCache()
+
         self.core.callback(name="onProjectBrowserRefreshUiTriggered", args=[self])
         self.refreshUI()
 
@@ -674,6 +683,10 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
     @err_catcher(name=__name__)
     def triggerRememberWidgetSizes(self, checked=False):
         self.core.setConfig("browser", "rememberWidgetSizes", checked)
+
+    @err_catcher(name=__name__)
+    def triggerClearConfigCacheOnRefresh(self, checked=False):
+        self.core.setConfig("browser", "clearConfigCacheOnRefresh", checked)
 
     @err_catcher(name=__name__)
     def triggerCloseLoad(self, checked=False):

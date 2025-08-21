@@ -58,10 +58,12 @@ logger = logging.getLogger(__name__)
 class EntityWidget(QWidget):
     tabChanged = Signal()
 
-    def __init__(self, core, refresh=True, mode="scenefiles"):
+    def __init__(self, core, refresh=True, mode="scenefiles", pages=None):
         QWidget.__init__(self)
         self.core = core
         self.core.parentWindow(self)
+        pages = pages or ["Assets", "Shots"]
+        self.pageNames = [self.core.tr(page) for page in pages]
         self.pages = []
         self.refresh = refresh
         self.mode = mode
@@ -74,8 +76,6 @@ class EntityWidget(QWidget):
 
     @err_catcher(name=__name__)
     def setupUi(self):
-        pageNames = [self.core.tr("Assets"), self.core.tr("Shots")]
-
         self.sw_tabs = QStackedWidget()
         self.w_header = QWidget()
         self.tb_entities = QTabBar()
@@ -126,7 +126,7 @@ class EntityWidget(QWidget):
             self.w_header.geometry().width() - self.b_search.geometry().width(), 0
         )
 
-        for pageName in pageNames:
+        for pageName in self.pageNames:
             page = EntityPage(self, pageName, refresh=self.refresh)
             self.tb_entities.addTab(page.objectName())
             self.sw_tabs.addWidget(page)
@@ -360,6 +360,37 @@ class EntityPage(QWidget):
         self.tw_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.e_search.setClearButtonEnabled(True)
 
+        if self.entityType == "asset":
+            iconPath = os.path.join(
+                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "asset.png"
+            )
+            self.assetIcon = self.core.media.getColoredIcon(iconPath)
+
+            iconPath = os.path.join(
+                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "folder.png"
+            )
+            self.folderIcon = self.core.media.getColoredIcon(iconPath)
+        else:
+            iconPath = os.path.join(
+                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "folder.png"
+            )
+            self.folderIcon = self.core.media.getColoredIcon(iconPath)
+
+            iconPath = os.path.join(
+                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "episode.png"
+            )
+            self.episodeIcon = self.core.media.getColoredIcon(iconPath)
+
+            iconPath = os.path.join(
+                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "sequence.png"
+            )
+            self.seqIcon = self.core.media.getColoredIcon(iconPath)
+
+            iconPath = os.path.join(
+                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "shot.png"
+            )
+            self.shotIcon = self.core.media.getColoredIcon(iconPath)
+
     @err_catcher(name=__name__)
     def connectEvents(self):
         self.tw_tree.mousePrEvent = self.tw_tree.mousePressEvent
@@ -411,16 +442,6 @@ class EntityPage(QWidget):
 
         self.tw_tree.clear()
         self.addedAssetItems = {}
-        iconPath = os.path.join(
-            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "asset.png"
-        )
-        self.assetIcon = self.core.media.getColoredIcon(iconPath)
-
-        iconPath = os.path.join(
-            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "folder.png"
-        )
-        self.folderIcon = self.core.media.getColoredIcon(iconPath)
-
         self.filteredAssets = []
         if self.e_search.isVisible() and self.e_search.text():
             assets, folders = self.core.entities.getAssetPaths(
@@ -562,9 +583,7 @@ class EntityPage(QWidget):
         data = item.data(0, Qt.UserRole)
         path = data["paths"][0]
         itemType = data["type"]
-        expand = path in self.expandedItems or (
-            self.e_search.isVisible() and self.e_search.text()
-        )
+        expand = path in self.expandedItems
         showIcon = True
         if itemType == "asset":
             usePreview = self.core.getConfig("browser", "showEntityPreviews", config="user", dft=True)
@@ -608,10 +627,11 @@ class EntityPage(QWidget):
 
     @err_catcher(name=__name__)
     def itemExpanded(self, item):
+        itemData = item.data(0, Qt.UserRole)
         if self.entityType == "asset":
-            name = item.data(0, Qt.UserRole)["paths"][0]
+            name = itemData["paths"][0]
         elif self.entityType == "shot":
-            name = self.core.entities.getShotName(item.data(0, Qt.UserRole))
+            name = self.core.entities.getShotName(itemData)
 
         self.dclick = False
         if name not in self.expandedItems and not (
@@ -627,9 +647,8 @@ class EntityPage(QWidget):
             for childnum in range(item.childCount()):
                 self.refreshAssetItem(item.child(childnum))
         elif self.entityType == "shot":
-            if self.core.getConfig("browser", "showEntityPreviews", config="user", dft=True):
-                for childnum in range(item.childCount()):
-                    self.refreshShotThumbnail(item.child(childnum))
+            if itemData.get("loaded") is False:
+                self.refreshShotItemChildren(item)
 
     @err_catcher(name=__name__)
     def itemCollapsed(self, item):
@@ -648,123 +667,130 @@ class EntityPage(QWidget):
 
     @err_catcher(name=__name__)
     def refreshShots(self, defaultSelection=True):
-        with self.core.timeMeasure:
-            wasBlocked = self.tw_tree.signalsBlocked()
-            if not wasBlocked:
-                self.tw_tree.blockSignals(True)
+        wasBlocked = self.tw_tree.signalsBlocked()
+        if not wasBlocked:
+            self.tw_tree.blockSignals(True)
 
-            self.tw_tree.clear()
+        self.tw_tree.clear()
 
-            location = self.getCurrentLocation()
-            if location == "all":
-                locations = list(self.getLocations().keys())
-            else:
-                locations = [location]
+        location = self.getCurrentLocation()
+        if location == "all":
+            locations = list(self.getLocations().keys())
+        else:
+            locations = [location]
 
-            searchFilter = ""
-            if self.e_search.isVisible():
-                searchFilter = self.e_search.text()
+        searchFilter = ""
+        if self.e_search.isVisible():
+            searchFilter = self.e_search.text()
 
-            sequences, shotData = self.core.entities.getShots(
-                locations=locations, searchFilter=searchFilter
-            )
+        useEpisodes = self.core.getConfig(
+            "globals",
+            "useEpisodes",
+            config="project",
+        ) or False
+        if useEpisodes:
+            episodes = self.core.entities.getEpisodes(locations=locations, searchFilter=searchFilter)
+            parent = self.tw_tree.invisibleRootItem()
+            for episode in episodes:
+                item = self.addEpisodeItem(episode, parent=parent)
 
-            shots = {}
-            for shot in shotData:
-                seqName = shot["sequence"]
-                shotName = shot["shot"]
-                shotPaths = shot["paths"]
-
-                if seqName not in shots:
-                    shots[seqName] = {}
-
-                if shotName not in shots[seqName]:
-                    shots[seqName][shotName] = []
-
-                for shotPath in shotPaths:
-                    if shotPath not in shots[seqName][shotName]:
-                        shots[seqName][shotName].append(shotPath)
-
-            sequences = self.core.sortNatural(shots.keys())
-
-            iconPath = os.path.join(
-                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "folder.png"
-            )
-            folderIcon = self.core.media.getColoredIcon(iconPath)
-
-            iconPath = os.path.join(
-                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "sequence.png"
-            )
-            seqIcon = self.core.media.getColoredIcon(iconPath)
-
-            iconPath = os.path.join(
-                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "shot.png"
-            )
-            shotIcon = self.core.media.getColoredIcon(iconPath)
-            usePreview = self.core.getConfig("browser", "showEntityPreviews", config="user", dft=True)
-
+        else:
+            sequences = self.core.entities.getSequences(locations=locations, searchFilter=searchFilter)
             seqItems = {}
             for sequence in sequences:
                 parent = self.tw_tree.invisibleRootItem()
                 seqName = ""
-                seqParts = sequence.split("__") if os.getenv("PRISM_USE_SEQUENCE_FOLDERS") == "1" else [sequence]
+                seqParts = sequence["sequence"].split("__") if os.getenv("PRISM_USE_SEQUENCE_FOLDERS") == "1" else [sequence["sequence"]]
                 for idx, seqPart in enumerate(seqParts):
                     seqName = (seqName + "/" + seqPart).strip("/")
                     if seqName in seqItems:
                         item = seqItems[seqName]
                     else:
-                        icon = seqIcon if idx == (len(seqParts) - 1) else folderIcon
-                        item = self.addSequenceItem(seqPart, parent=parent, icon=icon, hierarchy=seqName)
+                        icon = self.seqIcon if idx == (len(seqParts) - 1) else self.folderIcon
+                        data = {"sequence": seqPart}
+                        if len(seqParts) > 1:
+                            data["children"] = seqParts[idx+1:]
+
+                        item = self.addSequenceItem(data, parent=parent, icon=icon, hierarchy=seqName)
                         seqItems[seqName] = item
 
                     parent = item
 
-                seqItem = parent
-                for shot in self.core.sortNatural(shots[sequence]):
-                    data = [shot]
-                    sItem = QTreeWidgetItem(data)
-                    entity = {
-                        "type": "shot",
-                        "sequence": sequence,
-                        "shot": shot,
-                        "paths": shots[sequence][shot],
-                    }
-                    sItem.setData(
-                        0,
-                        Qt.UserRole,
-                        entity,
-                    )
-                    seqItem.addChild(sItem)
-                    showIcon = True
-                    if usePreview:
-                        showIcon = False
+        self.tw_tree.resizeColumnToContents(0)
+        if defaultSelection and self.tw_tree.topLevelItemCount() > 0:
+            if self.tw_tree.topLevelItem(0).isExpanded():
+                self.tw_tree.setCurrentItem(self.tw_tree.topLevelItem(0).child(0))
+            else:
+                self.tw_tree.setCurrentItem(self.tw_tree.topLevelItem(0))
 
-                    if showIcon:
-                        sItem.setIcon(0, shotIcon)
-
-            self.tw_tree.resizeColumnToContents(0)
-            if defaultSelection and self.tw_tree.topLevelItemCount() > 0:
-                if self.tw_tree.topLevelItem(0).isExpanded():
-                    self.tw_tree.setCurrentItem(self.tw_tree.topLevelItem(0).child(0))
-                else:
-                    self.tw_tree.setCurrentItem(self.tw_tree.topLevelItem(0))
-
-            if not wasBlocked:
-                self.tw_tree.blockSignals(False)
-                self.itemChanged.emit(self.tw_tree.currentItem())
+        if not wasBlocked:
+            self.tw_tree.blockSignals(False)
+            self.itemChanged.emit(self.tw_tree.currentItem())
 
     @err_catcher(name=__name__)
-    def addSequenceItem(self, seqName, parent, icon, hierarchy):
+    def addEpisodeItem(self, episode, parent):
+        epName = episode["episode"]
+        epItem = QTreeWidgetItem([epName])
+        data = {"type": "shot", "episode": epName, "sequence": "_episode", "shot": "_sequence", "loaded": False, "itemType": "episode"}
+        epItem.setData(0, Qt.UserRole, data)
+        epItem.setIcon(0, self.episodeIcon)
+        parent.addChild(epItem)
+        if epName in self.expandedItems:
+            epItem.setExpanded(True)
+        else:
+            placeHolder = QTreeWidgetItem(["__placeholder__"])
+            placeHolder.setData(0, Qt.UserRole, "placeholder")
+            epItem.addChild(placeHolder)
+
+        return epItem
+
+    @err_catcher(name=__name__)
+    def addSequenceItem(self, sequence, parent, icon, hierarchy):
+        seqName = sequence["sequence"]
         seqItem = QTreeWidgetItem([seqName])
-        seqItem.setData(0, Qt.UserRole, {"type": "shot", "sequence": seqName, "shot": "_sequence", "hierarchy": hierarchy})
+        data = {"type": "shot", "sequence": seqName, "shot": "_sequence", "hierarchy": hierarchy, "itemType": "sequence", "loaded": False}
+        if os.getenv("PRISM_USE_SEQUENCE_FOLDERS") == "1" and sequence.get("children"):
+            data["children"] = sequence["children"]
+            data["loaded"] = True
+
+        if "episode" in sequence:
+            data["episode"] = sequence["episode"]
+
+        seqItem.setData(0, Qt.UserRole, data)
         seqItem.setIcon(0, icon)
         parent.addChild(seqItem)
-        if seqName in self.expandedItems or (
-            self.e_search.isVisible() and self.e_search.text()
-        ):
-            seqItem.setExpanded(True)
+        if data.get("children"):
+            if seqName in self.expandedItems:
+                seqItem.setExpanded(True)
+
+        else:
+            if seqName in self.expandedItems:
+                seqItem.setExpanded(True)
+                self.refreshShotItemChildren(seqItem)
+            else:
+                placeHolder = QTreeWidgetItem(["__placeholder__"])
+                placeHolder.setData(0, Qt.UserRole, "placeholder")
+                seqItem.addChild(placeHolder)
 
         return seqItem
+
+    @err_catcher(name=__name__)
+    def addShotItem(self, shot, parent, hierarchy, showThumb=None):
+        shotName = shot["shot"]
+        shotItem = QTreeWidgetItem([shotName])
+        data = {"type": "shot", "sequence": shot["sequence"], "shot": shotName, "hierarchy": hierarchy, "itemType": "shot"}
+        if "episode" in shot:
+            data["episode"] = shot["episode"]
+
+        shotItem.setData(0, Qt.UserRole, data)
+        parent.addChild(shotItem)
+        showThumb = self.core.getConfig("browser", "showEntityPreviews", config="user", dft=True) if showThumb is None else showThumb
+        if showThumb:
+            self.refreshShotThumbnail(shotItem)
+        else:
+            shotItem.setIcon(0, self.shotIcon)
+
+        return shotItem
 
     @err_catcher(name=__name__)
     def refreshShotThumbnail(self, item):
@@ -796,6 +822,40 @@ class EntityPage(QWidget):
         self.tw_tree.setItemWidget(item, 0, w_entity)
         self.itemWidgets.append(w_entity)
         item.setText(0, "")
+
+    @err_catcher(name=__name__)
+    def refreshShotItemChildren(self, item):
+        data = item.data(0, Qt.UserRole)
+        if data.get("loaded") is False:
+            data["loaded"] = True
+        elif data.get("loaded") is True:
+            return
+
+        item.takeChildren()
+        item.setData(0, Qt.UserRole, data)
+        searchFilter = ""
+        if self.e_search.isVisible():
+            searchFilter = self.e_search.text()
+
+        location = self.getCurrentLocation()
+        if location == "all":
+            locations = list(self.getLocations().keys())
+        else:
+            locations = [location]
+
+        if data["itemType"] == "episode":
+            sequences = self.core.entities.getSequences(episode=data["episode"], searchFilter=searchFilter, locations=locations)
+            for sequence in sequences:
+                self.addSequenceItem(sequence, item, self.seqIcon, "%s/%s" % (data["episode"], sequence["sequence"]))
+        elif data["itemType"] == "sequence":
+            sequence = data["sequence"]
+            if os.getenv("PRISM_USE_SEQUENCE_FOLDERS") == "1":
+                sequence = data["hierarchy"].replace("/", "__")
+
+            shots = self.core.entities.getShots(episode=data.get("episode", None), sequence=sequence, searchFilter=searchFilter, locations=locations)
+            showThumb = self.core.getConfig("browser", "showEntityPreviews", config="user", dft=True)
+            for shot in shots:
+                self.addShotItem(shot, item, "%s/%s" % (data["hierarchy"], shot["shot"]), showThumb=showThumb)
 
     @err_catcher(name=__name__)
     def omitEntity(self, entity):
@@ -988,6 +1048,52 @@ class EntityPage(QWidget):
                         item.setExpanded(not item.isExpanded())
 
     @err_catcher(name=__name__)
+    def createFolderDlg(self, startText=None):
+        if startText is None:
+            curItem = self.tw_tree.currentItem()
+            if curItem:
+                data = curItem.data(0, Qt.UserRole)
+                if data.get("type") == "assetFolder":
+                    folderPath = data.get("asset_path", "")
+                elif data.get("type") == "shotFolder":
+                    folderPath = data.get("sequence", "")
+                else:
+                    if self.entityType == "asset":
+                        folderPath = os.path.dirname(data.get("asset_path", ""))
+                    else:
+                        folderPath = os.path.dirname(data.get("sequence", ""))
+
+                startText = folderPath.replace("\\", "/") + "/"
+
+        startText = startText or ""
+        if hasattr(self, "newItem") and self.core.isObjectValid(self.newItem):
+            self.newItem.close()
+
+        self.newItem = ProjectWidgets.CreateFolderDlg(self.core, parent=self, startText=startText)
+        self.newItem.accepted.connect(self.onCreateFolderDlgAccepted)
+
+        self.core.callback(name="onFolderDlgOpen", args=[self, self.newItem])
+        if not getattr(self.newItem, "allowShow", True):
+            return
+
+        self.newItem.show()
+        self.newItem.e_item.deselect()
+
+    @err_catcher(name=__name__)
+    def onCreateFolderDlgAccepted(self):
+        if self.entityType == "asset":
+            self.createAsset("folder")
+            mods = QApplication.keyboardModifiers()
+            if mods == Qt.ControlModifier and (not self.newItem.clickedButton or self.newItem.clickedButton.text() != self.newItem.btext):
+                self.createAssetDlg("folder", startText=self.newItem.e_item.text())
+
+        elif self.entityType == "shot":
+            self.createShot("folder")
+            mods = QApplication.keyboardModifiers()
+            if mods == Qt.ControlModifier and (not self.newItem.clickedButton or self.newItem.clickedButton.text() != self.newItem.btext):
+                self.createShotDlg("folder", startText=self.newItem.e_item.text())
+
+    @err_catcher(name=__name__)
     def createAssetDlg(self, entityType, startText=None):
         if startText is None:
             curItem = self.tw_tree.currentItem()
@@ -1008,7 +1114,7 @@ class EntityPage(QWidget):
             self.newItem = ProjectWidgets.CreateAssetDlg(self.core, parent=self, startText=startText)
             self.newItem.accepted.connect(lambda: self.onCreateAssetDlgAccepted(entityType))
         else:
-            self.newItem = ProjectWidgets.CreateAssetFolderDlg(self.core, parent=self, startText=startText)
+            self.newItem = ProjectWidgets.CreateFolderDlg(self.core, parent=self, startText=startText)
             self.newItem.accepted.connect(lambda: self.onCreateAssetDlgAccepted(entityType))
 
         self.core.callback(name="onAssetDlgOpen", args=[self, self.newItem])
@@ -1037,12 +1143,64 @@ class EntityPage(QWidget):
                 "asset_path": entityName,
                 "asset": os.path.basename(entityName)
             }
-            result = self.core.entities.createEntity(data, dialog=self.newItem)
-            assetPath = os.path.join(path, entityName)
+            description = None
+            preview = None
+            metaData = None
             if entityType == "asset":
                 descr = self.newItem.getDescription()
                 if descr:
-                    self.core.entities.setAssetDescription(os.path.basename(entityName), descr)
+                    description = descr
+
+                thumb = self.newItem.getThumbnail()
+                if thumb:
+                    preview = thumb
+
+                metaData = self.newItem.w_meta.getMetaData()
+
+            result = self.core.entities.createEntity(data, description=description, preview=preview, metaData=metaData, dialog=self.newItem)
+            assetPath = os.path.join(path, entityName)
+            if entityType == "asset":
+                if self.newItem.chb_taskPreset.isChecked():
+                    self.core.entities.createTasksFromPreset(data, self.newItem.cb_taskPreset.currentData())
+
+            self.refreshEntities()
+            self.navigate(data=data)
+            if not result or not result.get("entity", "") or result.get("existed", ""):
+                return
+
+            if self.newItem.clickedButton and self.newItem.clickedButton.text() == self.newItem.btext:
+                data["action"] = "next"
+                if entityType == "folder":
+                    mods = QApplication.keyboardModifiers()
+                    if mods == Qt.ControlModifier:
+                        self.createAssetDlg("asset")
+                    else:
+                        self.createAssetDlg("folder")
+
+            if "paths" not in data:
+                data["paths"] = []
+
+            data["paths"].append(assetPath)
+            self.entityCreated.emit(data)
+
+    @err_catcher(name=__name__)
+    def createShot(self, entityType):
+        self.activateWindow()
+        assetNames = self.newItem.e_item.text().replace(os.pathsep, ",").split(",")
+        entityNames = [path.strip() for path in assetNames]
+        for entityName in entityNames:
+            path = self.core.sequencePath
+            data = {
+                "type": "shotFolder" if entityType == "folder" else entityType,
+                "shot_path": entityName,
+                "shot": os.path.basename(entityName)
+            }
+            result = self.core.entities.createEntity(data, dialog=self.newItem)
+            assetPath = os.path.join(path, entityName)
+            if entityType == "shot":
+                descr = self.newItem.getDescription()
+                if descr:
+                    self.core.entities.setShotDescription(os.path.basename(entityName), descr)
 
                 thumb = self.newItem.getThumbnail()
                 if thumb:
@@ -1063,9 +1221,9 @@ class EntityPage(QWidget):
                 if entityType == "folder":
                     mods = QApplication.keyboardModifiers()
                     if mods == Qt.ControlModifier:
-                        self.createAssetDlg("asset")
+                        self.createShotDlg("shot")
                     else:
-                        self.createAssetDlg("folder")
+                        self.createShotDlg("folder")
 
             if "paths" not in data:
                 data["paths"] = []
@@ -1099,6 +1257,8 @@ class EntityPage(QWidget):
 
             if sData and sData.get("sequence"):
                 shotData = {"sequence": sData["sequence"]}
+                if sData.get("episode"):
+                    shotData["episode"] = sData["episode"]
 
         if hasattr(self, "es") and self.core.isObjectValid(self.es):
             self.es.close()
@@ -1230,17 +1390,28 @@ class EntityPage(QWidget):
 
         elif self.entityType == "shot":
             if not isinstance(data, list):
+                if not isinstance(data, dict):
+                    return False
+
                 data = [data]
 
+            useEpisodes = self.core.getConfig(
+                "globals",
+                "useEpisodes",
+                config="project",
+            ) or False
             sItem = None
             for shot in data:
-                if os.getenv("PRISM_USE_SEQUENCE_FOLDERS") == "1":
-                    if "hierarchy" in shot:
-                        seqParts = shot.get("hierarchy").split("/")
-                    else:
-                        seqParts = shot.get("sequence", "").split("__")
+                if useEpisodes:
+                    seqParts = [shot.get("episode"), shot.get("sequence")]
                 else:
-                    seqParts = [shot.get("sequence")]
+                    if os.getenv("PRISM_USE_SEQUENCE_FOLDERS") == "1":
+                        if "hierarchy" in shot:
+                            seqParts = shot.get("hierarchy").split("/")
+                        else:
+                            seqParts = shot.get("sequence", "").split("__")
+                    else:
+                        seqParts = [shot.get("sequence")]
 
                 shot = shot.get("shot", "")
                 if shot and shot != "_sequence":
@@ -1251,7 +1422,11 @@ class EntityPage(QWidget):
                     for idx in range(hItem.childCount()-1, -1, -1):
                         cItem = hItem.child(idx)
                         if cItem.childCount():
-                            cItemName = cItem.data(0, Qt.UserRole)["sequence"]
+                            if useEpisodes:
+                                sdata = cItem.data(0, Qt.UserRole)
+                                cItemName = sdata["episode"] if sdata["sequence"] == "_episode" else sdata["sequence"]
+                            else:
+                                cItemName = cItem.data(0, Qt.UserRole)["sequence"]
                         else:
                             cItemName = cItem.data(0, Qt.UserRole)["shot"]
 
@@ -1287,14 +1462,30 @@ class EntityPage(QWidget):
                 path = self.core.assetPath
             else:
                 path = cItem.data(0, Qt.UserRole)["paths"][0]
-            typename = "Entity"
             callbackName = "openPBAssetContextMenu"
+
+            subcat = QAction("Create Folder...", self)
+            iconPath = os.path.join(
+                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "folder.png"
+            )
+            icon = self.core.media.getColoredIcon(iconPath)
+            subcat.setIcon(icon)
+            subcat.triggered.connect(lambda: self.createAssetDlg("folder"))
+            rcmenu.addAction(subcat)
+
+            subcat = QAction("Create Asset...", self)
+            iconPath = os.path.join(
+                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "asset.png"
+            )
+            icon = self.core.media.getColoredIcon(iconPath)
+            subcat.setIcon(icon)
+            subcat.triggered.connect(lambda: self.createAssetDlg("asset"))
+            rcmenu.addAction(subcat)
         elif self.entityType == "shot":
             path = self.core.shotPath
-            typename = "Shot"
             callbackName = "openPBShotContextMenu"
 
-            createAct = QAction("Create %s..." % typename, self)
+            createAct = QAction("Create Shot...", self)
             iconPath = os.path.join(
                 self.core.prismRoot, "Scripts", "UserInterfacesPrism", "shot.png"
             )
@@ -1320,24 +1511,6 @@ class EntityPage(QWidget):
             addOmit = False
             if self.entityType == "asset":
                 if data:
-                    subcat = QAction("Create Folder...", self)
-                    iconPath = os.path.join(
-                        self.core.prismRoot, "Scripts", "UserInterfacesPrism", "folder.png"
-                    )
-                    icon = self.core.media.getColoredIcon(iconPath)
-                    subcat.setIcon(icon)
-                    subcat.triggered.connect(lambda: self.createAssetDlg("folder"))
-                    rcmenu.addAction(subcat)
-
-                    subcat = QAction("Create Asset...", self)
-                    iconPath = os.path.join(
-                        self.core.prismRoot, "Scripts", "UserInterfacesPrism", "asset.png"
-                    )
-                    icon = self.core.media.getColoredIcon(iconPath)
-                    subcat.setIcon(icon)
-                    subcat.triggered.connect(lambda: self.createAssetDlg("asset"))
-                    rcmenu.addAction(subcat)
-
                     oAct = QAction("Omit Asset", self)
                     oAct.triggered.connect(lambda: self.omitEntity(data))
                     addOmit = True
@@ -1356,6 +1529,8 @@ class EntityPage(QWidget):
                     oAct = QAction("Omit Shot", self)
                     oAct.triggered.connect(lambda: self.omitEntity(data))
                     addOmit = True
+                elif data:
+                    path = self.core.paths.getEntityPath(data)
 
             if (
                 not os.path.exists(path)
@@ -1411,25 +1586,6 @@ class EntityPage(QWidget):
                 rcmenu.addAction(oAct)
         else:
             self.tw_tree.setCurrentIndex(self.tw_tree.model().createIndex(-1, 0))
-            if self.entityType == "asset":
-                subcat = QAction("Create Folder...", self)
-                iconPath = os.path.join(
-                    self.core.prismRoot, "Scripts", "UserInterfacesPrism", "folder.png"
-                )
-                icon = self.core.media.getColoredIcon(iconPath)
-                subcat.setIcon(icon)
-                subcat.triggered.connect(lambda: self.createAssetDlg("folder"))
-                rcmenu.addAction(subcat)
-
-                subcat = QAction("Create Asset...", self)
-                iconPath = os.path.join(
-                    self.core.prismRoot, "Scripts", "UserInterfacesPrism", "asset.png"
-                )
-                icon = self.core.media.getColoredIcon(iconPath)
-                subcat.setIcon(icon)
-                subcat.triggered.connect(lambda: self.createAssetDlg("asset"))
-                rcmenu.addAction(subcat)
-
             act_refresh = QAction("Refresh", self)
             iconPath = os.path.join(
                 self.core.prismRoot, "Scripts", "UserInterfacesPrism", "refresh.png"

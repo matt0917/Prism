@@ -37,7 +37,7 @@ import os
 
 class Prism_3dsMax_Variables(object):
     def __init__(self, core, plugin):
-        self.version = "v2.0.5"
+        self.version = "v2.0.17"
         self.pluginName = "3dsMax"
         self.pluginType = "App"
         self.appShortName = "Max"

@@ -105,7 +105,7 @@ if context.get("type") == "asset":
 else:
     base = "@sequence@-@shot@"
 
-template = base + "_@product@@identifier@_@version@"]"""
+template = base + "_@product@@identifier@_@version@@_(comment)@"]"""
 
         data = {"label": "Deadline Job Name", "key": "@deadline_job_name@", "value": dft, "requires": []}
         self.core.projects.addProjectStructureItem("deadlineJobName", data)
@@ -283,7 +283,7 @@ template = base + "_@product@@identifier@_@version@"]"""
 
         projectSettings.chb_scriptDeps = QCheckBox("Use Script Dependencies for Scene Description Jobs")
         projectSettings.chb_scriptDeps.setToolTip("When checked Scene Description render jobs jobs will be submitted with script dependencies which makes tasks dependent on the existence of the scene description file. If unchecked normal job dependencies will be used.")
-        projectSettings.chb_scriptDeps.setChecked(True)
+        projectSettings.chb_scriptDeps.setChecked(False)
         lo_deadline.addWidget(projectSettings.chb_scriptDeps)
 
         projectSettings.gb_dlPoolPresets = PresetWidget(self)
@@ -339,7 +339,7 @@ template = base + "_@product@@identifier@_@version@"]"""
     @err_catcher(name=__name__)
     def useScriptDependencies(self):
         return self.core.getConfig(
-            "deadline", "useScriptDependencies", dft=True, config="project"
+            "deadline", "useScriptDependencies", dft=False, config="project"
         )
 
     @err_catcher(name=__name__)
@@ -650,18 +650,19 @@ template = base + "_@product@@identifier@_@version@"]"""
 
     @err_catcher(name=__name__)
     def onStateStartup(self, state):
+        if hasattr(state, "cb_manager") and state.cb_manager.currentText() != "Deadline":
+            return
+
+    @err_catcher(name=__name__)
+    def reloadStateUi(self, state):
         if state.className == "Dependency":
             state.tw_caches.itemClicked.connect(
                 lambda x, y: self.sm_updateDlDeps(state, x, y)
             )
             state.tw_caches.itemDoubleClicked.connect(self.sm_dlGoToNode)
         else:
-            if hasattr(state, "cb_dlPool"):
-                state.cb_dlPool.addItems(self.getDeadlinePools())
-
-            if hasattr(state, "cb_dlGroup"):
-                state.cb_dlGroup.addItems(self.getDeadlineGroups())
-
+            settings = {}
+            self.onStateGetSettings(state, settings)
             if hasattr(state, "gb_submit"):
                 lo = state.gb_submit.layout()
 
@@ -735,7 +736,6 @@ template = base + "_@product@@identifier@_@version@"]"""
                 state.lo_dlPool.addWidget(state.l_dlPool)
                 state.lo_dlPool.addStretch()
                 state.lo_dlPool.addWidget(state.cb_dlPool)
-                state.cb_dlPool.addItems(self.getDeadlinePools())
                 state.cb_dlPool.activated.connect(state.stateManager.saveStatesToScene)
                 lo.addWidget(state.w_dlPool)
 
@@ -750,7 +750,6 @@ template = base + "_@product@@identifier@_@version@"]"""
                 state.lo_sndPool.addWidget(state.l_sndPool)
                 state.lo_sndPool.addStretch()
                 state.lo_sndPool.addWidget(state.cb_sndPool)
-                state.cb_sndPool.addItems(self.getDeadlinePools())
                 state.cb_sndPool.activated.connect(state.stateManager.saveStatesToScene)
                 lo.addWidget(state.w_sndPool)
 
@@ -765,7 +764,6 @@ template = base + "_@product@@identifier@_@version@"]"""
                 state.lo_dlGroup.addWidget(state.l_dlGroup)
                 state.lo_dlGroup.addStretch()
                 state.lo_dlGroup.addWidget(state.cb_dlGroup)
-                state.cb_dlGroup.addItems(self.getDeadlineGroups())
                 state.cb_dlGroup.activated.connect(state.stateManager.saveStatesToScene)
                 lo.addWidget(state.w_dlGroup)
 
@@ -819,6 +817,49 @@ template = base + "_@product@@identifier@_@version@"]"""
                 else:
                     state.w_dlPreset.setHidden(True)
 
+            if hasattr(state, "cb_dlPool"):
+                state.cb_dlPool.addItems(self.getDeadlinePools())
+
+            if hasattr(state, "cb_sndPool"):
+                state.cb_sndPool.addItems(self.getDeadlinePools())
+
+            if hasattr(state, "cb_dlGroup"):
+                state.cb_dlGroup.addItems(self.getDeadlineGroups())
+
+            self.onStateSettingsLoaded(state, settings)
+
+    @err_catcher(name=__name__)
+    def unsetManager(self, state):
+        if hasattr(state, "w_machineLimit"):
+            state.w_machineLimit.setHidden(True)
+            state.w_machineLimit.setParent(None)
+            state.w_machineLimit.deleteLater()
+
+        if hasattr(state, "w_dlPreset"):
+            state.w_dlPreset.setHidden(True)
+            state.w_dlPreset.setParent(None)
+            state.w_dlPreset.deleteLater()
+
+        if hasattr(state, "w_dlPool"):
+            state.w_dlPool.setHidden(True)
+            state.w_dlPool.setParent(None)
+            state.w_dlPool.deleteLater()
+
+        if hasattr(state, "w_sndPool"):
+            state.w_sndPool.setHidden(True)
+            state.w_sndPool.setParent(None)
+            state.w_sndPool.deleteLater()
+
+        if hasattr(state, "w_dlGroup"):
+            state.w_dlGroup.setHidden(True)
+            state.w_dlGroup.setParent(None)
+            state.w_dlGroup.deleteLater()
+
+        if hasattr(state, "gb_prioJob"):
+            state.gb_prioJob.setHidden(True)
+            state.gb_prioJob.setParent(None)
+            state.gb_prioJob.deleteLater()
+
     @err_catcher(name=__name__)
     def presetChanged(self, state):
         if not self.getUseDeadlinePoolPresets():
@@ -864,7 +905,7 @@ template = base + "_@product@@identifier@_@version@"]"""
 
     @err_catcher(name=__name__)
     def onStateGetSettings(self, state, settings):
-        if hasattr(state, "gb_submit"):
+        if hasattr(state, "gb_submit") and state.cb_manager.currentText() == "Deadline" and hasattr(state, "sp_machineLimit"):
             settings["dl_machineLimit"] = state.sp_machineLimit.value()
             settings["dl_poolPreset"] = state.cb_dlPreset.currentText()
             settings["curdlpool"] = state.cb_dlPool.currentText()
@@ -882,7 +923,7 @@ template = base + "_@product@@identifier@_@version@"]"""
 
     @err_catcher(name=__name__)
     def onStateSettingsLoaded(self, state, settings):
-        if hasattr(state, "gb_submit"):
+        if hasattr(state, "gb_submit") and state.cb_manager.currentText() == "Deadline" and hasattr(state, "sp_machineLimit"):
             if "dl_machineLimit" in settings:
                 state.sp_machineLimit.setValue(settings["dl_machineLimit"])
 
@@ -931,6 +972,7 @@ template = base + "_@product@@identifier@_@version@"]"""
 
     @err_catcher(name=__name__)
     def sm_houExport_activated(self, origin):
+        self.reloadStateUi(origin)
         origin.f_osDependencies.setVisible(False)
         origin.f_osUpload.setVisible(False)
         origin.f_osPAssets.setVisible(False)
@@ -952,6 +994,11 @@ template = base + "_@product@@identifier@_@version@"]"""
 
     @err_catcher(name=__name__)
     def sm_houRender_managerChanged(self, origin):
+        self.reloadStateUi(origin)
+        getattr(self.core.appPlugin, "sm_render_managerChanged", lambda x, y: None)(
+            origin, False
+        )
+        
         origin.f_osDependencies.setVisible(False)
         origin.f_osUpload.setVisible(False)
 
@@ -1011,9 +1058,11 @@ template = base + "_@product@@identifier@_@version@"]"""
 
     @err_catcher(name=__name__)
     def sm_render_managerChanged(self, origin):
+        self.reloadStateUi(origin)
         getattr(self.core.appPlugin, "sm_render_managerChanged", lambda x, y: None)(
             origin, False
         )
+        origin.refreshSubmitUi()
 
     @err_catcher(name=__name__)
     def sm_render_preExecute(self, origin):
@@ -1140,9 +1189,11 @@ template = base + "_@product@@identifier@_@version@"]"""
                     handleMaster=handleMaster,
                     details=details,
                     allowCleanup=allowCleanup and bool(not frameStr),
+                    jobnameSuffix=jobnameSuffix,
+                    useBatch=useBatch,
                     sceneDescription=sceneDescription,
+                    skipSubmission=skipSubmission,
                 )
-                
                 if not frameStr:
                     return result
 
@@ -1215,6 +1266,19 @@ template = base + "_@product@@identifier@_@version@"]"""
                 jobBatchName += " (%s tiles)" % rows**2
 
             jobInfos["BatchName"] = jobBatchName
+
+        if sceneDescription:
+            sdePool = os.getenv("PRISM_DEADLINE_SCENE_DESCRIPTION_EXPORT_POOL")
+            if sdePool:
+                jobInfos["Pool"] = sdePool
+
+            sde2ndPool = os.getenv("PRISM_DEADLINE_SCENE_DESCRIPTION_EXPORT_2NDPOOL")
+            if sde2ndPool:
+                jobInfos["SecondaryPool"] = sde2ndPool
+
+            sdeGroup = os.getenv("PRISM_DEADLINE_SCENE_DESCRIPTION_EXPORT_GROUP")
+            if sdeGroup:
+                jobInfos["Group"] = sdeGroup
 
         if len(dependencies) > 0:
             depType = dependencies[0]["type"]
@@ -1304,6 +1368,7 @@ template = base + "_@product@@identifier@_@version@"]"""
             "pluginInfoFile": "",
             "arguments": files or getattr(self.core.appPlugin, "getCurrentSceneFiles", self.getCurrentSceneFiles)(origin),
             "sceneDescription": sceneDescription,
+            "details": details,
         }
         getattr(
             self.core.appPlugin, "sm_render_getDeadlineParams", lambda x, y, z: None
@@ -1359,8 +1424,13 @@ template = base + "_@product@@identifier@_@version@"]"""
             if dlParams["jobInfos"].get("TileJob"):
                 if origin.chb_resOverride.isChecked():
                     res = [origin.sp_resWidth.value(), origin.sp_resHeight.value()]
+                elif "width" in dlParams["details"]:
+                    res = [dlParams["details"]["width"], dlParams["details"]["height"]]
                 else:
                     res = self.core.appPlugin.getResolution()
+
+                if "tilesY" in dlParams["details"]:
+                    rows = dlParams["details"]["tilesY"]
 
                 self.submitDraftTileAssemblerJob(
                     jobName=dlParams["jobInfos"]["Name"],
@@ -1404,7 +1474,7 @@ template = base + "_@product@@identifier@_@version@"]"""
                     cropped=True,
                 )
 
-            if handleMaster and not isSecondJob:
+            if jobId and handleMaster and not isSecondJob:
                 self.handleMaster(origin, handleMaster, jobId, jobOutputFileOrig, jobName)
 
         return result
@@ -1484,14 +1554,29 @@ path = r\"%s\"
         else:
             prio = 80
 
+        jobPool = jobData["jobInfos"]["Pool"]
+        umPool = os.getenv("PRISM_DEADLINE_UPDATE_MASTER_POOL")
+        if umPool:
+            jobPool = umPool
+
+        jobSndPool = jobData["jobInfos"]["SecondaryPool"]
+        um2ndPool = os.getenv("PRISM_DEADLINE_UPDATE_MASTER_2NDPOOL")
+        if um2ndPool:
+            jobSndPool = um2ndPool
+
+        jobGroup = jobData["jobInfos"]["Group"]
+        umGroup = os.getenv("PRISM_DEADLINE_UPDATE_MASTER_GROUP")
+        if umGroup:
+            jobGroup = umGroup
+
         jobName = jobName + "_updateMaster"
         self.submitPythonJob(
             code=code,
             jobName=jobName,
             jobPrio=prio,
-            jobPool=jobData["jobInfos"]["Pool"],
-            jobSndPool=jobData["jobInfos"]["SecondaryPool"],
-            jobGroup=jobData["jobInfos"]["Group"],
+            jobPool=jobPool,
+            jobSndPool=jobSndPool,
+            jobGroup=jobGroup,
             jobTimeOut=jobData["jobInfos"]["TaskTimeoutMinutes"],
             jobMachineLimit=jobData["jobInfos"]["MachineLimit"],
             jobComment="Prism-Submission-Update_Master",
@@ -1519,13 +1604,28 @@ path = r\"%s\"
 
         jobData = jobParams
         basename = jobData["jobInfos"]["Name"][:-len(self.sceneDescriptions["mantra"]["suffix"])]
+        jobPool = jobData["jobInfos"]["Pool"]
+        sdrPool = os.getenv("PRISM_DEADLINE_SCENE_DESCRIPTION_RENDER_POOL")
+        if sdrPool:
+            jobPool = sdrPool
+
+        jobSndPool = jobData["jobInfos"]["SecondaryPool"]
+        sdr2ndPool = os.getenv("PRISM_DEADLINE_SCENE_DESCRIPTION_RENDER_2NDPOOL")
+        if sdr2ndPool:
+            jobSndPool = sdr2ndPool
+
+        jobGroup = jobData["jobInfos"]["Group"]
+        sdrGroup = os.getenv("PRISM_DEADLINE_SCENE_DESCRIPTION_RENDER_GROUP")
+        if sdrGroup:
+            jobGroup = sdrGroup
+
         result = self.submitMantraJob(
             jobName=basename + "_render",
             jobOutput=jobOutputFileOrig,
             jobPrio=jobData["jobInfos"]["Priority"],
-            jobPool=jobData["jobInfos"]["Pool"],
-            jobSndPool=jobData["jobInfos"]["SecondaryPool"],
-            jobGroup=jobData["jobInfos"]["Group"],
+            jobPool=jobPool,
+            jobSndPool=jobSndPool,
+            jobGroup=jobGroup,
             jobTimeOut=jobData["jobInfos"]["TaskTimeoutMinutes"],
             jobMachineLimit=jobData["jobInfos"]["MachineLimit"],
             jobFramesPerTask=jobData["jobInfos"]["ChunkSize"],
@@ -1555,14 +1655,29 @@ path = r\"%s\"
         args = [jobOutputFile, jobOutputFileOrig]
         jobData = jobParams
         basename = jobData["jobInfos"]["Name"][:-len(self.sceneDescriptions["3delight"]["suffix"])]
+        jobPool = jobData["jobInfos"]["Pool"]
+        sdrPool = os.getenv("PRISM_DEADLINE_SCENE_DESCRIPTION_RENDER_POOL")
+        if sdrPool:
+            jobPool = sdrPool
+
+        jobSndPool = jobData["jobInfos"]["SecondaryPool"]
+        sdr2ndPool = os.getenv("PRISM_DEADLINE_SCENE_DESCRIPTION_RENDER_2NDPOOL")
+        if sdr2ndPool:
+            jobSndPool = sdr2ndPool
+
+        jobGroup = jobData["jobInfos"]["Group"]
+        sdrGroup = os.getenv("PRISM_DEADLINE_SCENE_DESCRIPTION_RENDER_GROUP")
+        if sdrGroup:
+            jobGroup = sdrGroup
+
         result = self.submitPythonJob(
             code=code,
             jobName=basename + "_render",
             jobOutput=jobOutputFileOrig,
             jobPrio=jobData["jobInfos"]["Priority"],
-            jobPool=jobData["jobInfos"]["Pool"],
-            jobSndPool=jobData["jobInfos"]["SecondaryPool"],
-            jobGroup=jobData["jobInfos"]["Group"],
+            jobPool=jobPool,
+            jobSndPool=jobSndPool,
+            jobGroup=jobGroup,
             jobTimeOut=jobData["jobInfos"]["TaskTimeoutMinutes"],
             jobMachineLimit=jobData["jobInfos"]["MachineLimit"],
             jobFramesPerTask=jobData["jobInfos"]["ChunkSize"],
@@ -1629,13 +1744,28 @@ path = r\"%s\"
 
         jobData = jobParams
         basename = jobData["jobInfos"]["Name"][:-len(self.sceneDescriptions["redshift"]["suffix"])]
+        jobPool = jobData["jobInfos"]["Pool"]
+        sdrPool = os.getenv("PRISM_DEADLINE_SCENE_DESCRIPTION_RENDER_POOL")
+        if sdrPool:
+            jobPool = sdrPool
+
+        jobSndPool = jobData["jobInfos"]["SecondaryPool"]
+        sdr2ndPool = os.getenv("PRISM_DEADLINE_SCENE_DESCRIPTION_RENDER_2NDPOOL")
+        if sdr2ndPool:
+            jobSndPool = sdr2ndPool
+
+        jobGroup = jobData["jobInfos"]["Group"]
+        sdrGroup = os.getenv("PRISM_DEADLINE_SCENE_DESCRIPTION_RENDER_GROUP")
+        if sdrGroup:
+            jobGroup = sdrGroup
+
         result = self.submitRedshiftJob(
             jobName=basename + "_render",
             jobOutput=jobOutputFileOrig,
             jobPrio=jobData["jobInfos"]["Priority"],
-            jobPool=jobData["jobInfos"]["Pool"],
-            jobSndPool=jobData["jobInfos"]["SecondaryPool"],
-            jobGroup=jobData["jobInfos"]["Group"],
+            jobPool=jobPool,
+            jobSndPool=jobSndPool,
+            jobGroup=jobGroup,
             jobTimeOut=jobData["jobInfos"]["TaskTimeoutMinutes"],
             jobMachineLimit=jobData["jobInfos"]["MachineLimit"],
             jobFramesPerTask=jobData["jobInfos"]["ChunkSize"],
@@ -1670,13 +1800,28 @@ path = r\"%s\"
 
         jobData = jobParams
         basename = jobData["jobInfos"]["Name"][:-len(self.sceneDescriptions["arnold"]["suffix"])]
+        jobPool = jobData["jobInfos"]["Pool"]
+        sdrPool = os.getenv("PRISM_DEADLINE_SCENE_DESCRIPTION_RENDER_POOL")
+        if sdrPool:
+            jobPool = sdrPool
+
+        jobSndPool = jobData["jobInfos"]["SecondaryPool"]
+        sdr2ndPool = os.getenv("PRISM_DEADLINE_SCENE_DESCRIPTION_RENDER_2NDPOOL")
+        if sdr2ndPool:
+            jobSndPool = sdr2ndPool
+
+        jobGroup = jobData["jobInfos"]["Group"]
+        sdrGroup = os.getenv("PRISM_DEADLINE_SCENE_DESCRIPTION_RENDER_GROUP")
+        if sdrGroup:
+            jobGroup = sdrGroup
+
         result = self.submitArnoldJob(
             jobName=basename + "_render",
             jobOutput=jobOutputFileOrig,
             jobPrio=jobData["jobInfos"]["Priority"],
-            jobPool=jobData["jobInfos"]["Pool"],
-            jobSndPool=jobData["jobInfos"]["SecondaryPool"],
-            jobGroup=jobData["jobInfos"]["Group"],
+            jobPool=jobPool,
+            jobSndPool=jobSndPool,
+            jobGroup=jobGroup,
             jobTimeOut=jobData["jobInfos"]["TaskTimeoutMinutes"],
             jobMachineLimit=jobData["jobInfos"]["MachineLimit"],
             jobFramesPerTask=jobData["jobInfos"]["ChunkSize"],
@@ -1709,13 +1854,28 @@ path = r\"%s\"
 
         jobData = jobParams
         basename = jobData["jobInfos"]["Name"][:-len(self.sceneDescriptions["vray"]["suffix"])]
+        jobPool = jobData["jobInfos"]["Pool"]
+        sdrPool = os.getenv("PRISM_DEADLINE_SCENE_DESCRIPTION_RENDER_POOL")
+        if sdrPool:
+            jobPool = sdrPool
+
+        jobSndPool = jobData["jobInfos"]["SecondaryPool"]
+        sdr2ndPool = os.getenv("PRISM_DEADLINE_SCENE_DESCRIPTION_RENDER_2NDPOOL")
+        if sdr2ndPool:
+            jobSndPool = sdr2ndPool
+
+        jobGroup = jobData["jobInfos"]["Group"]
+        sdrGroup = os.getenv("PRISM_DEADLINE_SCENE_DESCRIPTION_RENDER_GROUP")
+        if sdrGroup:
+            jobGroup = sdrGroup
+
         result = self.submitVrayJob(
             jobName=basename + "_render",
             jobOutput=jobOutputFileOrig,
             jobPrio=jobData["jobInfos"]["Priority"],
-            jobPool=jobData["jobInfos"]["Pool"],
-            jobSndPool=jobData["jobInfos"]["SecondaryPool"],
-            jobGroup=jobData["jobInfos"]["Group"],
+            jobPool=jobPool,
+            jobSndPool=jobSndPool,
+            jobGroup=jobGroup,
             jobTimeOut=jobData["jobInfos"]["TaskTimeoutMinutes"],
             jobMachineLimit=jobData["jobInfos"]["MachineLimit"],
             jobFramesPerTask=jobData["jobInfos"]["ChunkSize"],
@@ -1793,6 +1953,7 @@ path = r\"%s\"
         environment=None,
         args=None,
         state=None,
+        extraFiles=None,
     ):
         homeDir = (
             self.CallDeadlineCommand(["-GetCurrentUserHomeDirectory"])
@@ -1912,6 +2073,9 @@ path = r\"%s\"
         if "dependencyFile" in locals():
             arguments.append(dependencyFile)
 
+        if extraFiles:
+            arguments += extraFiles
+
         result = self.deadlineSubmitJob(jobInfos, pluginInfos, arguments)
         if state:
             self.registerSubmittedJob(state, result, dlParams)
@@ -1945,6 +2109,8 @@ path = r\"%s\"
         resY=1080,
         startFrame=1,
         cropped=False,
+        y_up=False,
+        additionalAssemblies=None
     ):
         homeDir = (
             self.CallDeadlineCommand(["-GetCurrentUserHomeDirectory"])
@@ -1980,14 +2146,17 @@ path = r\"%s\"
                         aovPath = os.path.join(os.path.dirname(os.path.dirname(jobOutput)), aov["name"], filename)
                         assemblies.append({"key": "_" + lightAovName, "path": aovPath})
 
+        if additionalAssemblies:
+            assemblies += additionalAssemblies
+
         cfgFiles = []
         for idx, assembly in enumerate(assemblies):
             cfgFile = os.path.join(
                 homeDir, "temp", "%s%s_%s.txt" % (jobName, assembly["key"], int(time.time()))
             )
-
+            aout = assembly["path"]
             cfgData = {
-                "ImageFileName": assembly["path"],
+                "ImageFileName": aout,
                 "TileCount": rows**2,
                 "TilesCropped": cropped,
                 "DistanceAsPixels": True,
@@ -2003,12 +2172,20 @@ path = r\"%s\"
                 for column in range(rows):
                     tileStr = "_tile_%sx%s_%sx%s_" % (column+1, row+1, rows, rows)
                     tileNum = (row*rows)+(column)
-                    cfgData["Tile%sFileName" % tileNum] = base + tileStr + ".%04d" % startFrame + ext
+                    if startFrame is None:
+                        frameStr = ""
+                    else:
+                        frameStr = ".%04d" % startFrame
+
+                    cfgData["Tile%sFileName" % tileNum] = base + tileStr + frameStr + ext
                     # cfgData["Tile%sFileName" % tileNum] = base + tileStr + ext
                     cfgData["Tile%sWidth" % tileNum] = tileWidth if column != (rows-1) else lastTileWidth
                     cfgData["Tile%sHeight" % tileNum] = tileHeight if row != (rows-1) else lastTileHeight
                     cfgData["Tile%sX" % tileNum] = tileWidth * column
-                    cfgData["Tile%sY" % tileNum] = resY - ((tileHeight * row) + cfgData["Tile%sHeight" % tileNum])
+                    if y_up:
+                        cfgData["Tile%sY" % tileNum] = tileHeight * row
+                    else:
+                        cfgData["Tile%sY" % tileNum] = resY - ((tileHeight * row) + cfgData["Tile%sHeight" % tileNum])
 
             with open(cfgFile, "w") as fileHandle:
                 for key in cfgData:
@@ -2792,6 +2969,18 @@ path = r\"%s\"
         arguments=None,
         state=None,
     ):
+        cuPool = os.getenv("PRISM_DEADLINE_CLEANUP_POOL")
+        if cuPool:
+            jobPool = cuPool
+
+        cu2ndPool = os.getenv("PRISM_DEADLINE_CLEANUP_2NDPOOL")
+        if cu2ndPool:
+            jobSndPool = cu2ndPool
+
+        cuGroup = os.getenv("PRISM_DEADLINE_CLEANUP_GROUP")
+        if cuGroup:
+            jobGroup = cuGroup
+
         return self.submitPythonJob(
             code=cleanupScript,
             jobName=jobName + "_cleanup",
@@ -2810,6 +2999,154 @@ path = r\"%s\"
             args=arguments,
             state=state,
         )
+
+    @err_catcher(name=__name__)
+    def submitHoudiniJob(
+        self,
+        jobName=None,
+        jobOutput=None,
+        jobPool="None",
+        jobSndPool="None",
+        jobGroup="None",
+        jobPrio=50,
+        jobTimeOut=180,
+        jobMachineLimit=0,
+        jobFramesPerTask=1,
+        jobConcurrentTasks=None,
+        jobComment=None,
+        jobBatchName=None,
+        frames="1",
+        suspended=False,
+        dependencies=None,
+        jobDependencies=None,
+        environment=None,
+        args=None,
+        state=None,
+        version=None,
+        driver=None,
+        extraFiles=None,
+    ):
+        homeDir = (
+            self.CallDeadlineCommand(["-GetCurrentUserHomeDirectory"])
+        )
+
+        if homeDir is False:
+            return "Execute Canceled: Deadline is not installed"
+
+        homeDir = homeDir.replace("\r", "").replace("\n", "")
+
+        if not jobName:
+            jobName = os.path.splitext(self.core.getCurrentFileName(path=False))[
+                0
+            ].strip("_")
+
+        environment = environment or []
+        environment.insert(0, ["prism_project", self.core.prismIni.replace("\\", "/")])
+
+        # Create submission info file
+
+        jobInfos = {}
+
+        jobInfos["Name"] = jobName
+        jobInfos["Pool"] = jobPool
+        jobInfos["SecondaryPool"] = jobSndPool
+        jobInfos["Group"] = jobGroup
+        jobInfos["Priority"] = jobPrio
+        jobInfos["TaskTimeoutMinutes"] = jobTimeOut
+        jobInfos["MachineLimit"] = jobMachineLimit
+        jobInfos["Frames"] = frames
+        jobInfos["ChunkSize"] = jobFramesPerTask
+        for idx, env in enumerate(environment):
+            self.addEnvironmentItem(jobInfos, env[0], env[1])
+
+        if os.getenv("PRISM_LAUNCH_ENV"):
+            envData = self.core.configs.readJson(data=os.getenv("PRISM_LAUNCH_ENV"))
+            for item in envData.items():
+                self.addEnvironmentItem(jobInfos, item[0], item[1])
+
+        jobInfos["Plugin"] = "Houdini"
+        jobInfos["Comment"] = jobComment or "Prism-Submission-Houdini"
+
+        if jobOutput:
+            jobInfos["OutputFilename0"] = jobOutput
+
+        if suspended:
+            jobInfos["InitialStatus"] = "Suspended"
+
+        if jobConcurrentTasks:
+            jobInfos["ConcurrentTasks"] = jobConcurrentTasks
+
+        if jobBatchName:
+            jobInfos["BatchName"] = jobBatchName
+
+        if dependencies:
+            depType = dependencies[0]["type"]
+            jobInfos["IsFrameDependent"] = "false" if depType == "job" else "true"
+            if depType in ["job", "frame"]:
+                jobids = []
+                for dep in dependencies:
+                    jobids += dep["jobids"]
+
+                jobInfos["JobDependencies"] = ",".join(jobids)
+            elif depType == "file":
+                jobInfos["ScriptDependencies"] = os.path.abspath(
+                    os.path.join(os.path.dirname(__file__), "DeadlineDependency.py")
+                )
+
+        if jobDependencies:
+            jobInfos["JobDependencies"] = ",".join(jobDependencies)
+
+        # Create plugin info file
+
+        pluginInfos = {}
+        if driver:
+            pluginInfos["OutputDriver"] = driver
+    
+        pluginInfos["IgnoreInputs"] = "False"
+        if not version and self.core.appPlugin.pluginName == "Houdini":
+            version = self.core.appPlugin.getDeadlineHoudiniVersion()
+
+        if version:
+            pluginInfos["Version"] = version
+    
+        pluginInfos["Arguments"] = "<STARTFRAME> <ENDFRAME>"
+        if args:
+            pluginInfos["Arguments"] += " " + " ".join(args)
+
+        dlParams = {
+            "jobInfos": jobInfos,
+            "pluginInfos": pluginInfos,
+            "jobInfoFile": os.path.join(homeDir, "temp", "houdini_plugin_info.job"),
+            "pluginInfoFile": os.path.join(homeDir, "temp", "houdini_job_info.job"),
+        }
+
+        if dependencies and dependencies[0]["type"] == "file":
+            dependencyFile = os.path.join(homeDir, "temp", "dependencies.txt")
+            fileHandle = open(dependencyFile, "w")
+
+            for dependency in dependencies:
+                fileHandle.write(str(dependency["offset"]) + "\n")
+                fileHandle.write(str(dependency["filepath"]) + "\n")
+
+            fileHandle.close()
+
+        arguments = []
+        arguments.append(dlParams["jobInfoFile"])
+        arguments.append(dlParams["pluginInfoFile"])
+        for i in getattr(self.core.appPlugin, "getCurrentSceneFiles", self.getCurrentSceneFiles)(self):
+            arguments.append(i)
+
+        if "dependencyFile" in locals():
+            arguments.append(dependencyFile)
+
+        if extraFiles:
+            arguments += extraFiles
+
+        result = self.deadlineSubmitJob(jobInfos, pluginInfos, arguments)
+        if state:
+            self.registerSubmittedJob(state, result, dlParams)
+
+        return result
 
     @err_catcher(name=__name__)
     def deadlineSubmitJob(self, jobInfos, pluginInfos, arguments):

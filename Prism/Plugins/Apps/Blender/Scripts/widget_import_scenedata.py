@@ -48,6 +48,8 @@ class Import_SceneData(QDialog):
         super(Import_SceneData, self).__init__()
         self.core = core
         self.plugin = plugin
+        self.mode = None
+        self.importedNodes = []
 
     @err_catcher(name=__name__)
     def importScene(self, scenepath, update, state):
@@ -67,7 +69,7 @@ class Import_SceneData(QDialog):
         self.connectEvents()
         self.refreshTree()
         action = self.exec_()
-        return action
+        return {"result": action, "mode": self.mode, "importedNodes": self.importedNodes}
 
     @err_catcher(name=__name__)
     def setupUI(self):
@@ -85,16 +87,34 @@ class Import_SceneData(QDialog):
         self.tw_scenedata.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.tw_scenedata.itemClicked.connect(self.selectionChanged)
 
-        self.bb_main = QDialogButtonBox(QDialogButtonBox.Cancel)
+        self.rb_append = QRadioButton("Append")
+        self.rb_append.setChecked(True)
+        self.chb_override = QCheckBox("Create Library Override")
+        self.chb_override.setChecked(True)
+        self.rb_link = QRadioButton("Link")
+        self.rb_append.toggled.connect(self.onModeChanged)
+        self.rb_link.toggled.connect(self.onModeChanged)
+        self.onModeChanged()
 
-        b_link = self.bb_main.addButton("Link", QDialogButtonBox.AcceptRole)
-        b_append = self.bb_main.addButton("Append", QDialogButtonBox.AcceptRole)
-        b_link.clicked.connect(lambda: self.importData(link=True))
-        b_append.clicked.connect(lambda: self.importData(link=False))
-        self.bb_main.accepted.connect(self.accept)
+        self.bb_main = QDialogButtonBox(QDialogButtonBox.Cancel)
+        b_accept = self.bb_main.addButton("Accept", QDialogButtonBox.AcceptRole)
+        b_accept.clicked.connect(self.importData)
         self.bb_main.rejected.connect(self.reject)
 
+        self.w_footer = QWidget()
+        self.lo_footer = QGridLayout(self.w_footer)
+        self.spacer = QWidget()
+        policy = QSizePolicy()
+        policy.setHorizontalPolicy(QSizePolicy.Expanding)
+        policy.setHorizontalStretch(50)
+        self.spacer.setSizePolicy(policy)
+        self.lo_footer.addWidget(self.spacer, 0, 0)
+        self.lo_footer.addWidget(self.rb_append, 0, 1)
+        self.lo_footer.addWidget(self.rb_link, 1, 1)
+        self.lo_footer.addWidget(self.chb_override, 1, 2)
+
         self.lo_main.addWidget(self.tw_scenedata)
+        self.lo_main.addWidget(self.w_footer)
         self.lo_main.addWidget(self.bb_main)
         self.setLayout(self.lo_main)
 
@@ -103,7 +123,11 @@ class Import_SceneData(QDialog):
     @err_catcher(name=__name__)
     def connectEvents(self):
         self.tw_scenedata.doubleClicked.connect(self.accept)
-        self.tw_scenedata.doubleClicked.connect(lambda: self.importData(link=False))
+        self.tw_scenedata.doubleClicked.connect(lambda: self.importData())
+
+    @err_catcher(name=__name__)
+    def onModeChanged(self, state=None):
+        self.chb_override.setEnabled(self.rb_link.isChecked())
 
     @err_catcher(name=__name__)
     def selectionChanged(self, item, column):
@@ -160,45 +184,83 @@ class Import_SceneData(QDialog):
             return True
 
     @err_catcher(name=__name__)
-    def importData(self, link=False):
+    def importData(self):
+        link = self.rb_link.isChecked()
         self.state.preDelete(
             baseText="Do you want to delete the currently connected objects?\n\n"
         )
 
         if bpy.app.version >= (2, 80, 0):
-            self.existingNodes = list(bpy.data.objects)
+            self.existingNodes = list(bpy.data.objects) + list(bpy.data.collections)
         else:
-            self.existingNodes = list(bpy.context.scene.objects)
+            self.existingNodes = list(bpy.context.scene.objects) + list(bpy.data.collections)
 
         data = self.getSelectedData()
-        ctx = self.plugin.getOverrideContext(self)
+        if not data["collections"] and not data["objects"]:
+            self.core.popup("Nothing selected to import.")
+            return
 
+        ctx = self.plugin.getOverrideContext(self)
+        self.hide()
+        importedNodes = []
+        self.mode = "link" if link else "append"
         # bpy.context.collection.children.link creates collections, which can't have library overrides so we have to use bpy.ops
         if link:
             if data["collections"]:
-                if bpy.app.version < (4, 0, 0):
-                    bpy.ops.wm.link(
-                        ctx,
-                        directory=self.scenepath + "/Collection/",
-                        files=data["collections"],
-                    )
-                else:
-                    with bpy.context.temp_override(**ctx):
-                        bpy.ops.wm.link(
-                            directory=self.scenepath + "/Collection/",
-                            files=data["collections"],
-                        )
-            if data["objects"]:
-                if bpy.app.version < (4, 0, 0):
-                    bpy.ops.wm.link(
-                        ctx, directory=self.scenepath + "/Object/", files=data["objects"]
-                    )
-                else:
-                    with bpy.context.temp_override(**ctx):
-                        bpy.ops.wm.link(
-                            directory=self.scenepath + "/Object/", files=data["objects"]
-                        )
+                with bpy.data.libraries.load(self.scenepath, link=True) as (data_from, data_to):
+                    colNames = [c["name"] for c in data["collections"]]
+                    data_to.collections = [c for c in data_from.collections if c in colNames]
 
+                scene = bpy.context.scene
+                vlayer = bpy.context.view_layer
+                for col in data_to.collections:
+                    if self.chb_override.isChecked():
+                        col = col.override_hierarchy_create(scene, vlayer, do_fully_editable=True)
+                    else:
+                        try:
+                            bpy.context.scene.collection.children.link(col)
+                        except Exception as e:
+                            if "already in collection " in str(e):
+                                msg = "Collection \"%s\" is already linked to the current viewlayer. You can link it with an override to get a second instance." % (col.name)
+                                result = self.core.popupQuestion(msg, buttons=["Create Override", "Cancel"])
+                                if result == "Create Override":
+                                    col = col.override_hierarchy_create(scene, vlayer, do_fully_editable=True)
+                                else:
+                                    self.reject()
+                                    return
+                            else:
+                                raise
+
+                    importedNodes.append(col)
+
+            if data["objects"]:
+                with bpy.data.libraries.load(self.scenepath, link=True) as (data_from, data_to):
+                    objNames = [c["name"] for c in data["objects"]]
+                    data_to.objects = [c for c in data_from.objects if c in objNames]
+
+                scene = bpy.context.scene
+                vlayer = bpy.context.view_layer
+                for obj in data_to.objects:
+                    if self.chb_override.isChecked():
+                        obj = obj.override_hierarchy_create(scene, vlayer, do_fully_editable=True)
+                    else:
+                        try:
+                            bpy.context.scene.collection.objects.link(obj)
+                        except Exception as e:
+                            if "already in collection " in str(e):
+                                msg = "Collection \"%s\" is already linked to the current viewlayer. You can link it with an override to get a second instance." % (obj.name)
+                                result = self.core.popupQuestion(msg, buttons=["Create Override", "Cancel"])
+                                if result == "Create Override":
+                                    obj = obj.override_hierarchy_create(scene, vlayer, do_fully_editable=True)
+                                else:
+                                    self.reject()
+                                    return
+                            else:
+                                raise
+
+                    importedNodes.append(obj)
+
+            self.importedNodes = [self.plugin.getNode(obj) for obj in importedNodes]
         else:
             if data["collections"]:
                 if bpy.app.version < (4, 0, 0):
@@ -223,3 +285,5 @@ class Import_SceneData(QDialog):
                         bpy.ops.wm.append(
                             directory=self.scenepath + "/Object/", files=data["objects"]
                         )
+
+        self.accept()

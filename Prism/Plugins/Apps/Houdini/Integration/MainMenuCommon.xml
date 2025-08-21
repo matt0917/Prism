@@ -4,7 +4,6 @@
     <menuBar>
         <subMenu id="prism_main">
             <label>Prism</label>
-
             <scriptItem id="prism_save">
                 <label>Save Version</label>
                 <scriptCode><![CDATA[import PrismInit
@@ -34,7 +33,6 @@ PrismInit.pcore.stateManager()]]></scriptCode>
                 <scriptCode><![CDATA[import PrismInit
 PrismInit.pcore.prismSettings()]]></scriptCode>
             </scriptItem>
-
         </subMenu>
     </menuBar>
 </mainMenu>

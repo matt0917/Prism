@@ -185,7 +185,7 @@ class Prism_Houdini_ImportFile(object):
             data = self.core.paths.getCachePathData(cachePath)
             if data.get("type") == "asset":
                 parents = (
-                    os.path.dirname(data["asset_path"]).replace("\\", "/").split("/")
+                    os.path.dirname(data.get("asset_path", "")).replace("\\", "/").split("/")
                 )
             elif data.get("type") == "shot":
                 parents = [data["sequence"], data["shot"]]

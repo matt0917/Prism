@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'ProductBrowser.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.4.2
+## Created by: Qt User Interface Compiler version 6.6.2
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -17,14 +17,14 @@ class Ui_dlg_ProductBrowser(object):
         if not dlg_ProductBrowser.objectName():
             dlg_ProductBrowser.setObjectName(u"dlg_ProductBrowser")
         dlg_ProductBrowser.resize(1294, 696)
-        self.verticalLayout_4 = QVBoxLayout(dlg_ProductBrowser)
-        self.verticalLayout_4.setObjectName(u"verticalLayout_4")
+        self.lo_main = QVBoxLayout(dlg_ProductBrowser)
+        self.lo_main.setObjectName(u"lo_main")
         self.splitter1 = QSplitter(dlg_ProductBrowser)
         self.splitter1.setObjectName(u"splitter1")
         self.splitter1.setOrientation(Qt.Horizontal)
         self.w_tasks = QWidget(self.splitter1)
         self.w_tasks.setObjectName(u"w_tasks")
-        sizePolicy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(10)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.w_tasks.sizePolicy().hasHeightForWidth())
@@ -52,7 +52,7 @@ class Ui_dlg_ProductBrowser(object):
         self.splitter1.addWidget(self.w_tasks)
         self.w_versions = QWidget(self.splitter1)
         self.w_versions.setObjectName(u"w_versions")
-        sizePolicy1 = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        sizePolicy1 = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         sizePolicy1.setHorizontalStretch(30)
         sizePolicy1.setVerticalStretch(0)
         sizePolicy1.setHeightForWidth(self.w_versions.sizePolicy().hasHeightForWidth())
@@ -99,7 +99,7 @@ class Ui_dlg_ProductBrowser(object):
 
         self.splitter1.addWidget(self.w_versions)
 
-        self.verticalLayout_4.addWidget(self.splitter1)
+        self.lo_main.addWidget(self.splitter1)
 
 
         self.retranslateUi(dlg_ProductBrowser)

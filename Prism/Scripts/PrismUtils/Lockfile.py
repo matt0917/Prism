@@ -56,6 +56,7 @@ class Lockfile(object):
 
     def acquire(self, content=None, force=False):
         startTime = time.time()
+        triedCreate = False
         while True:
             try:
                 self.lockFile = os.open(
@@ -71,6 +72,10 @@ class Lockfile(object):
                     msg = "Permission denied to create file:\n\n%s" % self.lockPath
                     self.core.popup(msg)
                     raise LockfileException(msg)
+                elif not os.path.exists(os.path.dirname(self.lockPath)) and not triedCreate:
+                    triedCreate = True
+                    os.makedirs(os.path.dirname(self.lockPath))
+                    continue
                 elif e.errno != errno.EEXIST:
                     raise
                 elif force:

@@ -106,7 +106,7 @@ class Prism_PureRef_externalAccess_Functions(object):
                 "formats": self.sceneFormats,
                 "show": True,
             }
-            self.core.pb.sceneBrowser.refreshScenefiles()
+            self.core.pb.sceneBrowser.refreshScenefilesThreaded()
 
     @err_catcher(name=__name__)
     def preUninstall(self):

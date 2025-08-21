@@ -304,7 +304,7 @@ class Prism_Houdini_Filecache(object):
 
         usdPlug = self.core.getPlugin("USD")
         lopChild = bool(parent3 and node.parm("showLopFetch") and usdPlug)
-        node.parm("showLopFetch").set(lopChild)
+        self.plugin.setNodeParm(node, "showLopFetch", lopChild, clear=True) 
 
     @err_catcher(name=__name__)
     def setRangeOnNode(self, node, val):
@@ -369,7 +369,11 @@ class Prism_Houdini_Filecache(object):
             rop.parm(parmName).pressButton()
             QCoreApplication.processEvents()
 
-        node.node("switch_format").cook(force=True)
+        try:
+            node.node("switch_format").cook(force=True)
+        except:
+            pass
+
         if (
             not self.executeBackground
             and node.parm("showSuccessPopup").eval()
@@ -525,7 +529,7 @@ class Prism_Houdini_Filecache(object):
                     versionpath, num=True
                 ) or 0
 
-            node.parm("writeVersion").set(latestVersion + 1)
+            self.core.appPlugin.setNodeParm(node, "writeVersion", latestVersion + 1, clear=True)
 
         if node.parm("latestVersionRead").eval():
             if latestVersion is None:
@@ -539,7 +543,7 @@ class Prism_Houdini_Filecache(object):
                     )
 
             if latestVersion is not None:
-                node.parm("readVersion").set(latestVersion)
+                self.core.appPlugin.setNodeParm(node, "readVersion", latestVersion, clear=True)
 
     @err_catcher(name=__name__)
     def getParentFolder(self, create=True, node=None):
@@ -703,7 +707,7 @@ class Prism_Houdini_Filecache(object):
 
         entityType = entity.get("type", "")
         if entityType == "asset":
-            entityName = entity.get("asset_path").replace("\\", "/")
+            entityName = entity.get("asset_path", "").replace("\\", "/")
         elif entityType == "shot":
             entityName = self.core.entities.getShotName(entity)
 
@@ -747,7 +751,13 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def getProductName(self, node):
-        return node.parm("task").unexpandedString()
+        parm = node.parm("task")
+        if parm.keyframes():
+            val = parm.eval()
+        else:
+            val = parm.unexpandedString()
+
+        return val
 
     @err_catcher(name=__name__)
     def getImportPath(self, expand=True):
@@ -785,6 +795,9 @@ class Prism_Houdini_Filecache(object):
                 path = hou.text.expandString(path)
         else:
             path = ""
+
+        if path != node.parm("importPathFallback").eval():
+            self.core.appPlugin.setNodeParm(node, "importPathFallback", path, clear=True)
 
         return path
 

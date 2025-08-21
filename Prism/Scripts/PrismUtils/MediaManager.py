@@ -40,6 +40,7 @@ import subprocess
 import traceback
 import glob
 import re
+import time
 
 from collections import OrderedDict
 
@@ -58,12 +59,6 @@ try:
     import numpy
 except:
     pass
-
-if platform.system() == "Windows":
-    if pVersion == 3:
-        import winreg as _winreg
-    elif pVersion == 2:
-        import _winreg
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -110,9 +105,10 @@ class MediaManager(object):
         return validFiles
 
     @err_catcher(name=__name__)
-    def detectSequence(self, filepaths):
+    def detectSequence(self, filepaths, baseFile=None):
         seq = []
-        base = re.sub(r"\d+", "", filepaths[0])
+        baseFile = baseFile or filepaths[0]
+        base = re.sub(r"\d+", "", baseFile)
         for filepath in sorted(filepaths):
             if re.sub(r"\d+", "", filepath) == base:
                 seq.append(filepath)
@@ -249,8 +245,9 @@ class MediaManager(object):
             return files[0]
 
     @err_catcher(name=__name__)
-    def getFrameRangeFromSequence(self, filepaths):
-        startPath = filepaths[0]
+    def getFrameRangeFromSequence(self, filepaths, baseFile=None):
+        baseFile = baseFile or filepaths[0]
+        startPath = baseFile
         try:
             start = int(os.path.splitext(startPath)[0][-self.core.framePadding:])
         except:
@@ -284,7 +281,10 @@ class MediaManager(object):
             reader = "Error - empty file: %s" % filepath
         else:
             imageio = self.getImageIO()
-            filepath = str(filepath).lower()  # unicode causes errors in Python 2
+            filepath = str(filepath)  # unicode causes errors in Python 2
+            if platform.system() == "Windows":
+                filepath = filepath.lower()
+
             try:
                 reader = imageio.get_reader(filepath, "ffmpeg")
             except Exception as e:
@@ -330,7 +330,6 @@ class MediaManager(object):
         if not hasattr(self, "_imageio"):
             imageio = None
             os.environ["IMAGEIO_FFMPEG_EXE"] = self.getFFmpeg()
-            sys.path.insert(0, r"D:\Dropbox\Workstation\Tools\Prism\Repos\Prism\Prism\PythonLibs\Python3")
             try:
                 import imageio
                 import imageio.plugins.ffmpeg
@@ -352,15 +351,18 @@ class MediaManager(object):
 
     @err_catcher(name=__name__)
     def getFFmpeg(self, validate=False):
-        if platform.system() == "Windows":
-            ffmpegPath = os.path.join(
-                self.core.prismLibs, "Tools", "FFmpeg", "bin", "ffmpeg.exe"
-            )
-        elif platform.system() == "Linux":
-            ffmpegPath = "ffmpeg"
+        if os.getenv("PRISM_FFMPEG"):
+            ffmpegPath = os.getenv("PRISM_FFMPEG")
+        else:
+            if platform.system() == "Windows":
+                ffmpegPath = os.path.join(
+                    self.core.prismLibs, "Tools", "FFmpeg", "bin", "ffmpeg.exe"
+                )
+            elif platform.system() == "Linux":
+                ffmpegPath = "ffmpeg"
 
-        elif platform.system() == "Darwin":
-            ffmpegPath = "ffmpeg"
+            elif platform.system() == "Darwin":
+                ffmpegPath = "ffmpeg"
 
         if validate:
             result = self.validateFFmpeg(ffmpegPath)
@@ -427,7 +429,10 @@ class MediaManager(object):
             return
 
         if not os.path.exists(os.path.dirname(outputpath)):
-            os.makedirs(os.path.dirname(outputpath))
+            try:
+                os.makedirs(os.path.dirname(outputpath))
+            except FileExistsError:
+                pass
 
         if videoInput:
             args = OrderedDict(
@@ -497,8 +502,13 @@ class MediaManager(object):
 
         argList += [outputpath, "-y"]
         logger.debug("Run ffmpeg with this settings: " + str(argList))
+        if platform.system() == "Windows":
+            shell = True
+        else:
+            shell = False
+
         nProc = subprocess.Popen(
-            argList, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True
+            argList, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=shell
         )
         result = nProc.communicate()
 
@@ -540,7 +550,7 @@ class MediaManager(object):
                 else:
                     names.append("RGB")
 
-            exts = [".R", ".G", ".B", ".r", ".g", ".b", ".red", ".green", ".blue", ".x", ".y", ".z"]
+            exts = [".R", ".G", ".B", ".Z", ".r", ".g", ".b", ".red", ".green", ".blue", ".x", ".y", ".z"]
             for name in cnames:
                 for ext in exts:
                     if name.endswith(ext):
@@ -574,6 +584,183 @@ class MediaManager(object):
         return self.core.setConfig("globals", "useMediaThumbnails", val=state)
 
     @err_catcher(name=__name__)
+    def startNukeProcess(self):
+        nukePath = os.getenv("PRISM_NUKE_EXE")
+        if not nukePath or not os.path.exists(nukePath):
+            return
+
+        if os.getenv("PRISM_NUKE_INTERACTIVE_LICENSE", "0") == "1":
+            mode = "-ti"
+        else:
+            mode = "-t"
+
+        args = [nukePath, mode]
+        logger.debug("starting Nuke with these args:\n\n%s" % args)
+        env = self.core.startEnv.copy()
+        self.nukeProc = subprocess.Popen(
+            args,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+            text=True,
+            bufsize=1
+        )
+        import threading
+
+        def read_output(stream):
+            for line in iter(stream.readline, ""):
+                print(line, end="")
+
+        threading.Thread(target=read_output, args=(self.nukeProc.stdout,), daemon=True).start()
+        threading.Thread(target=read_output, args=(self.nukeProc.stderr,), daemon=True).start()
+        return self.nukeProc
+
+    @err_catcher(name=__name__)
+    def sendScriptToNuke(self, script):
+        if self.nukeProc.stdin:
+            self.nukeProc.stdin.write(script + "\n")
+            self.nukeProc.stdin.flush()
+        else:
+            print("Failed to send script. Nuke process stdin is not available.")
+
+    @err_catcher(name=__name__)
+    def getPixmapFromExrPathWithoutOIIO(self, path, width=None, height=None, channel=None, allowThumb=True, regenerateThumb=False):
+        useNuke = os.getenv("PRISM_USE_NUKE_FOR_PREVIEWS", "0") == "1"
+        if useNuke:
+            return self.getPixmapFromExrPathFromNuke(path, width=width, height=height, channel=channel, allowThumb=allowThumb, regenerateThumb=regenerateThumb)
+        else:
+            return self.getPixmapFromExrPathFromFfmpeg(path, width=width, height=height, channel=channel, allowThumb=allowThumb, regenerateThumb=regenerateThumb)
+
+    @err_catcher(name=__name__)
+    def getPixmapFromExrPathFromFfmpeg(self, path, width=None, height=None, channel=None, allowThumb=True, regenerateThumb=False):
+        ffmpegPath = self.getFFmpeg()
+        if not ffmpegPath or not os.path.exists(ffmpegPath):
+            return
+
+        thumbEnabled = self.getUseThumbnails()
+        if thumbEnabled and allowThumb:
+            outputPath = self.getThumbnailPath(path)
+            cleanTemp = False
+        else:
+            outputPath = self.core.getTempFilepath(filename=os.path.splitext(os.path.basename(path))[0] + ".jpg")
+            cleanTemp = True
+
+        if not os.path.exists(os.path.dirname(outputPath)):
+            try:
+                os.makedirs(os.path.dirname(outputPath))
+            except FileExistsError:
+                pass
+
+        outputPath = outputPath.replace("\\", "/")
+
+        args = [ffmpegPath]
+        args.append("-hide_banner")
+        args.append("-y")
+        args.append("-loglevel")
+        args.append("error")
+        args.append("-apply_trc")
+        args.append("iec61966_2_1")
+        # args.append("-layer")
+        # args.append("ViewLayer.Combined")  # Blender EXR files
+        args.append("-i")
+        args.append(path)
+        args.append("-pix_fmt")
+        args.append("yuvj420p")
+        args.append("-update")
+        args.append("true")
+        args.append(outputPath)
+        logger.debug("starting FFMPEG with these args:\n\n%s" % args)
+        env = self.core.startEnv.copy()
+        self.ffmpegProc = subprocess.Popen(
+            args,
+            env=env,
+            text=True,
+            bufsize=1
+        )
+
+        for idx in range(30):
+            if os.path.exists(outputPath):
+                logger.debug("ffmpeg thumbnail generated: %s" % outputPath)
+                break
+
+            if self.ffmpegProc.poll():
+                logger.debug("failed to generate thumbnail using ffmpeg: %s" % outputPath)
+                return
+
+            time.sleep(1)
+        else:
+            logger.warning("failed to generate thumbnail with FFMPEG.")
+            return
+
+        pmap = self.getPixmapFromPath(outputPath, width=width, height=height)
+        if cleanTemp:
+            try:
+                os.remove(outputPath)
+            except:
+                pass
+
+        return pmap
+
+    @err_catcher(name=__name__)
+    def getPixmapFromExrPathFromNuke(self, path, width=None, height=None, channel=None, allowThumb=True, regenerateThumb=False):
+        if getattr(self, "nukeProc", None) and not self.nukeProc.poll():
+            nukeProc = self.nukeProc
+        else:
+            nukeProc = self.startNukeProcess()
+
+        if not nukeProc:
+            return
+
+        thumbEnabled = self.getUseThumbnails()
+        if thumbEnabled and allowThumb:
+            outputPath = self.getThumbnailPath(path)
+            cleanTemp = False
+        else:
+            outputPath = self.core.getTempFilepath(filename=os.path.splitext(os.path.basename(path))[0] + ".jpg")
+            cleanTemp = True
+
+        if not os.path.exists(os.path.dirname(outputPath)):
+            try:
+                os.makedirs(os.path.dirname(outputPath))
+            except FileExistsError:
+                pass
+
+        outputPath = outputPath.replace("\\", "/")
+        start = end = 1
+
+        cmd = """
+read = nuke.createNode("Read")
+write = nuke.createNode("Write")
+write.setInput(0, read)
+nuke.root().knob("first_frame").setValue(float(%s))
+nuke.root().knob("last_frame").setValue(float(%s))
+read.knob("file").fromUserText(\"%s\")
+write.knob("file").setValue(\"%s\")
+nuke.execute(write, %s, %s)
+""" % (start, end, path.replace("\\", "/"), outputPath, start, end)
+
+        self.sendScriptToNuke(cmd)
+        for idx in range(30):
+            if os.path.exists(outputPath):
+                logger.debug("nuke thumbnail generated: %s" % outputPath)
+                break
+
+            time.sleep(1)
+        else:
+            logger.warning("failed to generate thumbnail with Nuke.")
+            return
+
+        pmap = self.getPixmapFromPath(outputPath, width=width, height=height)
+        if cleanTemp:
+            try:
+                os.remove(outputPath)
+            except:
+                pass
+
+        return pmap
+
+    @err_catcher(name=__name__)
     def getPixmapFromExrPath(self, path, width=None, height=None, channel=None, allowThumb=True, regenerateThumb=False):
         thumbEnabled = self.getUseThumbnails()
         if allowThumb and thumbEnabled and not regenerateThumb and path:
@@ -585,7 +772,7 @@ class MediaManager(object):
         if not oiio:
             # msg = "OpenImageIO is not available. Unable to read the file."
             # self.core.popup(msg)
-            return
+            return self.getPixmapFromExrPathWithoutOIIO(path, width=width, height=height, channel=channel, allowThumb=allowThumb, regenerateThumb=regenerateThumb)
 
         path = str(path)  # for python 2
         imgInput = oiio.ImageInput.open(path)
@@ -595,6 +782,7 @@ class MediaManager(object):
 
         chbegin = 0
         chend = 3
+        numChannels = 3
         subimage = 0
         if channel:
             while imgInput.seek_subimage(subimage, 0):
@@ -605,14 +793,18 @@ class MediaManager(object):
                         idx = imgInput.spec().channelindex(channel + ".r")
                         if idx == -1:
                             idx = imgInput.spec().channelindex(channel + ".x")
-                            if idx == -1 and channel in ["RGB", "RGBA"]:
-                                idx = imgInput.spec().channelindex("R")
+                            if idx == -1:
+                                idx = imgInput.spec().channelindex(channel + ".Z")
+                                if idx != -1:
+                                    numChannels = 1
+                                elif idx == -1 and channel in ["RGB", "RGBA"]:
+                                    idx = imgInput.spec().channelindex("R")
 
                 if idx == -1:
                     subimage += 1
                 else:
                     chbegin = idx
-                    chend = chbegin + 3
+                    chend = chbegin + numChannels
                     break
 
         try:
@@ -626,7 +818,7 @@ class MediaManager(object):
             return
 
         rgbImgSrc = oiio.ImageBuf(
-            oiio.ImageSpec(imgInput.spec().full_width, imgInput.spec().full_height, 3, oiio.UINT16)
+            oiio.ImageSpec(imgInput.spec().full_width, imgInput.spec().full_height, numChannels, oiio.UINT16)
         )
         imgInput.close()
 
@@ -661,24 +853,32 @@ class MediaManager(object):
             newImgHeight = imgHeight
 
         imgDst = oiio.ImageBuf(
-            oiio.ImageSpec(int(newImgWidth), int(newImgHeight), 3, oiio.UINT16)
+            oiio.ImageSpec(int(newImgWidth), int(newImgHeight), numChannels, oiio.UINT16)
         )
         oiio.ImageBufAlgo.resample(imgDst, rgbImgSrc)
         sRGBimg = oiio.ImageBuf()
         oiio.ImageBufAlgo.pow(sRGBimg, imgDst, (1.0 / 2.2, 1.0 / 2.2, 1.0 / 2.2))
         bckImg = oiio.ImageBuf(
-            oiio.ImageSpec(int(newImgWidth), int(newImgHeight), 3, oiio.UINT16)
+            oiio.ImageSpec(int(newImgWidth), int(newImgHeight), numChannels, oiio.UINT16)
         )
         oiio.ImageBufAlgo.fill(bckImg, (0.5, 0.5, 0.5))
         oiio.ImageBufAlgo.paste(bckImg, xOffset, yOffset, 0, 0, sRGBimg)
         qimg = QImage(int(newImgWidth), int(newImgHeight), QImage.Format_RGB32)
         for i in range(int(newImgWidth)):
             for k in range(int(newImgHeight)):
-                rgb = qRgb(
-                    bckImg.getpixel(i, k)[0] * 255,
-                    bckImg.getpixel(i, k)[1] * 255,
-                    bckImg.getpixel(i, k)[2] * 255,
-                )
+                if numChannels == 3:
+                    rgb = qRgb(
+                        bckImg.getpixel(i, k)[0] * 255,
+                        bckImg.getpixel(i, k)[1] * 255,
+                        bckImg.getpixel(i, k)[2] * 255,
+                    )
+                else:
+                    rgb = qRgb(
+                        bckImg.getpixel(i, k)[0] * 255,
+                        bckImg.getpixel(i, k)[0] * 255,
+                        bckImg.getpixel(i, k)[0] * 255,
+                    )
+
                 qimg.setPixel(i, k, rgb)
 
         pixmap = QPixmap.fromImage(qimg)
@@ -690,14 +890,16 @@ class MediaManager(object):
 
     @err_catcher(name=__name__)
     def getPixmapFromPath(self, path, width=None, height=None, colorAdjust=False):
-        if path:
-            ext = os.path.splitext(path)[1].lower()
-            if ext in self.core.media.videoFormats:
-                return self.getPixmapFromVideoPath(path)
-            elif ext in [".exr", ".dpx", ".hdr"]:
-                return self.core.media.getPixmapFromExrPath(
-                    path, width, height
-                )
+        if not path:
+            return
+
+        ext = os.path.splitext(path)[1].lower()
+        if ext in self.core.media.videoFormats:
+            return self.getPixmapFromVideoPath(path)
+        elif ext in [".exr", ".dpx", ".hdr"]:
+            return self.core.media.getPixmapFromExrPath(
+                path, width, height
+            )
 
         pixmap = QPixmap(path)
         if pixmap.isNull():
@@ -845,7 +1047,7 @@ class MediaManager(object):
     @err_catcher(name=__name__)
     def getColoredIcon(self, path, force=False, r=150, g=210, b=240):
         ssheet = self.core.getActiveStyleSheet()
-        if self.core.appPlugin.pluginName == "Standalone" and ssheet and ssheet.get("name") == "Blue Moon" or force:
+        if getattr(self.core, "appPlugin", None) and self.core.appPlugin.pluginName == "Standalone" and ssheet and ssheet.get("name") == "Blue Moon" or force:
             image = QImage(path)
             cimage = QImage(image)
             cimage.fill((QColor(r, g, b)))

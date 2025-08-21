@@ -37,7 +37,7 @@ import os
 
 class Prism_PureRef_Variables(object):
     def __init__(self, core, plugin):
-        self.version = "v2.0.10"
+        self.version = "v2.0.11"
         self.pluginName = "PureRef"
         self.pluginType = "App"
         self.appShortName = "PureRef"

@@ -58,7 +58,7 @@ class Prism_3dsMax_Integration(object):
 
         if platform.system() == "Windows":
             self.examplePath = (
-                os.environ["localappdata"] + "\\Autodesk\\3dsMax\\2025 - 64bit"
+                os.environ["localappdata"] + "\\Autodesk\\3dsMax\\2026 - 64bit"
             )
 
     @err_catcher(name=__name__)
@@ -124,6 +124,7 @@ class Prism_3dsMax_Integration(object):
             integrationBase = os.path.join(
                 os.path.dirname(os.path.dirname(__file__)), "Integration"
             )
+            integrationBase = os.path.realpath(integrationBase)
 
             # 	print "write max files: %s" % maxpath
             initprism = os.path.join(maxpath, "initPrism.ms")

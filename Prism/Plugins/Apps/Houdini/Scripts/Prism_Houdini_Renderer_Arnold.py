@@ -51,6 +51,7 @@ def isActive():
 
 def activated(origin):
     origin.chb_format.setHidden(False)
+    origin.useFormatChanged(origin.chb_format.isChecked())
     origin.w_separateAovs.setHidden(False)
     deep = ".exr (deep)"
     idx = origin.cb_format.findText(deep)
@@ -60,6 +61,7 @@ def activated(origin):
 
 def deactivated(origin):
     origin.chb_format.setHidden(True)
+    origin.useFormatChanged(origin.chb_format.isChecked())
     origin.w_separateAovs.setHidden(True)
     deep = ".exr (deep)"
     idx = origin.cb_format.findText(deep)

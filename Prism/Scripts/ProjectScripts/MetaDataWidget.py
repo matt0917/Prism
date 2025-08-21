@@ -118,10 +118,7 @@ class MetaDataWidget(QGroupBox):
                 w.widget().deleteLater()
 
     @err_catcher(name=__name__)
-    def save(self, entityData):
-        if not entityData:
-            entityData = self.entityData
-
+    def getMetaData(self):
         data = {}
         for idx in reversed(range(self.lo_main.count())):
             w = self.lo_main.itemAt(idx)
@@ -136,6 +133,14 @@ class MetaDataWidget(QGroupBox):
                         "show": widget.show(),
                     }
 
+        return data
+
+    @err_catcher(name=__name__)
+    def save(self, entityData):
+        if not entityData:
+            entityData = self.entityData
+
+        data = self.getMetaData()
         self.core.entities.setMetaData(entityData, data)
 
 

@@ -74,7 +74,6 @@ class StateManager(QMainWindow, StateManager_ui.Ui_mw_StateManager):
 
         self.core = core
         self.core.parentWindow(self)
-
         logger.debug("Initializing State Manager")
 
         self.setWindowTitle(
@@ -87,6 +86,7 @@ class StateManager(QMainWindow, StateManager_ui.Ui_mw_StateManager):
         self.prevStateData = None
         self.core.stateManagerInCreation = self
         self.finishedDeletionCallbacks = []
+        self.curExecutedState = None
 
         self.enabledCol = QBrush(
             self.tw_import.palette().color(self.tw_import.foregroundRole())
@@ -132,6 +132,7 @@ class StateManager(QMainWindow, StateManager_ui.Ui_mw_StateManager):
         self.entityDlg = EntityDlg
         self.applyChangesToSelection = True
         self.collapsedFolders = []
+        self.importConnectedTags = ["usd", "assembly"]
 
         stateFiles = []
         pluginUiPath = os.path.join(
@@ -689,6 +690,8 @@ class %s(QWidget, %s.%s, %s.%sClass):
         self.tw_export.itemExpanded.connect(self.saveStatesToScene)
 
         self.b_createImport.clicked.connect(lambda: self.createPressed("Import"))
+        self.b_createImport.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.b_createImport.customContextMenuRequested.connect(self.onImportContextMenuRequested)
         self.b_createExport.clicked.connect(lambda: self.createPressed("Export"))
         self.b_createRender.clicked.connect(lambda: self.createPressed("Render"))
         self.b_createPlayblast.clicked.connect(lambda: self.createPressed("Playblast"))
@@ -1271,7 +1274,7 @@ QGroupBox::indicator:checked {
         return importPaths
 
     @err_catcher(name=__name__)
-    def createPressed(self, stateType, renderer=None):
+    def createPressed(self, stateType, renderer=None, createEmptyState=None):
         curSel = self.getCurrentItem(self.activeList)
         if stateType == "Import":
             if (
@@ -1283,10 +1286,11 @@ QGroupBox::indicator:checked {
             else:
                 parent = None
 
-            createEmptyState = (
-                QApplication.keyboardModifiers() == Qt.ControlModifier
-                or not self.core.uiAvailable
-            )
+            if createEmptyState is None:
+                createEmptyState = (
+                    QApplication.keyboardModifiers() == Qt.ControlModifier
+                    or not self.core.uiAvailable
+                )
 
             if createEmptyState:
                 productPaths = [None]
@@ -1307,9 +1311,9 @@ QGroupBox::indicator:checked {
                 else:
                     stateType = "ImportFile"
 
-                state = self.createState(stateType, parent=parent, importPath=productPath, setActive=True)
+                state = self.createState(stateType, parent=parent, importPath=productPath, setActive=True, openProductsBrowser=False)
                 data = self.core.paths.getCachePathData(productPath)
-                if not createEmptyState and data.get("product") and state:
+                if not createEmptyState and not data.get("product") and state:
                     state.ui.e_name.setText(os.path.basename(productPath))
 
             self.activateWindow()
@@ -1367,7 +1371,7 @@ QGroupBox::indicator:checked {
 
         if "mCamState" in locals():
             mCamState.importLatest()
-            self.selectState(mCamState)
+            self.selectState(camState)
         else:
             fileName = self.core.getCurrentFileName()
             fnameData = self.core.getScenefileData(fileName)
@@ -1625,6 +1629,24 @@ QGroupBox::indicator:checked {
             self.appendChildStates(state.child(i), stateList)
 
     @err_catcher(name=__name__)
+    def onImportContextMenuRequested(self, pos=None):
+        pos = QCursor.pos()
+        menu = QMenu(self)
+        actSet = QAction("Import Product...", self)
+        actSet.triggered.connect(lambda: self.createPressed("Import"))
+        menu.addAction(actSet)
+
+        actSet = QAction("Create Empty Import State", self)
+        actSet.triggered.connect(lambda: self.createPressed("Import", createEmptyState=True))
+        menu.addAction(actSet)
+
+        actSet = QAction("Import Connected Assets", self)
+        actSet.triggered.connect(self.importConnectedAssets)
+        menu.addAction(actSet)
+
+        menu.exec_(pos)
+
+    @err_catcher(name=__name__)
     def commentChanged(self, text):
         required = self.core.getConfig("globals", "requirePublishComment", config="project", dft=True)
         if required:
@@ -1855,6 +1877,10 @@ QGroupBox::indicator:checked {
         return states
 
     @err_catcher(name=__name__)
+    def getVersionUpAfterPublish(self):
+        return os.getenv("PRISM_VERSION_UP_AFTER_PUBLISH", "0") == "1"
+
+    @err_catcher(name=__name__)
     def publish(
         self,
         executeState=False,
@@ -1866,6 +1892,7 @@ QGroupBox::indicator:checked {
         incrementScene=None,
         sanityChecks=True,
         versionWarning=True,
+        currentSceneWaring=True,
     ):
         if self.publishPaused and not continuePublish:
             return
@@ -1889,12 +1916,18 @@ QGroupBox::indicator:checked {
             actionString = "Publish"
             actionString2 = "publish"
 
-        if not executeState and not [
-            x for x in self.execStates if x.checkState(0) == Qt.Checked
-        ]:
-            self.core.popup("No states to publish.")
-            return
+        if not executeState:
+            hasCheckedExecs = [
+                x for x in self.execStates if x.checkState(0) == Qt.Checked
+            ]
+            hasCheckedRoots = [
+                x for x in range(self.tw_export.topLevelItemCount()) if self.tw_export.topLevelItem(x).checkState(0) == Qt.Checked
+            ]
+            if not hasCheckedExecs or not hasCheckedRoots:
+                self.core.popup("No states to publish.")
+                return
 
+        incrementAfterPublish = self.getVersionUpAfterPublish()
         if continuePublish:
             skipStates = [
                 x["state"].state
@@ -1939,12 +1972,12 @@ QGroupBox::indicator:checked {
 
             if saveScene is None or saveScene is True:
                 if executeState:
-                    increment = False if incrementScene is None else incrementScene
+                    increment = (False if incrementScene is None else incrementScene) and not incrementAfterPublish
                     sceneSaved = self.core.saveScene(
                         versionUp=increment, details=details, preview=self.previewImg
                     )
                 else:
-                    increment = self.actionVersionUp.isChecked() if incrementScene is None else incrementScene
+                    increment = (self.actionVersionUp.isChecked() if incrementScene is None else incrementScene) and not incrementAfterPublish
                     sceneSaved = self.core.saveScene(
                         comment=self.e_comment.text(),
                         publish=True,
@@ -1956,6 +1989,15 @@ QGroupBox::indicator:checked {
                 if not sceneSaved:
                     logger.debug(actionString + " canceled")
                     return
+            else:
+                if currentSceneWaring:
+                    fileName = self.core.getCurrentFileName()
+                    if not (
+                        os.path.exists(fileName)
+                        and self.core.fileInPipeline(fileName)
+                    ):
+                        self.core.showFileNotInProjectWarning(title="Warning")
+                        return
 
             self.publishStartTime = time.time()
             self.description = ""
@@ -2050,8 +2092,37 @@ QGroupBox::indicator:checked {
 
         success = True
         for i in self.publishResult:
-            if "error" in i["result"][0]:
+            if not i["result"] or "error" in i["result"][0]:
                 success = False
+
+        if incrementAfterPublish and (saveScene is None or saveScene is True):
+            details = {}
+            if self.description != "":
+                details = {
+                    "description": self.description,
+                    "username": self.core.getConfig("globals", "username"),
+                }
+            
+            if executeState:
+                increment = False if incrementScene is None else incrementScene
+                if increment:
+                    sceneSaved = self.core.saveScene(
+                        versionUp=increment, details=details, preview=self.previewImg
+                    )
+            else:
+                increment = self.actionVersionUp.isChecked() if incrementScene is None else incrementScene
+                if increment:
+                    sceneSaved = self.core.saveScene(
+                        comment=self.e_comment.text(),
+                        publish=True,
+                        versionUp=increment,
+                        details=details,
+                        preview=self.previewImg,
+                    )
+
+            if not sceneSaved:
+                logger.debug(actionString + " canceled")
+                return
 
         try:
             self.core.pb.refreshUI()
@@ -2067,12 +2138,13 @@ QGroupBox::indicator:checked {
                 result = True
 
             if successPopup:
-                if len(self.publishResult) == 1 and hasattr(self.publishResult[0]["state"], "showLastPathMenu"):
+                if len(self.publishResult) == 1 and hasattr(self.publishResult[0]["state"], "getLastPathOptions"):
                     buttons = ["Output Options...", "OK"]
                     msg = self.core.popupQuestion(msgStr, title=actionString, buttons=buttons, icon=QMessageBox.Information, parent=self, doExec=False)
-                    msg.buttons()[0].clicked.disconnect()
-                    msg.buttons()[0].clicked.connect(lambda x=None, m=msg: self.onOutputOptionsClicked(m))
-                    msg.exec_()
+                    if msg:
+                        msg.buttons()[0].clicked.disconnect()
+                        msg.buttons()[0].clicked.connect(lambda x=None, m=msg: self.onOutputOptionsClicked(m))
+                        msg.exec_()
                 else:
                     self.core.popup(msgStr, title=actionString, severity="info", parent=self)
         else:
@@ -2095,10 +2167,35 @@ QGroupBox::indicator:checked {
         return result
 
     @err_catcher(name=__name__)
+    def showLastPathMenu(self, state, msgToClose=None):
+        options = getattr(state, "getLastPathOptions", lambda: None)()
+        kwargs = {"stateManager": self, "state": state, "options": options}
+        self.core.callback(name="onGetLastPathOptions", **kwargs)
+        if not options:
+            return
+
+        menu = QMenu(self)
+        for option in options:
+            act = QAction(option["label"], self)
+            act.triggered.connect(lambda x=None, m=msgToClose, o=option: self.onshowLastPathMenuTriggered(o, m))
+            menu.addAction(act)
+
+        menu.exec_(QCursor.pos())
+
+    @err_catcher(name=__name__)
     def onOutputOptionsClicked(self, msg):
-        msg.close()
-        msg.deleteLater()
-        self.publishResult[0]["state"].showLastPathMenu()
+        self.showLastPathMenu(self.publishResult[0]["state"], msgToClose=msg)
+
+    @err_catcher(name=__name__)
+    def onshowLastPathMenuTriggered(self, option, msgToClose=None):
+        if msgToClose:
+            msgToClose.close()
+            msgToClose.deleteLater()
+
+        self.lastPathActionTimer = QTimer()
+        self.lastPathActionTimer.timeout.connect(option["callback"])
+        self.lastPathActionTimer.setSingleShot(True)
+        self.lastPathActionTimer.start(100)
 
     @err_catcher(name=__name__)
     def runSantityChecks(self, executeState):
@@ -2366,6 +2463,54 @@ No frame will be rendered twice. This makes it easier to spot problems in the se
             self.activateWindow()
 
         return state
+
+    @err_catcher(name=__name__)
+    def importConnectedAssets(self):
+        productPaths = []
+        filepath = self.core.getCurrentFileName()
+        entity = self.core.getScenefileData(filepath)
+        if not entity or entity.get("type") != "shot":
+            msg = "Importing connected assets is possible in shot scenefiles only."
+            self.core.popup(msg)
+            return
+
+        productsToImport = []
+        entities = self.core.entities.getConnectedEntities(entity)
+        if not entities:
+            result = self.core.popupQuestion("No assets are connected to the current shot.", buttons=["Connect Assets...", "Close"], icon=QMessageBox.Information)
+            if result == "Connect Assets...":
+                self.core.entities.connectEntityDlg(entities=[entity])
+
+            return
+
+        tags = []
+        curDep = entity.get("department")
+        if curDep:
+            tags.append("to_%s" % curDep.lower())
+
+        tags += self.importConnectedTags
+        for centity in entities:
+            products = self.core.products.getProductsByTags(centity, tags)
+            productsToImport += products
+
+        if not productsToImport:
+            msg = "No products to import.\n(checking for tags: \"%s\")" % "\", \"".join(tags)
+            self.core.popup(msg)
+            return
+
+        for product in productsToImport:
+            if "asset_path" not in product:
+                continue
+
+            productPath = self.core.products.getLatestVersionpathFromProduct(product["product"], entity=product)
+            if not productPath:
+                continue
+
+            productPaths.append(productPath)
+
+        for productPath in productPaths:
+            self.importFile(productPath)
+            logger.debug("imported product: %s" % (productPath))
 
 
 class ImportDelegate(QStyledItemDelegate):

@@ -101,8 +101,8 @@ class ImportFileClass(object):
             if importPaths:
                 importPath = importPaths[-1]
                 if len(importPaths) > 1:
-                    for importPath in importPaths[:-1]:
-                        stateManager.importFile(importPath)
+                    for impPath in importPaths[:-1]:
+                        stateManager.importFile(impPath)
 
         if importPath:
             self.setImportPath(importPath)
@@ -217,7 +217,7 @@ class ImportFileClass(object):
                 cacheData["entity"] = shotName
 
         num = 0
-
+        self.core.callback("onGenerateStateNameContext", self, cacheData)
         try:
             if "{#}" in text:
                 while True:
@@ -638,18 +638,15 @@ class ImportFileClass(object):
                         message += self.core.appPlugin.getNodeName(self, val) + "\n"
 
                 if not self.core.uiAvailable:
-                    action = 0
+                    action = "Yes"
                     print("delete objects:\n\n%s" % message)
                 else:
-                    msg = QMessageBox(
-                        QMessageBox.Question, "Delete state", message, QMessageBox.No
-                    )
-                    msg.addButton("Yes", QMessageBox.YesRole)
-                    msg.setParent(self.core.messageParent, Qt.Window)
-                    action = msg.exec_()
+                    action = self.core.popupQuestion(message, title="Delete State", parent=self.stateManager)
 
-                if action == 0:
+                if action == "Yes":
                     self.core.appPlugin.deleteNodes(self, validNodes)
+
+        getattr(self.core.appPlugin, "sm_import_preDelete", lambda x: None)(self)
 
     @err_catcher(name=__name__)
     def getStateProps(self):

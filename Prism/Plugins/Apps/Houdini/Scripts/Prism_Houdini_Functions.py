@@ -258,6 +258,14 @@ class Prism_Houdini_Functions(object):
             "PRISM_FILE_VERSION": "",
         }
 
+        useEpisodes = self.core.getConfig(
+            "globals",
+            "useEpisodes",
+            config="project",
+        ) or False
+        if useEpisodes:
+            envvars["PRISM_EPISODE"] = ""
+
         for envvar in envvars:
             envvars[envvar] = hou.hscript("echo $%s" % envvar)
 
@@ -265,6 +273,9 @@ class Prism_Houdini_Functions(object):
         data = self.core.getScenefileData(fn)
 
         if data.get("type") == "asset":
+            if useEpisodes:
+                newenv["PRISM_EPISODE"] = ""
+
             newenv["PRISM_SEQUENCE"] = ""
             newenv["PRISM_SHOT"] = ""
             newenv["PRISM_ASSET"] = os.path.basename(data.get("asset_path", ""))
@@ -272,9 +283,15 @@ class Prism_Houdini_Functions(object):
         elif data.get("type") == "shot":
             newenv["PRISM_ASSET"] = ""
             newenv["PRISM_ASSETPATH"] = ""
+            if useEpisodes:
+                newenv["PRISM_EPISODE"] = data.get("episode", "")
+
             newenv["PRISM_SEQUENCE"] = data.get("sequence", "")
             newenv["PRISM_SHOT"] = data.get("shot", "")
         else:
+            if useEpisodes:
+                newenv["PRISM_EPISODE"] = ""
+
             newenv["PRISM_SEQUENCE"] = ""
             newenv["PRISM_SHOT"] = ""
             newenv["PRISM_ASSET"] = ""
@@ -324,14 +341,9 @@ class Prism_Houdini_Functions(object):
 
     @err_catcher(name=__name__)
     def expandEnvVar(self, var):
-        dbslash = False
-        if var.startswith("\\\\"):
-            dbslash = True
-            var = var[2:]
-
-        var = hou.text.expandString(var)
-        if dbslash:
-            var = "\\\\" + var
+        if "`" not in var:
+            var = var.replace("\\", "\\\\")
+            var = hou.text.expandString(var)
 
         return var
 
@@ -352,7 +364,23 @@ class Prism_Houdini_Functions(object):
 
         if doReload:
             self.unloadedOCIO = False
-            hou.Color.reloadOCIO()
+            self.refreshOcio()
+
+    @err_catcher(name=__name__)
+    def refreshOcio(self):
+        hou.Color.reloadOCIO()
+        if hou.isUIAvailable():
+            try:
+                panes = hou.ui.paneTabs()
+            except:
+                return
+
+            for pane in panes:
+                if pane.type() == hou.paneTabType.SceneViewer:
+                    try:
+                        pane.setOCIODisplayView(display=hou.Color.ocio_defaultDisplay(), view=hou.Color.ocio_defaultView())
+                    except Exception as e:
+                        logger.warning("failed to set OCIO DisplayView: %s - %s - %s" % (str(e), hou.Color.ocio_defaultDisplay(), hou.Color.ocio_defaultView()))
 
     @err_catcher(name=__name__)
     def loadPrjHDAs(self, origin):
@@ -669,7 +697,7 @@ class Prism_Houdini_Functions(object):
                 task=task,
                 extension=extension,
                 framePadding="",
-                comment=fnameData["comment"],
+                comment=fnameData.get("comment", ""),
                 version=version,
                 location=location,
                 returnDetails=True,
@@ -714,7 +742,18 @@ class Prism_Houdini_Functions(object):
     @err_catcher(name=__name__)
     def saveScene(self, origin, filepath, details=None):
         filepath = filepath.replace("\\", "/")
-        return hou.hipFile.save(file_name=filepath, save_to_recent_files=True)
+        saved = False
+        while True:
+            try:
+                saved = hou.hipFile.save(file_name=filepath, save_to_recent_files=True)
+                break
+            except Exception as e:
+                msg = "Failed to save hipfile.\nFilepath:\n\n%s\n\nError: %s" % (filepath, e)
+                result = self.core.popupQuestion(msg, buttons=["Retry", "Ignore"], icon=QMessageBox.Warning)
+                if result != "Retry":
+                    break
+
+        return saved
 
     @err_catcher(name=__name__)
     def getImportPaths(self, origin):
@@ -989,15 +1028,18 @@ class Prism_Houdini_Functions(object):
                     "Cannot set this parameter. Probably because it is locked:\n\n%s"
                     % node.parm(parm).path()
                 )
-                msg = QMessageBox(
-                    QMessageBox.Warning,
-                    "Cannot set Parameter",
-                    msgString,
-                    QMessageBox.Cancel,
-                )
-                msg.addButton("Ignore", QMessageBox.YesRole)
-                self.core.parentWindow(msg)
-                action = msg.exec_()
+                if os.getenv("PRISM_HOUDINI_IGNORE_LOCKED_PARM_WARNING", "0") == "1":
+                    action = 0
+                else:
+                    msg = QMessageBox(
+                        QMessageBox.Warning,
+                        "Cannot set Parameter",
+                        msgString,
+                        QMessageBox.Cancel,
+                    )
+                    msg.addButton("Ignore", QMessageBox.YesRole)
+                    self.core.parentWindow(msg)
+                    action = msg.exec_()
 
                 if action == 0:
                     return True
@@ -1225,7 +1267,7 @@ class Prism_Houdini_Functions(object):
             rect = hou.BoundingRect(startX, startY, startX+width, startY-height)
             img = hou.NetworkImage(relPath, rect)
             img.setRelativeToPath(node.path())
-            nwPane = getNetworkPane(node=kwargs["node"].parent())
+            nwPane = self.getNetworkPane(node=kwargs["node"].parent())
             curImgs = nwPane.backgroundImages()
             newImgs = curImgs + (img,)
             nwPane.setBackgroundImages(newImgs)
@@ -1945,8 +1987,9 @@ class Prism_Houdini_Functions(object):
         rcMenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def createRop(self, nodeType):
-        node = hou.node(self.ropLocation).createNode(nodeType)
+    def createRop(self, nodeType, parent=None):
+        parent = parent or hou.node(self.ropLocation)
+        node = parent.createNode(nodeType)
         return node
 
     @err_catcher(name=__name__)
@@ -1993,6 +2036,9 @@ class Prism_Houdini_Functions(object):
             sm.showNormal()
 
         state = self.getStateFromNode(kwargs)
+        if not state:
+            return
+
         parent = state.parent()
         while parent:
             parent.setExpanded(True)

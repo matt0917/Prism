@@ -181,7 +181,7 @@ class PluginManager(object):
         elif location == "custom":
             pluginPath = path
 
-        if location not in ["custom", "user"] and pluginType:
+        if location not in ["custom", "user", "project"] and pluginType:
             if pluginType == "App":
                 dirName = "Apps"
             elif pluginType == "Custom":
@@ -272,14 +272,15 @@ class PluginManager(object):
 
         if (
             not getattr(self.core, "messageParent", None)
-            and ((self.core.appPlugin.pluginName != "Houdini" or sys.version_info.minor != 11) and QApplication.instance() is not None)
         ):
-            for arg in self.core.prismArgs:
-                if isinstance(arg, dict) and "messageParent" in arg:
-                    self.core.messageParent = arg["messageParent"]
-                    break
-            else:
-                self.core.messageParent = QWidget()
+            isHp311 = self.core.appPlugin.pluginName == "Houdini" and sys.version_info.minor == 11
+            if isHp311 or QApplication.instance() is not None:
+                for arg in self.core.prismArgs:
+                    if isinstance(arg, dict) and "messageParent" in arg:
+                        self.core.messageParent = arg["messageParent"]
+                        break
+                else:
+                    self.core.messageParent = QWidget()
 
         if not self.core.appPlugin.hasQtParent:
             self.core.parentWindows = False
@@ -305,7 +306,8 @@ class PluginManager(object):
         directories=None,
         recursive=False,
         force=True,
-        ignore=None
+        ignore=None,
+        singleFilePlugins=False,
     ):
         ignore = ignore or []
         result = []
@@ -320,7 +322,8 @@ class PluginManager(object):
 
         if pluginPaths:
             for pPath in pluginPaths:
-                foundPluginPaths.append(pPath)
+                expPath = os.path.expandvars(pPath)
+                foundPluginPaths.append(expPath)
 
         directories = directories or []
         if directory:
@@ -328,18 +331,19 @@ class PluginManager(object):
 
         if directories:
             for dr in directories:
-                if not os.path.exists(dr):
+                expDr = os.path.expandvars(dr)
+                if not os.path.exists(expDr):
                     continue
 
                 if recursive:
-                    for root, dirs, files in os.walk(dr):
+                    for root, dirs, files in os.walk(expDr):
                         for f in files:
                             if f.endswith("_init.py"):
                                 path = os.path.dirname(root)
                                 foundPluginPaths.append(path)
                                 break
                 else:
-                    for root, dirs, files in os.walk(dr):
+                    for root, dirs, files in os.walk(expDr):
                         for pDir in dirs:
                             if pDir == "PluginEmpty":
                                 continue
@@ -350,8 +354,20 @@ class PluginManager(object):
                             if pDir.startswith(".") or pDir.startswith("_"):
                                 continue
 
-                            path = os.path.join(dr, pDir)
+                            path = os.path.join(expDr, pDir)
                             foundPluginPaths.append(path)
+
+                        if singleFilePlugins:
+                            for file in files:
+                                if file.startswith(".") or file.startswith("_"):
+                                    continue
+
+                                if not file.endswith(".py"):
+                                    continue
+
+                                path = os.path.join(expDr, file)
+                                foundPluginPaths.append(path)
+
                         break
 
         for pluginPath in foundPluginPaths:
@@ -392,10 +408,11 @@ class PluginManager(object):
                 if pluginNames and pluginName not in pluginNames:
                     continue
 
-                if not os.path.exists(pPath):
+                expPath = os.path.expandvars(pPath)
+                if not os.path.exists(expPath):
                     continue
 
-                pData = {"name": pluginName, "path": pPath}
+                pData = {"name": pluginName, "path": expPath}
                 result.append(pData)
 
         directories = directories or []
@@ -403,10 +420,11 @@ class PluginManager(object):
             directories.append(directory)
 
         for dr in directories:
-            if not os.path.exists(dr):
+            expDr = os.path.expandvars(dr)
+            if not os.path.exists(expDr):
                 continue
 
-            for root, dirs, files in os.walk(dr):
+            for root, dirs, files in os.walk(expDr):
                 if "Scripts" in dirs:
                     dirs[:] = ["Scripts"]
                     continue
@@ -808,6 +826,10 @@ class PluginManager(object):
     @err_catcher(name=__name__)
     def deactivatePlugin(self, pluginName):
         plugin = self.getPlugin(pluginName)
+        if not plugin:
+            logger.warning("can't find plugin: %s" % pluginName)
+            return
+
         pluginPath = getattr(plugin, "pluginPath", "")
         self.core.unloadedPlugins[pluginName] = UnloadedPlugin(self.core, pluginName, path=pluginPath, location=plugin.location)
         logger.debug("deactivating plugin %s" % pluginName)
@@ -1246,7 +1268,13 @@ class PLUGINNAME:
                 paths.append(plugin["path"])
 
         if paths:
-            return list(set(paths))
+            npaths = []
+            for path in paths:
+                if path not in npaths:
+                    npaths.append(path)
+
+            paths = npaths
+            return paths
 
         return False
 
@@ -1495,6 +1523,9 @@ class PLUGINNAME:
 
     @err_catcher(name=__name__)
     def removePlugin(self, pluginPath):
+        if not pluginPath or not os.path.exists(pluginPath):
+            return True
+
         bkpPath = self.backupPlugin(pluginPath)
         while os.path.exists(pluginPath):
             try:
@@ -1615,7 +1646,7 @@ class PLUGINNAME:
         self.clearPluginBackup(backupPath)
 
     @err_catcher(name=__name__)
-    def postInstallPlugins(self, plugins, basepath, load=True):
+    def postInstallPlugins(self, plugins, basepath, load=True, parent=None):
         for pluginName in plugins:
             pluginPath = os.path.join(basepath, pluginName)
             if not self.core.plugins.canPluginBeFound(pluginPath):
@@ -1626,9 +1657,9 @@ class PLUGINNAME:
                 appType = getattr(plug, "appType", None)
                 if appType != "standalone" and getattr(plug, "pluginType", None) == "App" and getattr(plug, "hasIntegration", None) is not False:
                     msg = "To use the plugin <b>%s</b> you need to setup the Prism integration.<br><br>Would you like to setup the integration now?" % pluginName
-                    result = self.core.popupQuestion(msg)
+                    result = self.core.popupQuestion(msg, parent=parent)
                     if result == "Yes":
-                        self.setupIntegrations(pluginName)
+                        self.setupIntegrations(pluginName, parent=parent)
 
                 if hasattr(plug, "postInstall"):
                     plug.postInstall()
@@ -1649,9 +1680,16 @@ class PLUGINNAME:
         return True
 
     @err_catcher(name=__name__)
-    def setupIntegrations(self, plugin):
-        installer = self.core.getInstaller([plugin])
+    def setupIntegrations(self, plugin, parent=None):
+        installer = self.core.getInstaller([plugin], parent=parent)
         installer.installShortcuts = False
+        dccItem = installer.tw_components.topLevelItem(0).child(0)
+        dccItem.setCheckState(0, Qt.Checked)
+        if dccItem.childCount() == 1:
+            dccItem.child(0).setCheckState(0, Qt.Checked)
+
+        installer.CompItemClicked(dccItem, 0)
+        installer.resize(680, 300)
         installer.exec_()
 
 

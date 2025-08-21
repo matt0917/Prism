@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'default_Playblast.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.6.2
+## Created by: Qt User Interface Compiler version 6.8.1
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -16,7 +16,7 @@ class Ui_wg_Playblast(object):
     def setupUi(self, wg_Playblast):
         if not wg_Playblast.objectName():
             wg_Playblast.setObjectName(u"wg_Playblast")
-        wg_Playblast.resize(342, 822)
+        wg_Playblast.resize(389, 822)
         self.verticalLayout = QVBoxLayout(wg_Playblast)
         self.verticalLayout.setObjectName(u"verticalLayout")
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
@@ -67,14 +67,14 @@ class Ui_wg_Playblast(object):
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.l_taskName.sizePolicy().hasHeightForWidth())
         self.l_taskName.setSizePolicy(sizePolicy)
-        self.l_taskName.setAlignment(Qt.AlignCenter)
+        self.l_taskName.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.horizontalLayout_10.addWidget(self.l_taskName)
 
         self.b_changeTask = QPushButton(self.widget_10)
         self.b_changeTask.setObjectName(u"b_changeTask")
         self.b_changeTask.setEnabled(True)
-        self.b_changeTask.setFocusPolicy(Qt.NoFocus)
+        self.b_changeTask.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout_10.addWidget(self.b_changeTask)
 
@@ -112,7 +112,7 @@ class Ui_wg_Playblast(object):
         self.l_rangeEnd = QLabel(self.f_frameRange_2)
         self.l_rangeEnd.setObjectName(u"l_rangeEnd")
         self.l_rangeEnd.setMinimumSize(QSize(30, 0))
-        self.l_rangeEnd.setAlignment(Qt.AlignRight|Qt.AlignTrailing|Qt.AlignVCenter)
+        self.l_rangeEnd.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
         self.gridLayout.addWidget(self.l_rangeEnd, 1, 5, 1, 1)
 
@@ -133,7 +133,7 @@ class Ui_wg_Playblast(object):
         self.l_rangeStart = QLabel(self.f_frameRange_2)
         self.l_rangeStart.setObjectName(u"l_rangeStart")
         self.l_rangeStart.setMinimumSize(QSize(30, 0))
-        self.l_rangeStart.setAlignment(Qt.AlignRight|Qt.AlignTrailing|Qt.AlignVCenter)
+        self.l_rangeStart.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
         self.gridLayout.addWidget(self.l_rangeStart, 0, 5, 1, 1)
 
@@ -371,6 +371,7 @@ class Ui_wg_Playblast(object):
 
         self.sp_rjFramesPerTask = QSpinBox(self.f_rjWidgetsPerTask)
         self.sp_rjFramesPerTask.setObjectName(u"sp_rjFramesPerTask")
+        self.sp_rjFramesPerTask.setMinimum(1)
         self.sp_rjFramesPerTask.setMaximum(9999)
         self.sp_rjFramesPerTask.setValue(9999)
 
@@ -470,7 +471,7 @@ class Ui_wg_Playblast(object):
         self.scrollArea.setWidgetResizable(True)
         self.scrollAreaWidgetContents = QWidget()
         self.scrollAreaWidgetContents.setObjectName(u"scrollAreaWidgetContents")
-        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 269, 138))
+        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 338, 240))
         self.verticalLayout_3 = QVBoxLayout(self.scrollAreaWidgetContents)
         self.verticalLayout_3.setObjectName(u"verticalLayout_3")
         self.l_pathLast = QLabel(self.scrollAreaWidgetContents)
@@ -485,7 +486,7 @@ class Ui_wg_Playblast(object):
         self.b_pathLast = QToolButton(self.gb_previous)
         self.b_pathLast.setObjectName(u"b_pathLast")
         self.b_pathLast.setEnabled(True)
-        self.b_pathLast.setArrowType(Qt.DownArrow)
+        self.b_pathLast.setArrowType(Qt.ArrowType.DownArrow)
 
         self.horizontalLayout_5.addWidget(self.b_pathLast)
 

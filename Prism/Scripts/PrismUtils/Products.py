@@ -426,6 +426,23 @@ class Products(object):
         return latestVersion
 
     @err_catcher(name=__name__)
+    def getLatestVersionFromProduct(self, product, entity=None, includeMaster=True, wedge=None, locations=None):
+        if not entity:
+            fname = self.core.getCurrentFileName()
+            entity = self.core.getScenefileData(fname)
+            if entity.get("type") not in ["asset", "shot"]:
+                return
+
+        versions = self.getVersionsFromProduct(entity, product, locations=locations)
+        version = self.getLatestVersionFromVersions(
+            versions, includeMaster=includeMaster, wedge=wedge
+        )
+        if not version:
+            return
+
+        return version
+
+    @err_catcher(name=__name__)
     def getLatestVersionpathFromProduct(self, product, entity=None, includeMaster=True, wedge=None, locations=None):
         if not entity:
             fname = self.core.getCurrentFileName()
@@ -556,26 +573,47 @@ class Products(object):
     def getLocationFromPath(self, path):
         locDict = self.core.paths.getExportProductBasePaths()
         nPath = os.path.normpath(path)
+        validLocs = []
         for location in locDict:
             if nPath.startswith(locDict[location]):
-                return location
+                validLocs.append(location)
+
+        if not validLocs:
+            return
+
+        validLocs = sorted(validLocs, key=lambda x: len(locDict[x]), reverse=True)
+        return validLocs[0]
 
     @err_catcher(name=__name__)
-    def getVersionpathFromProductVersion(self, product, version, entity=None, wedge=None, locations=None):
+    def getProductVersion(self, product, version, entity=None, wedge=None, locations=None):
         if not entity:
             fname = self.core.getCurrentFileName()
             entity = self.core.getScenefileData(fname)
             if entity.get("type") not in ["asset", "shot"]:
                 return
 
+        versionData = None
         versions = self.getVersionsFromProduct(entity, product, locations=locations)
-        filepath = None
-        for v in versions:
-            if v["version"] == version:
-                if wedge is None or wedge == v.get("wedge"):
-                    filepath = self.getPreferredFileFromVersion(v)
-                    break
+        if version == "latest":
+            versionData = self.getLatestVersionFromVersions(
+                versions, includeMaster=True, wedge=wedge
+            )
+        else:
+            for v in versions:
+                if v["version"] == version:
+                    if wedge is None or wedge == v.get("wedge"):
+                        versionData = v
+                        break
 
+        return versionData
+
+    @err_catcher(name=__name__)
+    def getVersionpathFromProductVersion(self, product, version, entity=None, wedge=None, locations=None):
+        versionData = self.getProductVersion(product, version, entity=entity, wedge=wedge, locations=locations)
+        if not versionData:
+            return
+
+        filepath = self.getPreferredFileFromVersion(versionData)
         return filepath
 
     @err_catcher(name=__name__)
@@ -654,7 +692,7 @@ class Products(object):
         if not self.core.separateOutputVersionStack:
             fileName = self.core.getCurrentFileName()
             fnameData = self.core.getScenefileData(fileName)
-            if fnameData.get("type") in ["asset", "shot"]:
+            if fnameData.get("type") in ["asset", "shot"] and "version" in fnameData:
                 hVersion = fnameData["version"]
             else:
                 hVersion = self.core.versionFormat % self.core.lowestVersion
@@ -664,7 +702,7 @@ class Products(object):
         versions = self.getVersionsFromProduct(entity, product)
         latest = self.getLatestVersionFromVersions(versions, includeMaster=False)
         if latest:
-            latestNum = self.getIntVersionFromVersionName(latest["version"])
+            latestNum = self.getIntVersionFromVersionName(latest.get("version", ""))
             if latestNum is not None:
                 num = latestNum + 1
                 version = self.core.versionFormat % num
@@ -738,6 +776,7 @@ class Products(object):
 
         seqFiles = self.core.detectFileSequence(path)
         if not seqFiles:
+            logger.debug("no files exists for sequence: %s" % path)
             return
 
         useHL = os.getenv("PRISM_USE_HARDLINK_MASTER", None)
@@ -996,11 +1035,12 @@ class Products(object):
 
             isFolder = os.path.isdir(file)
             if isFolder:
-                msg = "Copying folder - please wait..\n\n\n"
+                msg = "Copying folder - please wait...    "
             else:
-                msg = "Copying file - please wait..\n\n\n"
+                msg = "Copying file - please wait...    "
 
             self.copyMsg = self.core.waitPopup(self.core, msg)
+            self.copyMsg.baseTxt = msg
 
             self.copyThread.updated.connect(lambda x: self.core.updateProgressPopup(x, self.copyMsg))
             self.copyThread.finished.connect(self.copyMsg.close)

@@ -1927,10 +1927,12 @@ QTreeView::indicator:checked:disabled {
     image: url("qss:images/checkbox_disabled.png");
 }
 
+QTableView > QWidget > QWidget > QCheckBox::indicator,
 QTableView > QWidget > QCheckBox::indicator {
     background-color: @buttonBackgroundBright1;
 }
 
+QTableView > QWidget > QWidget > QCheckBox::indicator,
 QTableView > QWidget > QCheckBox::indicator:hover {
     background-color: @buttonBackgroundBright2;
 }

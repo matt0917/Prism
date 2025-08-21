@@ -113,6 +113,7 @@ class Prism_Photoshop_Integration(object):
             integrationBase = os.path.join(
                 os.path.dirname(os.path.dirname(__file__)), "Integration"
             )
+            integrationBase = os.path.realpath(integrationBase)
 
             if platform.system() == "Windows":
                 osName = "Windows"

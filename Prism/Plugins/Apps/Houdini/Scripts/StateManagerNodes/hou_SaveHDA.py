@@ -101,9 +101,9 @@ class SaveHDAClass(hou_Export.ExportClass):
         elif "statename" in data:
             self.e_name.setText(data["statename"] + " - {product} ({node})")
         if "taskname" in data:
-            self.l_taskName.setText(data["taskname"])
-            if data["taskname"] != "":
-                self.b_changeTask.setStyleSheet("")
+            self.setProductname(data["taskname"])
+        if "productname" in data:
+            self.setProductname(data["productname"])
         if "connectednode" in data:
             node = hou.node(data["connectednode"])
             if node is None:
@@ -147,33 +147,33 @@ class SaveHDAClass(hou_Export.ExportClass):
             self.stateManager.saveStatesToScene
         )
         self.chb_blackboxHDA.stateChanged.connect(self.stateManager.saveStatesToScene)
-        self.b_pathLast.clicked.connect(self.showLastPathMenu)
+        self.b_pathLast.clicked.connect(lambda: self.stateManager.showLastPathMenu(self))
 
         if not self.stateManager.standalone:
             self.b_goTo.clicked.connect(self.goToNode)
             self.b_connect.clicked.connect(self.connectNode)
 
     @err_catcher(name=__name__)
-    def showLastPathMenu(self):
+    def getLastPathOptions(self):
         path = self.l_pathLast.text()
         if path == "None":
             return
-        
-        menu = QMenu(self)
 
-        act_open = QAction("Open in Product Browser", self)
-        act_open.triggered.connect(lambda: self.openInProductBrowser(path))
-        menu.addAction(act_open)
-
-        act_open = QAction("Open in explorer", self)
-        act_open.triggered.connect(lambda: self.core.openFolder(path))
-        menu.addAction(act_open)
-
-        act_copy = QAction("Copy", self)
-        act_copy.triggered.connect(lambda: self.core.copyToClipboard(path, file=True))
-        menu.addAction(act_copy)
-
-        menu.exec_(QCursor.pos())
+        options = [
+            {
+                "label": "Open in Product Browser...",
+                "callback": lambda: self.openInProductBrowser(path)
+            },
+            {
+                "label": "Open in Explorer...",
+                "callback": lambda: self.core.openFolder(path)
+            },
+            {
+                "label": "Copy",
+                "callback": lambda: self.core.copyToClipboard(path, file=True)
+            },
+        ]
+        return options
 
     @err_catcher(name=__name__)
     def openInProductBrowser(self, path):
@@ -205,7 +205,7 @@ class SaveHDAClass(hou_Export.ExportClass):
 
         text = self.e_name.text()
         context = {}
-        context["product"] = self.l_taskName.text()
+        context["product"] = self.getProductname(expanded=True)
         context["node"] = nodeName
 
         num = 0
@@ -235,11 +235,6 @@ class SaveHDAClass(hou_Export.ExportClass):
             name += " - disabled"
 
         self.state.setText(0, name)
-
-    @err_catcher(name=__name__)
-    def getTaskname(self):
-        taskName = self.l_taskName.text()
-        return taskName
 
     @err_catcher(name=__name__)
     def getOutputType(self):
@@ -332,8 +327,8 @@ class SaveHDAClass(hou_Export.ExportClass):
     def preExecuteState(self):
         warnings = []
 
-        if self.l_taskName.text() == "":
-            warnings.append(["No taskname is given.", "", 3])
+        if not self.getProductname(expanded=True):
+            warnings.append(["No productname is given.", "", 3])
 
         if not self.isNodeValid():
             warnings.append(["Node is invalid.", "", 3])
@@ -347,7 +342,7 @@ class SaveHDAClass(hou_Export.ExportClass):
                         "The outputpath is longer than 255 characters (%s), which is not supported on Windows."
                         % outLength
                     )
-                    description = "Please shorten the outputpath by changing the comment, taskname or projectpath."
+                    description = "Please shorten the outputpath by changing the comment, productname or projectpath."
                     warnings.append([msg, description, 3])
 
         return [self.state.text(0), warnings]
@@ -382,7 +377,7 @@ class SaveHDAClass(hou_Export.ExportClass):
 
         result = self.core.appPlugin.getHDAOutputpath(
             node=self.node,
-            task=self.l_taskName.text(),
+            task=self.getProductname(),
             comment=comment,
             user=user,
             version=version,
@@ -415,7 +410,7 @@ class SaveHDAClass(hou_Export.ExportClass):
         del details["extension"]
         details["version"] = hVersion
         details["sourceScene"] = fileName
-        details["product"] = self.getTaskname()
+        details["product"] = self.getProductname()
         details["comment"] = self.stateManager.publishComment
 
         self.core.saveVersionInfo(
@@ -461,8 +456,8 @@ class SaveHDAClass(hou_Export.ExportClass):
             name = os.path.basename(entity["asset_path"])
         elif entity.get("type") == "shot":
             name = self.core.entities.getShotName(entity)
-        taskName = self.l_taskName.text()
-        typeName = "%s_%s" % (name, taskName)
+        productName = self.getProductname()
+        typeName = "%s_%s" % (name, productName)
 
         label = typeName
         createBlackBox = self.chb_blackboxHDA.isChecked()
@@ -475,9 +470,9 @@ class SaveHDAClass(hou_Export.ExportClass):
             convertNode = True
 
         if projectHDA:
-            typeName = taskName
+            typeName = productName
             outputPath = None
-            label = self.l_taskName.text()
+            label = self.getProductname()
             version = "increment"
 
         # hou.HDADefinition.copyToHDAFile converts "-" to "_"
@@ -515,7 +510,7 @@ class SaveHDAClass(hou_Export.ExportClass):
 
         stateProps = {
             "stateName": self.e_name.text(),
-            "taskname": self.l_taskName.text(),
+            "productname": self.getProductname(),
             "curoutputpath": self.cb_outPath.currentText(),
             "connectednode": curNode,
             "projecthda": self.chb_projectHDA.isChecked(),

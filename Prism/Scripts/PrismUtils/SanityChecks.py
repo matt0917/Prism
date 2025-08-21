@@ -202,7 +202,7 @@ class SanityChecks(object):
             return
 
         curRange = self.core.appPlugin.getFrameRange(self.core)
-        if int(curRange[0]) == int(shotRange[0]) and int(curRange[1]) == int(shotRange[1]):
+        if curRange[0] is None or curRange[1] is None or (int(curRange[0]) == int(shotRange[0]) and int(curRange[1]) == int(shotRange[1])):
             return
 
         handleRange = self.core.entities.getShotRange(fnameData, handles=True)

@@ -181,7 +181,8 @@ def executeAOVs(origin, outputName):
                 + ": error - could not set archive filename. Publish canceled"
             ]
 
-        os.makedirs(os.path.dirname(rsOutput))
+        if not os.path.exists(os.path.dirname(rsOutput)):
+            os.makedirs(os.path.dirname(rsOutput))
 
     else:
         renderRS = False

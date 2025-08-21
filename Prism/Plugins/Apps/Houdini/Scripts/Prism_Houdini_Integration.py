@@ -151,6 +151,7 @@ class Prism_Houdini_Integration(object):
             integrationBase = os.path.join(
                 os.path.dirname(os.path.dirname(__file__)), "Integration"
             )
+            integrationBase = os.path.realpath(integrationBase)
 
             packagePath = os.path.join(installPath, "packages", "Prism.json")
 

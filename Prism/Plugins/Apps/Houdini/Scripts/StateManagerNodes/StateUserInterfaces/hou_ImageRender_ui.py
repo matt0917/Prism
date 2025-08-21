@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'hou_ImageRender.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.4.2
+## Created by: Qt User Interface Compiler version 6.8.1
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -16,7 +16,7 @@ class Ui_wg_ImageRender(object):
     def setupUi(self, wg_ImageRender):
         if not wg_ImageRender.objectName():
             wg_ImageRender.setObjectName(u"wg_ImageRender")
-        wg_ImageRender.resize(340, 1399)
+        wg_ImageRender.resize(389, 1494)
         self.verticalLayout = QVBoxLayout(wg_ImageRender)
         self.verticalLayout.setObjectName(u"verticalLayout")
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
@@ -50,6 +50,42 @@ class Ui_wg_ImageRender(object):
         self.gb_imageRender.setObjectName(u"gb_imageRender")
         self.verticalLayout_2 = QVBoxLayout(self.gb_imageRender)
         self.verticalLayout_2.setObjectName(u"verticalLayout_2")
+        self.w_context = QWidget(self.gb_imageRender)
+        self.w_context.setObjectName(u"w_context")
+        self.horizontalLayout_19 = QHBoxLayout(self.w_context)
+        self.horizontalLayout_19.setObjectName(u"horizontalLayout_19")
+        self.horizontalLayout_19.setContentsMargins(9, 0, 9, 0)
+        self.label_9 = QLabel(self.w_context)
+        self.label_9.setObjectName(u"label_9")
+
+        self.horizontalLayout_19.addWidget(self.label_9)
+
+        self.horizontalSpacer_5 = QSpacerItem(37, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_19.addItem(self.horizontalSpacer_5)
+
+        self.l_context = QLabel(self.w_context)
+        self.l_context.setObjectName(u"l_context")
+
+        self.horizontalLayout_19.addWidget(self.l_context)
+
+        self.horizontalSpacer_8 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_19.addItem(self.horizontalSpacer_8)
+
+        self.b_context = QPushButton(self.w_context)
+        self.b_context.setObjectName(u"b_context")
+
+        self.horizontalLayout_19.addWidget(self.b_context)
+
+        self.cb_context = QComboBox(self.w_context)
+        self.cb_context.setObjectName(u"cb_context")
+
+        self.horizontalLayout_19.addWidget(self.cb_context)
+
+
+        self.verticalLayout_2.addWidget(self.w_context)
+
         self.widget_10 = QWidget(self.gb_imageRender)
         self.widget_10.setObjectName(u"widget_10")
         self.horizontalLayout_10 = QHBoxLayout(self.widget_10)
@@ -62,19 +98,19 @@ class Ui_wg_ImageRender(object):
 
         self.l_taskName = QLabel(self.widget_10)
         self.l_taskName.setObjectName(u"l_taskName")
-        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.l_taskName.sizePolicy().hasHeightForWidth())
         self.l_taskName.setSizePolicy(sizePolicy)
-        self.l_taskName.setAlignment(Qt.AlignCenter)
+        self.l_taskName.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.horizontalLayout_10.addWidget(self.l_taskName)
 
         self.b_changeTask = QPushButton(self.widget_10)
         self.b_changeTask.setObjectName(u"b_changeTask")
         self.b_changeTask.setEnabled(True)
-        self.b_changeTask.setFocusPolicy(Qt.NoFocus)
+        self.b_changeTask.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout_10.addWidget(self.b_changeTask)
 
@@ -92,7 +128,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout.addWidget(self.label_3)
 
-        self.horizontalSpacer_2 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_2 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout.addItem(self.horizontalSpacer_2)
 
@@ -113,7 +149,7 @@ class Ui_wg_ImageRender(object):
         self.l_rangeEnd = QLabel(self.w_frameRangeValues)
         self.l_rangeEnd.setObjectName(u"l_rangeEnd")
         self.l_rangeEnd.setMinimumSize(QSize(30, 0))
-        self.l_rangeEnd.setAlignment(Qt.AlignRight|Qt.AlignTrailing|Qt.AlignVCenter)
+        self.l_rangeEnd.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
         self.gridLayout.addWidget(self.l_rangeEnd, 1, 5, 1, 1)
 
@@ -134,7 +170,7 @@ class Ui_wg_ImageRender(object):
         self.l_rangeStart = QLabel(self.w_frameRangeValues)
         self.l_rangeStart.setObjectName(u"l_rangeStart")
         self.l_rangeStart.setMinimumSize(QSize(30, 0))
-        self.l_rangeStart.setAlignment(Qt.AlignRight|Qt.AlignTrailing|Qt.AlignVCenter)
+        self.l_rangeStart.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
         self.gridLayout.addWidget(self.l_rangeStart, 0, 5, 1, 1)
 
@@ -143,7 +179,7 @@ class Ui_wg_ImageRender(object):
 
         self.gridLayout.addWidget(self.l_rangeStartInfo, 0, 0, 1, 1)
 
-        self.horizontalSpacer_7 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_7 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.gridLayout.addItem(self.horizontalSpacer_7, 0, 4, 1, 1)
 
@@ -166,7 +202,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_17.addWidget(self.l_frameExpression)
 
-        self.horizontalSpacer_23 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_23 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_17.addItem(self.horizontalSpacer_23)
 
@@ -179,27 +215,27 @@ class Ui_wg_ImageRender(object):
 
         self.verticalLayout_2.addWidget(self.w_frameExpression)
 
-        self.widget = QWidget(self.gb_imageRender)
-        self.widget.setObjectName(u"widget")
-        self.horizontalLayout_2 = QHBoxLayout(self.widget)
+        self.w_camera = QWidget(self.gb_imageRender)
+        self.w_camera.setObjectName(u"w_camera")
+        self.horizontalLayout_2 = QHBoxLayout(self.w_camera)
         self.horizontalLayout_2.setSpacing(6)
         self.horizontalLayout_2.setObjectName(u"horizontalLayout_2")
         self.horizontalLayout_2.setContentsMargins(9, 0, 9, 0)
-        self.label = QLabel(self.widget)
+        self.label = QLabel(self.w_camera)
         self.label.setObjectName(u"label")
 
         self.horizontalLayout_2.addWidget(self.label)
 
-        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_2.addItem(self.horizontalSpacer)
 
-        self.chb_camOverride = QCheckBox(self.widget)
+        self.chb_camOverride = QCheckBox(self.w_camera)
         self.chb_camOverride.setObjectName(u"chb_camOverride")
 
         self.horizontalLayout_2.addWidget(self.chb_camOverride)
 
-        self.cb_cams = QComboBox(self.widget)
+        self.cb_cams = QComboBox(self.w_camera)
         self.cb_cams.setObjectName(u"cb_cams")
         self.cb_cams.setEnabled(False)
         self.cb_cams.setMinimumSize(QSize(150, 0))
@@ -207,29 +243,29 @@ class Ui_wg_ImageRender(object):
         self.horizontalLayout_2.addWidget(self.cb_cams)
 
 
-        self.verticalLayout_2.addWidget(self.widget)
+        self.verticalLayout_2.addWidget(self.w_camera)
 
-        self.f_resolution = QWidget(self.gb_imageRender)
-        self.f_resolution.setObjectName(u"f_resolution")
-        self.horizontalLayout_9 = QHBoxLayout(self.f_resolution)
+        self.w_resolution = QWidget(self.gb_imageRender)
+        self.w_resolution.setObjectName(u"w_resolution")
+        self.horizontalLayout_9 = QHBoxLayout(self.w_resolution)
         self.horizontalLayout_9.setSpacing(6)
         self.horizontalLayout_9.setObjectName(u"horizontalLayout_9")
         self.horizontalLayout_9.setContentsMargins(9, 0, 9, 0)
-        self.label_6 = QLabel(self.f_resolution)
+        self.label_6 = QLabel(self.w_resolution)
         self.label_6.setObjectName(u"label_6")
 
         self.horizontalLayout_9.addWidget(self.label_6)
 
-        self.horizontalSpacer_13 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_13 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_9.addItem(self.horizontalSpacer_13)
 
-        self.chb_resOverride = QCheckBox(self.f_resolution)
+        self.chb_resOverride = QCheckBox(self.w_resolution)
         self.chb_resOverride.setObjectName(u"chb_resOverride")
 
         self.horizontalLayout_9.addWidget(self.chb_resOverride)
 
-        self.sp_resWidth = QSpinBox(self.f_resolution)
+        self.sp_resWidth = QSpinBox(self.w_resolution)
         self.sp_resWidth.setObjectName(u"sp_resWidth")
         self.sp_resWidth.setEnabled(False)
         self.sp_resWidth.setMinimum(1)
@@ -238,7 +274,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_9.addWidget(self.sp_resWidth)
 
-        self.sp_resHeight = QSpinBox(self.f_resolution)
+        self.sp_resHeight = QSpinBox(self.w_resolution)
         self.sp_resHeight.setObjectName(u"sp_resHeight")
         self.sp_resHeight.setEnabled(False)
         self.sp_resHeight.setMinimum(1)
@@ -247,7 +283,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_9.addWidget(self.sp_resHeight)
 
-        self.b_resPresets = QPushButton(self.f_resolution)
+        self.b_resPresets = QPushButton(self.w_resolution)
         self.b_resPresets.setObjectName(u"b_resPresets")
         self.b_resPresets.setEnabled(False)
         self.b_resPresets.setMinimumSize(QSize(23, 23))
@@ -256,7 +292,7 @@ class Ui_wg_ImageRender(object):
         self.horizontalLayout_9.addWidget(self.b_resPresets)
 
 
-        self.verticalLayout_2.addWidget(self.f_resolution)
+        self.verticalLayout_2.addWidget(self.w_resolution)
 
         self.widget_7 = QWidget(self.gb_imageRender)
         self.widget_7.setObjectName(u"widget_7")
@@ -268,7 +304,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_11.addWidget(self.label_7)
 
-        self.horizontalSpacer_4 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_4 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_11.addItem(self.horizontalSpacer_4)
 
@@ -297,7 +333,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_12.addWidget(self.l_renderPreset)
 
-        self.horizontalSpacer_6 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_6 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_12.addItem(self.horizontalSpacer_6)
 
@@ -327,7 +363,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_20.addWidget(self.l_master)
 
-        self.horizontalSpacer_29 = QSpacerItem(113, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_29 = QSpacerItem(113, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_20.addItem(self.horizontalSpacer_29)
 
@@ -351,7 +387,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_18.addWidget(self.l_outPath)
 
-        self.horizontalSpacer_9 = QSpacerItem(113, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_9 = QSpacerItem(113, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_18.addItem(self.horizontalSpacer_9)
 
@@ -375,7 +411,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_13.addWidget(self.label_8)
 
-        self.horizontalSpacer_14 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_14 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_13.addItem(self.horizontalSpacer_14)
 
@@ -404,7 +440,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_3.addWidget(self.label_4)
 
-        self.horizontalSpacer_3 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_3 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_3.addItem(self.horizontalSpacer_3)
 
@@ -431,13 +467,13 @@ class Ui_wg_ImageRender(object):
 
         self.l_status = QLabel(self.f_status)
         self.l_status.setObjectName(u"l_status")
-        self.l_status.setAlignment(Qt.AlignCenter)
+        self.l_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.horizontalLayout_5.addWidget(self.l_status)
 
         self.b_goTo = QPushButton(self.f_status)
         self.b_goTo.setObjectName(u"b_goTo")
-        self.b_goTo.setFocusPolicy(Qt.NoFocus)
+        self.b_goTo.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout_5.addWidget(self.b_goTo)
 
@@ -451,7 +487,7 @@ class Ui_wg_ImageRender(object):
         self.horizontalLayout_6.setContentsMargins(-1, 0, -1, 0)
         self.b_connect = QPushButton(self.f_connect)
         self.b_connect.setObjectName(u"b_connect")
-        self.b_connect.setFocusPolicy(Qt.NoFocus)
+        self.b_connect.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout_6.addWidget(self.b_connect)
 
@@ -478,7 +514,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_8.addWidget(self.l_manager)
 
-        self.horizontalSpacer_19 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_19 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_8.addItem(self.horizontalSpacer_19)
 
@@ -501,7 +537,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_21.addWidget(self.l_rjPrio)
 
-        self.horizontalSpacer_15 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_15 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_21.addItem(self.horizontalSpacer_15)
 
@@ -525,12 +561,13 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_22.addWidget(self.label_15)
 
-        self.horizontalSpacer_16 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_16 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_22.addItem(self.horizontalSpacer_16)
 
         self.sp_rjFramesPerTask = QSpinBox(self.f_rjWidgetsPerTask)
         self.sp_rjFramesPerTask.setObjectName(u"sp_rjFramesPerTask")
+        self.sp_rjFramesPerTask.setMinimum(1)
         self.sp_rjFramesPerTask.setMaximum(9999)
         self.sp_rjFramesPerTask.setValue(5)
 
@@ -549,7 +586,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_28.addWidget(self.l_rjTimeout)
 
-        self.horizontalSpacer_22 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_22 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_28.addItem(self.horizontalSpacer_22)
 
@@ -574,7 +611,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_26.addWidget(self.label_18)
 
-        self.horizontalSpacer_20 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_20 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_26.addItem(self.horizontalSpacer_20)
 
@@ -597,7 +634,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_35.addWidget(self.label_22)
 
-        self.horizontalSpacer_30 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_30 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_35.addItem(self.horizontalSpacer_30)
 
@@ -620,7 +657,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_32.addWidget(self.label_20)
 
-        self.horizontalSpacer_27 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_27 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_32.addItem(self.horizontalSpacer_27)
 
@@ -643,7 +680,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_33.addWidget(self.label_21)
 
-        self.horizontalSpacer_28 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_28 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_33.addItem(self.horizontalSpacer_28)
 
@@ -666,7 +703,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_36.addWidget(self.label_23)
 
-        self.horizontalSpacer_31 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_31 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_36.addItem(self.horizontalSpacer_31)
 
@@ -689,7 +726,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_38.addWidget(self.label_24)
 
-        self.horizontalSpacer_33 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_33 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_38.addItem(self.horizontalSpacer_33)
 
@@ -712,7 +749,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_39.addWidget(self.label_25)
 
-        self.horizontalSpacer_34 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_34 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_39.addItem(self.horizontalSpacer_34)
 
@@ -734,7 +771,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_27.addWidget(self.label_19)
 
-        self.horizontalSpacer_21 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_21 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_27.addItem(self.horizontalSpacer_21)
 
@@ -757,7 +794,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_23.addWidget(self.label_16)
 
-        self.horizontalSpacer_17 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_17 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_23.addItem(self.horizontalSpacer_17)
 
@@ -780,7 +817,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_24.addWidget(self.label_17)
 
-        self.horizontalSpacer_18 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_18 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_24.addItem(self.horizontalSpacer_18)
 
@@ -806,7 +843,7 @@ class Ui_wg_ImageRender(object):
         self.b_osSlaves = QPushButton(self.gb_osSlaves)
         self.b_osSlaves.setObjectName(u"b_osSlaves")
         self.b_osSlaves.setMaximumSize(QSize(25, 16777215))
-        self.b_osSlaves.setFocusPolicy(Qt.NoFocus)
+        self.b_osSlaves.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout_25.addWidget(self.b_osSlaves)
 
@@ -823,7 +860,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_29.addWidget(self.l_dlConcurrentTasks)
 
-        self.horizontalSpacer_24 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_24 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_29.addItem(self.horizontalSpacer_24)
 
@@ -848,7 +885,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_30.addWidget(self.l_dlGPUpt)
 
-        self.horizontalSpacer_25 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_25 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_30.addItem(self.horizontalSpacer_25)
 
@@ -873,7 +910,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_31.addWidget(self.l_dlGPUdevices)
 
-        self.horizontalSpacer_26 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_26 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_31.addItem(self.horizontalSpacer_26)
 
@@ -903,7 +940,7 @@ class Ui_wg_ImageRender(object):
 
         self.horizontalLayout_37.addWidget(self.l_separateAovs)
 
-        self.horizontalSpacer_32 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_32 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_37.addItem(self.horizontalSpacer_32)
 
@@ -929,8 +966,8 @@ class Ui_wg_ImageRender(object):
         self.tw_passes.setHorizontalHeaderItem(1, __qtablewidgetitem1)
         self.tw_passes.setObjectName(u"tw_passes")
         self.tw_passes.setMinimumSize(QSize(0, 200))
-        self.tw_passes.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.tw_passes.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tw_passes.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tw_passes.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tw_passes.horizontalHeader().setVisible(True)
         self.tw_passes.horizontalHeader().setHighlightSections(False)
         self.tw_passes.horizontalHeader().setStretchLastSection(True)
@@ -948,7 +985,7 @@ class Ui_wg_ImageRender(object):
         self.horizontalLayout_15.setContentsMargins(-1, 0, -1, 0)
         self.b_addPasses = QPushButton(self.widget_15)
         self.b_addPasses.setObjectName(u"b_addPasses")
-        self.b_addPasses.setFocusPolicy(Qt.NoFocus)
+        self.b_addPasses.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout_15.addWidget(self.b_addPasses)
 
@@ -969,7 +1006,7 @@ class Ui_wg_ImageRender(object):
         self.scrollArea.setWidgetResizable(True)
         self.scrollAreaWidgetContents = QWidget()
         self.scrollAreaWidgetContents.setObjectName(u"scrollAreaWidgetContents")
-        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 289, 69))
+        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 338, 54))
         self.horizontalLayout_16 = QHBoxLayout(self.scrollAreaWidgetContents)
         self.horizontalLayout_16.setObjectName(u"horizontalLayout_16")
         self.l_pathLast = QLabel(self.scrollAreaWidgetContents)
@@ -984,7 +1021,7 @@ class Ui_wg_ImageRender(object):
         self.b_pathLast = QToolButton(self.groupBox_3)
         self.b_pathLast.setObjectName(u"b_pathLast")
         self.b_pathLast.setEnabled(True)
-        self.b_pathLast.setArrowType(Qt.DownArrow)
+        self.b_pathLast.setArrowType(Qt.ArrowType.DownArrow)
 
         self.horizontalLayout_34.addWidget(self.b_pathLast)
 
@@ -1038,6 +1075,9 @@ class Ui_wg_ImageRender(object):
         self.l_name.setText(QCoreApplication.translate("wg_ImageRender", u"Name:", None))
         self.l_class.setText(QCoreApplication.translate("wg_ImageRender", u"ImageRender", None))
         self.gb_imageRender.setTitle(QCoreApplication.translate("wg_ImageRender", u"General", None))
+        self.label_9.setText(QCoreApplication.translate("wg_ImageRender", u"Context:", None))
+        self.l_context.setText("")
+        self.b_context.setText(QCoreApplication.translate("wg_ImageRender", u"Select", None))
         self.label_2.setText(QCoreApplication.translate("wg_ImageRender", u"Identifier:", None))
         self.l_taskName.setText("")
         self.b_changeTask.setText(QCoreApplication.translate("wg_ImageRender", u"change", None))

@@ -39,11 +39,8 @@ import shutil
 import logging
 import traceback
 import re
-
-if sys.version[0] == "3":
-    pVersion = 3
-else:
-    pVersion = 2
+import time
+import uuid
 
 prismRoot = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
@@ -82,25 +79,23 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
 
         self.filteredAssets = []
         self.scenefileData = []
+        self.scenefileQueue = []
         self.sceneItemWidgets = []
         self.depIcons = {}
         self.initialized = False
+        self.lastProcess = -1
+        self.processEventsOnShow = True
 
         self.shotPrvXres = 250
         self.shotPrvYres = 141
 
-        self.tabLabels = {
-            "Assets": "Assets",
-            "Shots": "Shots",
-            "Recent": "Recent",
-        }
         self.tableColumnLabels = {
-            "Version": "Version",
-            "Comment": "Comment",
-            "Date": "Date",
-            "User": "User",
-            "Name": "Name",
-            "Department": "Department",
+            "Version": self.core.tr("Version"),
+            "Comment": self.core.tr("Comment"),
+            "Date": self.core.tr("Date"),
+            "User": self.core.tr("User"),
+            "Name": self.core.tr("Name"),
+            "Department": self.core.tr("Department"),
         }
 
         self.publicColor = QColor(150, 200, 220)
@@ -137,8 +132,12 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
             self.w_entities.blockSignals(False)
             if navData:
                 result = self.navigate(navData)
-                if not result:
+                curEntity = self.getCurrentEntity()
+                validEntity = curEntity and (curEntity.get("type") == "asset" and curEntity.get("asset_path")) or (curEntity.get("type") == "shot" and curEntity.get("shot"))
+                if not result or not validEntity:
                     self.entityChanged()
+            else:
+                self.entityChanged()
 
             self.initialized = True
 
@@ -163,13 +162,14 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         self.w_scenefileItems.setLayout(self.lo_scenefileItems)
         self.sa_scenefileItems.setWidget(self.w_scenefileItems)
         self.sa_scenefileItems.setWidgetResizable(True)
+        self.sa_scenefileItems.verticalScrollBar().valueChanged.connect(self.onScrolled)
         # self.sa_scenefileItems.setStyleSheet("QScrollArea { border: 0px}")
 
         cData = self.core.getConfig()
         brsData = cData.get("browser", {})
         self.refreshAppFilters(browserData=brsData)
         self.b_scenefilter.setToolTip(
-            "Filter scenefiles (hold CTRL to toggle multiple types)"
+            self.core.tr("Filter scenefiles (hold CTRL to toggle multiple types)")
         )
 
         sceneSort = brsData.get("scenefileSorting", [1, 1])
@@ -221,7 +221,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         self.w_scenefileItems.dragMoveEvent = self.sceneDragMoveEvent
         self.w_scenefileItems.dragLeaveEvent = self.sceneDragLeaveEvent
         self.w_scenefileItems.dropEvent = self.sceneDropEvent
-
+        self.initScenesLoadingWidget()
         self.setStyleSheet(
             'QSplitter::handle{background-image: "";background-color: transparent}'
         )
@@ -244,6 +244,18 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         )
         icon = self.core.media.getColoredIcon(iconPath)
         self.b_sceneLayoutItems.setIcon(icon)
+
+        path = os.path.join(self.core.prismRoot, "Scripts", "UserInterfacesPrism", "user.png")
+        icon = self.core.media.getColoredIcon(path)
+        self.pmapUser = icon.pixmap(15, 15)
+
+        path = os.path.join(self.core.prismRoot, "Scripts", "UserInterfacesPrism", "date.png")
+        icon = self.core.media.getColoredIcon(path)
+        self.pmapDate = icon.pixmap(15, 15)
+
+        if self.core.useTranslation:
+            self.l_departments.setText(self.core.tr("Departments:"))
+            self.l_tasks.setText(self.core.tr("Tasks:"))
 
         if hasattr(QApplication.instance(), "styleSheet"):
             ssheet = QApplication.instance().styleSheet()
@@ -291,9 +303,16 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         self.w_entities.w_header.setMinimumHeight(h + spacing)
         self.w_scenefileHeader.setMinimumHeight(h)
         self.w_scenefileHeader.setMaximumHeight(h)
-        if self.core.pb:
-            self.core.pb.productBrowser.setHeaderHeight(h)
-            self.core.pb.mediaBrowser.setHeaderHeight(h)
+        if self.core.pb and self.core.pb == self.projectBrowser:
+            if hasattr(self.core.pb, "productBrowser"):
+                self.core.pb.productBrowser.setHeaderHeight(h)
+
+            if hasattr(self.core.pb, "mediaBrowser"):
+                self.core.pb.mediaBrowser.setHeaderHeight(h)
+
+        refreshId = uuid.uuid4().hex
+        self.prevRefreshId = refreshId
+        self.validateVisibleScenefileItems(processEvents=self.processEventsOnShow)
 
     @err_catcher(name=__name__)
     def connectEvents(self):
@@ -422,22 +441,25 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         self.lw_departments.blockSignals(True)
         if data.get("type") in ["asset", "assetFolder"]:
             self.w_entities.navigate(data)
-        elif data.get("type") in ["shot", "sequence"]:
+        elif data.get("type") in ["shot", "sequence", "episode"]:
             shotName = data.get("shot", "")
             seqName = data.get("sequence", "")
 
-            self.w_entities.navigate(
-                {"type": "shot", "sequence": seqName, "shot": shotName}
-            )
+            entity = {"type": "shot", "sequence": seqName, "shot": shotName}
+            if "episode" in data:
+                entity["episode"] = data["episode"]
 
-        if "department" not in data:
+            self.w_entities.navigate(entity)
+
+        if not data.get("department"):
             self.lw_departments.blockSignals(False)
             if prevDep != self.getCurrentDepartment() or prevEntity != self.getCurrentEntity():
                 self.departmentChanged()
 
-            return
+            return True
 
-        fItems = self.lw_departments.findItems(data["department"], Qt.MatchExactly)
+        longDep = self.core.entities.getLongDepartmentName(data.get("type"), data["department"]) or data["department"]
+        fItems = self.lw_departments.findItems(longDep, Qt.MatchExactly)
         if not fItems:
             self.lw_departments.blockSignals(False)
             if prevDep != self.getCurrentDepartment() or prevEntity != self.getCurrentEntity():
@@ -452,12 +474,12 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         if prevDep != self.getCurrentDepartment() or prevEntity != self.getCurrentEntity():
             self.departmentChanged()
 
-        if "task" not in data:
+        if not data.get("task"):
             self.lw_tasks.blockSignals(False)
             if prevTask != self.getCurrentTask():
                 self.taskChanged()
 
-            return
+            return True
 
         fItems = self.lw_tasks.findItems(data["task"], Qt.MatchExactly)
         if not fItems:
@@ -472,7 +494,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         if prevTask != self.getCurrentTask():
             self.taskChanged()
 
-        if os.path.isabs(data.get("filename", "")):
+        if os.path.isabs(data.get("filename") or ""):
             curFname = data["filename"]
             self.selectScenefile(curFname)
 
@@ -489,6 +511,9 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
                     self.sa_scenefileItems.ensureWidgetVisible(widget)
                     break
         else:
+            if not self.tw_scenefiles.model():
+                return
+
             for idx in range(self.tw_scenefiles.model().rowCount()):
                 cmpFname = (
                     self.tw_scenefiles.model().index(idx, 0).data(Qt.UserRole)
@@ -525,7 +550,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
     @err_catcher(name=__name__)
     def mousedb(self, event, widget):
         entity = self.getCurrentEntity()
-        if not entity:
+        if not entity or (entity.get("type") == "asset" and not entity.get("asset_path")) or (entity.get("type") == "shot" and not entity.get("shot")):
             return
 
         widgetType = "department" if widget == self.lw_departments else "task"
@@ -645,7 +670,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
                     GridL.addWidget(uname, rc, 1, Qt.AlignLeft)
                     rc += 1
                 if "description" in sceneInfo and sceneInfo["description"] != "":
-                    descriptionL = QLabel("Description:\t")
+                    descriptionL = QLabel(self.core.tr("Description:") + "\t")
                     description = QLabel(sceneInfo["description"])
                     GridL.addWidget(descriptionL, rc, 0, Qt.AlignLeft | Qt.AlignTop)
                     GridL.addWidget(description, rc, 1, Qt.AlignLeft)
@@ -659,7 +684,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
 
                 sizeStr = "%.2f mb" % size
 
-                sizeL = QLabel("Size:\t")
+                sizeL = QLabel(self.core.tr("Size") + ":\t")
                 size = QLabel(sizeStr)
                 GridL.addWidget(sizeL, rc, 0, Qt.AlignLeft | Qt.AlignTop)
                 GridL.addWidget(size, rc, 1, Qt.AlignLeft)
@@ -701,7 +726,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
 
         self.sw_scenefiles.setCurrentIndex(1)
         if refresh:
-            self.refreshScenefiles(reloadFiles=False)
+            self.refreshScenefilesThreaded(reloadFiles=False)
 
     @err_catcher(name=__name__)
     def sceneLayoutListToggled(self, state, refresh=True):
@@ -716,7 +741,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
 
         self.sw_scenefiles.setCurrentIndex(0)
         if refresh:
-            self.refreshScenefiles(reloadFiles=False)
+            self.refreshScenefilesThreaded(reloadFiles=False)
 
     @err_catcher(name=__name__)
     def showSceneFilterMenu(self, state=None):
@@ -784,7 +809,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         self.refreshAppFilterIndicator()
 
         if refresh:
-            self.refreshScenefiles()
+            self.refreshScenefilesThreaded()
 
     @err_catcher(name=__name__)
     def refreshAppFilterIndicator(self):
@@ -812,6 +837,9 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         widgetType = "department" if widget == self.lw_departments else "task"
 
         if entity["type"] == "asset" and widgetType == "department":
+            if not entity.get("asset_path"):
+                return False
+
             path = self.core.getEntityPath(reqEntity="step", entity=entity)
             typename = "Department"
             callbackName = "openPBAssetDepartmentContextMenu"
@@ -828,7 +856,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
             refresh = self.refreshTasks
 
         elif entity["type"] in ["shot", "sequence"] and widgetType == "department":
-            if not entity["shot"]:
+            if not entity.get("shot"):
                 return False
 
             path = self.core.getEntityPath(reqEntity="step", entity=entity)
@@ -851,7 +879,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         else:
             label = "Create %s..." % typename
 
-        createAct = QAction(label, self)
+        createAct = QAction(self.core.tr(label), self)
         if widgetType == "department":
             createAct.triggered.connect(self.createDepartmentDlg)
         else:
@@ -864,7 +892,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
             iname = (widget.indexAt(pos)).data()
 
         if refresh:
-            act_refresh = QAction("Refresh", self)
+            act_refresh = QAction(self.core.tr("Refresh"), self)
             act_refresh.triggered.connect(lambda: refresh(restoreSelection=True))
             rcmenu.addAction(act_refresh)
 
@@ -882,10 +910,10 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
             ):
                 dirPath = self.core.convertPath(dirPath, "local")
 
-            openex = QAction("Open in explorer", self)
+            openex = QAction(self.core.tr("Open in explorer"), self)
             openex.triggered.connect(lambda: self.core.openFolder(dirPath))
             rcmenu.addAction(openex)
-            copAct = QAction("Copy", self)
+            copAct = QAction(self.core.tr("Copy"), self)
             copAct.triggered.connect(lambda: self.core.copyToClipboard(dirPath, file=True))
             rcmenu.addAction(copAct)
             for i in prjMngMenus:
@@ -893,10 +921,10 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
                     rcmenu.addAction(i)
         elif "path" in locals():
             widget.setCurrentItem(None)
-            openex = QAction("Open in explorer", self)
+            openex = QAction(self.core.tr("Open in explorer"), self)
             openex.triggered.connect(lambda: self.core.openFolder(path))
             rcmenu.addAction(openex)
-            copAct = QAction("Copy", self)
+            copAct = QAction(self.core.tr("Copy"), self)
             copAct.triggered.connect(lambda: self.core.copyToClipboard(path, file=True))
             rcmenu.addAction(copAct)
 
@@ -955,12 +983,13 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
                 filepath = self.core.convertPath(filepath, "local")
 
         rcmenu = QMenu(self)
-        current = QAction("Create new version from current", self)
+        current = QAction(self.core.tr("Create new version from current"), self)
         current.triggered.connect(lambda: self.createFromCurrent())
         if self.core.appPlugin.pluginName == "Standalone":
             current.setEnabled(False)
+
         rcmenu.addAction(current)
-        emp = QMenu("Create new version from preset", self)
+        emp = QMenu(self.core.tr("Create new version from preset"), self)
         scenes = self.core.entities.getPresetScenes()
         dirMenus = {}
         for scene in sorted(scenes, key=lambda x: os.path.basename(x["label"]).lower()):
@@ -980,14 +1009,14 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
                         dirMenus[curPath] = QMenu(folder, self)
                         curMenu.addMenu(dirMenus[curPath])
 
-        newPreset = QAction("< Create new preset from current >", self)
+        newPreset = QAction(self.core.tr("< Create new preset from current >"), self)
         newPreset.triggered.connect(self.core.entities.createPresetScene)
         emp.addAction(newPreset)
         if self.core.appPlugin.pluginName == "Standalone":
             newPreset.setEnabled(False)
 
         rcmenu.addMenu(emp)
-        autob = QMenu("Create new version from autobackup", self)
+        autob = QMenu(self.core.tr("Create new version from autobackup"), self)
         for pluginName in self.core.getPluginNames():
             if self.core.getPluginData(pluginName, "appType") == "standalone":
                 continue
@@ -1002,7 +1031,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         rcmenu.addMenu(autob)
 
         if isScenefile:
-            globalAct = QAction("Copy to global", self)
+            globalAct = QAction(self.core.tr("Copy to global"), self)
             if self.core.useLocalFiles and filepath.startswith(
                 self.core.localProjectPath
             ):
@@ -1011,7 +1040,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
                 globalAct.setEnabled(False)
             rcmenu.addAction(globalAct)
 
-            actDeps = QAction("Show dependencies...", self)
+            actDeps = QAction(self.core.tr("Show dependencies..."), self)
             infoPath = (
                 os.path.splitext(filepath)[0]
                 + "versioninfo"
@@ -1025,16 +1054,16 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
                 actDeps.setEnabled(False)
             rcmenu.addAction(actDeps)
 
-            actCom = QAction("Edit Comment...", self)
+            actCom = QAction(self.core.tr("Edit Comment..."), self)
             actCom.triggered.connect(lambda: self.editComment(filepath))
             rcmenu.addAction(actCom)
 
-            actCom = QAction("Edit Description...", self)
+            actCom = QAction(self.core.tr("Edit Description..."), self)
             actCom.triggered.connect(lambda: self.editDescription(filepath))
             rcmenu.addAction(actCom)
 
-        act_refresh = QAction("Refresh", self)
-        act_refresh.triggered.connect(lambda: self.refreshScenefiles(restoreSelection=True))
+        act_refresh = QAction(self.core.tr("Refresh"), self)
+        act_refresh.triggered.connect(lambda: self.refreshScenefilesThreaded(restoreSelection=True))
         rcmenu.addAction(act_refresh)
 
         if self.core.useLocalFiles:
@@ -1043,37 +1072,37 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
                 fpath = self.core.convertPath(filepath, location.lower())
                 m_loc = QMenu(location, self)
 
-                openex = QAction("Open in Explorer", self)
+                openex = QAction(self.core.tr("Open in Explorer"), self)
                 openex.triggered.connect(lambda x=None, f=fpath: self.core.openFolder(f))
                 m_loc.addAction(openex)
 
-                copAct = QAction("Copy", self)
+                copAct = QAction(self.core.tr("Copy"), self)
                 copAct.triggered.connect(lambda x=None, f=fpath: self.core.copyToClipboard(f, file=True))
                 m_loc.addAction(copAct)
 
-                copAct = QAction("Copy path for next version", self)
+                copAct = QAction(self.core.tr("Copy path for next version"), self)
                 copAct.triggered.connect(lambda x=None, l=location: self.prepareNewVersion(location=l.lower()))
                 m_loc.addAction(copAct)
 
-                past = QAction("Paste new version", self)
+                past = QAction(self.core.tr("Paste new version"), self)
                 past.triggered.connect(lambda x=None, l=location: self.pastefile(location=l.lower()))
                 m_loc.addAction(past)
 
                 rcmenu.addMenu(m_loc)
         else:
-            openex = QAction("Open in Explorer", self)
+            openex = QAction(self.core.tr("Open in Explorer"), self)
             openex.triggered.connect(lambda: self.core.openFolder(filepath))
             rcmenu.addAction(openex)
 
-            copAct = QAction("Copy", self)
+            copAct = QAction(self.core.tr("Copy"), self)
             copAct.triggered.connect(lambda: self.core.copyToClipboard(filepath, file=True))
             rcmenu.addAction(copAct)
 
-            copAct = QAction("Copy path for next version", self)
+            copAct = QAction(self.core.tr("Copy path for next version"), self)
             copAct.triggered.connect(self.prepareNewVersion)
             rcmenu.addAction(copAct)
 
-            past = QAction("Paste new version", self)
+            past = QAction(self.core.tr("Paste new version"), self)
             past.triggered.connect(self.pastefile)
             rcmenu.addAction(past)
 
@@ -1123,13 +1152,13 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
                 age = datetime.datetime.now() - modTime
                 if age < datetime.timedelta(minutes=11):
                     lfData = self.core.configs.readJson(path=lf.lockPath, ignoreErrors=True) or {}
-                    if lfData.get("username2"):
+                    if lfData.get("username"):
                         if lfData.get("username") == self.core.username:
                             showPopup = False
                         else:
-                            msg = "This scenefile is currently being used by \"%s\"." % lfData.get("username")
+                            msg = self.core.tr("This scenefile is currently being used by") + " \"%s\"." % lfData.get("username")
                     else:
-                        msg = "This scenefile is currently being used."
+                        msg = self.core.tr("This scenefile is currently being used.")
 
                     if showPopup:
                         result = self.core.popupQuestion(msg, buttons=["Continue", "Cancel"], icon=QMessageBox.Warning)
@@ -1148,7 +1177,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
                     try:
                         os.makedirs(os.path.dirname(lfilepath))
                     except:
-                        self.core.popup("The directory could not be created")
+                        self.core.popup(self.core.tr("The directory could not be created"))
                         return
 
                 self.core.copySceneFile(filepath, lfilepath)
@@ -1166,9 +1195,10 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         if wasSmOpen:
             self.core.stateManager()
 
-        navData = self.getSelectedContext()
-        self.refreshScenefiles()
-        self.navigate(data=navData)
+        if self.core.useLocalFiles:
+            navData = self.getSelectedContext()
+            self.refreshScenefilesThreaded(wait=True)
+            self.navigate(data=navData)
 
         if (
             self.core.getCurrentFileName().replace("\\", "/") == filepath
@@ -1185,7 +1215,6 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
             entity=entity, department=curDep, task=curTask
         )
         self.core.addToRecent(filepath)
-        self.refreshScenefiles()
 
     @err_catcher(name=__name__)
     def autoback(self, prog):
@@ -1202,7 +1231,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
             self.exeFile(filepath=filepath)
         else:
             self.core.addToRecent(filepath)
-            self.refreshScenefiles()
+            self.refreshScenefilesThreaded()
 
     @err_catcher(name=__name__)
     def createSceneFromPreset(
@@ -1244,7 +1273,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
                 )
             else:
                 self.core.addToRecent(filePath)
-                self.refreshScenefiles()
+                self.refreshScenefilesThreaded()
 
         return filePath
 
@@ -1252,7 +1281,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
     def pastefile(self, location=None):
         copiedFile = self.core.getClipboard()
         if not copiedFile or not os.path.isfile(copiedFile):
-            msg = "No valid filepath in clipboard."
+            msg = self.core.tr("No valid filepath in clipboard.")
             self.core.popup(msg)
             return
 
@@ -1269,7 +1298,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         else:
             self.core.addToRecent(dstname)
 
-        self.refreshScenefiles()
+        self.refreshScenefilesThreaded()
 
     @err_catcher(name=__name__)
     def createSteps(self, entities, steps, createTask=True):
@@ -1368,7 +1397,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         curEntities = self.getCurrentEntities()
         curDep = self.getCurrentDepartment()
         if len(curEntities) != 1 or not curDep:
-            self.refreshScenefiles()
+            self.refreshScenefilesThreaded()
             if not wasBlocked:
                 self.lw_tasks.blockSignals(False)
 
@@ -1398,7 +1427,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
 
         if not wasBlocked:
             self.lw_tasks.blockSignals(False)
-            self.refreshScenefiles(restoreSelection=True)
+            self.refreshScenefilesThreaded(restoreSelection=True)
 
     @err_catcher(name=__name__)
     def getCurrentEntity(self):
@@ -1414,6 +1443,9 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         if not item:
             return
 
+        if not item.isSelected():
+            item.setSelected(True)
+
         return item.data(Qt.UserRole)
 
     @err_catcher(name=__name__)
@@ -1421,6 +1453,9 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         item = self.lw_tasks.currentItem()
         if not item:
             return
+
+        if not item.isSelected():
+            item.setSelected(True)
 
         return item.text()
 
@@ -1471,68 +1506,238 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
                 data["public"] = publicFile
                 sceneData.append(data)
 
+            sceneData = sorted(sceneData, key=lambda x: x.get("version") or "")
+
         return sceneData
 
     @err_catcher(name=__name__)
-    def refreshScenefiles(self, reloadFiles=True, restoreSelection=False):
+    def initScenesLoadingWidget(self):
+        self.w_scenesLoading = QWidget()
+        self.w_scenesLoading.setObjectName("scenewidget")
+        self.w_scenesLoading.setStyleSheet("#scenewidget {background-color: rgba(0,0,0,100)}")
+        self.w_scenesLoading.setAttribute(Qt.WA_StyledBackground, True)
+        self.w_scenesLoading.setParent(self)
+        self.sw_scenefiles.resizeEventOrig = self.sw_scenefiles.resizeEvent
+        self.sw_scenefiles.resizeEvent = self.sceneFilesResizeEvent
+        self.w_scenesLoading.setHidden(True)
+        self.l_scenesLoading = QLabel()
+        self.l_scenesLoading.setAlignment(Qt.AlignCenter)
+        self.lo_scenesLoading = QHBoxLayout(self.w_scenesLoading)
+        self.lo_scenesLoading.addWidget(self.l_scenesLoading)
+
+        path = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "loading.gif"
+        )
+        self.loadingGif = QMovie(path, QByteArray(), self) 
+        self.loadingGif.setCacheMode(QMovie.CacheAll) 
+        self.loadingGif.setSpeed(100)
+
+        self.l_scenesLoading.setMovie(self.loadingGif)
+        self.loadingGif.setScaledSize(QSize(self.shotPrvXres, int(self.shotPrvXres / (300/169.0))))
+
+    @err_catcher(name=__name__)
+    def sceneFilesResizeEvent(self, event):
+        self.sw_scenefiles.resizeEventOrig(event)
+        if hasattr(self, "loadingGif") and self.loadingGif.state() == QMovie.Running:
+            self.moveLoadingLabel()
+
+    @err_catcher(name=__name__)
+    def moveLoadingLabel(self):
+        geo = QRect()
+        pos = self.sw_scenefiles.parent().mapToGlobal(self.sw_scenefiles.geometry().topLeft())
+        pos = self.mapFromGlobal(pos)
+        geo.setWidth(self.sw_scenefiles.width())
+        geo.setHeight(self.sw_scenefiles.height())
+        geo.moveTopLeft(pos)
+        self.w_scenesLoading.setGeometry(geo)
+
+    @err_catcher(name=__name__)
+    def showScenesLoading(self):
+        self.w_scenesLoading.setHidden(False)
+        self.loadingGif.start()
+        self.moveLoadingLabel()
+
+    @err_catcher(name=__name__)
+    def hideScenesLoading(self):
+        self.w_scenesLoading.setHidden(True)
+        self.loadingGif.stop()
+
+    @err_catcher(name=__name__)
+    def processEvents(self, times=1):
+        if (time.time() - self.lastProcess) > 0.05:
+            for idx in range(times):
+                QApplication.processEvents()
+
+            self.lastProcess = time.time()
+
+    @err_catcher(name=__name__)
+    def refreshScenefilesThreaded(self, reloadFiles=True, restoreSelection=False, wait=False):
         if restoreSelection:
             file = self.getSelectedScenefile()
+        else:
+            file = ""
+
+        curTask = self.getCurrentTask()
+        if curTask:
+            self.showScenesLoading()
+    
+        self.scenefileQueue = []
+        worker_scenes = self.core.worker(self.core)
+        worker_scenes.function = lambda w=worker_scenes: self.refreshScenefiles(reloadFiles=reloadFiles, restoreSelection=restoreSelection, worker=w, file=file)
+        worker_scenes.errored.connect(self.core.writeErrorLog)
+        worker_scenes.dataSent.connect(self.refreshScenesDataSent)
+        worker_scenes.warningSent.connect(self.core.popup)
+        worker_scenes.finished.connect(self.onSceneThreadFinished)
+        QApplication.processEvents()
+        if not getattr(self, "curSceneThread", None):
+            self.curSceneThread = worker_scenes
+            QApplication.processEvents()
+            if self.b_sceneLayoutItems.isChecked():
+                self.clearScenefileItems()
+                self.addSceneItemsStretch()
+            elif self.b_sceneLayoutList.isChecked():
+                model = self.tw_scenefiles.model()
+                if model:
+                    model.clear()
+
+            QApplication.processEvents()
+            self.curSceneThread.start()
+        else:
+            self.nextSceneThread = worker_scenes
+
+        if wait:
+            while self.curSceneThread:
+                QApplication.processEvents()
+
+    @err_catcher(name=__name__)
+    def addSceneItemsStretch(self):
+        sp_main = QSpacerItem(0, 1000, QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self.lo_scenefileItems.addItem(sp_main)
+
+    @err_catcher(name=__name__)
+    def onSceneThreadFinished(self):
+        if getattr(self, "nextSceneThread", None):
+            self.curSceneThread = self.nextSceneThread
+            self.nextSceneThread = None
+            QApplication.processEvents()
+            if self.b_sceneLayoutItems.isChecked():
+                self.clearScenefileItems()
+                self.addSceneItemsStretch()
+            elif self.b_sceneLayoutList.isChecked():
+                model = self.tw_scenefiles.model()
+                if model:
+                    model.clear()
+
+            QApplication.processEvents()
+            self.curSceneThread.start()
+        else:
+            self.curSceneThread = None
+            if self.b_sceneLayoutItems.isChecked():
+                if (self.lo_scenefileItems.count()-1) == len(self.scenefileData):
+                    self.hideScenesLoading()
+            elif self.b_sceneLayoutList.isChecked():
+                model = self.tw_scenefiles.model()
+                if model:
+                    count = model.rowCount()
+                else:
+                    count = 0
+
+                if count == len(self.scenefileData):
+                    self.hideScenesLoading()
+
+    @err_catcher(name=__name__)
+    def refreshScenesDataSent(self, data):
+        if data["action"] == "selectScenefile":
+            self.selectScenefile(data["file"])
+        elif data["action"] == "addScenefileItems":
+            refreshId = uuid.uuid4().hex
+            self.prevRefreshId = refreshId
+            self.scenefileQueue = data["data"][20:]
+            self.addScenefileItems(data["data"][:20], refreshId=refreshId)
+            if refreshId and refreshId == self.prevRefreshId:
+                self.validateVisibleScenefileItems(refreshId=refreshId)
+
+            self.hideScenesLoading()
+        elif data["action"] == "refreshScenefileList":
+            self.refreshScenefileList(data["data"])
+            self.hideScenesLoading()
+
+    @err_catcher(name=__name__)
+    def refreshScenefiles(self, reloadFiles=True, restoreSelection=False, worker=None, file=None):
+        if not worker:
+            if restoreSelection:
+                file = self.getSelectedScenefile()
 
         if reloadFiles:
             self.scenefileData = self.getScenefileData()
 
         if self.b_sceneLayoutItems.isChecked():
-            self.refreshScenefileItems(self.scenefileData)
+            self.scenefileData = sorted(self.scenefileData, key=lambda x: x.get("version", "") or "", reverse=True)
+            worker.dataSent.emit({
+                "action": "addScenefileItems",
+                "data": self.scenefileData,
+                "worker": worker,
+            })
         elif self.b_sceneLayoutList.isChecked():
-            self.refreshScenefileList(self.scenefileData)
+            worker.dataSent.emit({
+                "action": "refreshScenefileList",
+                "data": self.scenefileData,
+                "worker": worker,
+            })
 
         if restoreSelection:
-            self.selectScenefile(file)
+            worker.dataSent.emit({
+                "action": "selectScenefile",
+                "file": file,
+                "worker": worker,
+            })
 
     @err_catcher(name=__name__)
-    def refreshScenefileItems(self, sceneData):
-        self.clearScenefileItems()
-        # if sceneData:
-        for data in sorted(sceneData, key=lambda x: x.get("version", ""), reverse=True):
-            self.addScenefileItem(data)
-        # else:
-        #     self.w_emptyScenes = QWidget()
-        #     self.lo_emptyScenes = QHBoxLayout()
-        #     self.w_emptyScenes.setLayout(self.lo_emptyScenes)
-        #     self.l_emptyScenes = QLabel("< no scenefiles to show >")
-        #     self.lo_emptyScenes.addStretch()
-        #     self.lo_emptyScenes.addWidget(self.l_emptyScenes)
-        #     self.lo_emptyScenes.addStretch()
-        #     self.lo_scenefileItems.addWidget(self.w_emptyScenes)
+    def onScrolled(self, value):
+        self.validateVisibleScenefileItems()
 
-        self.w_sceneItemsStretch = QWidget()
-        self.lo_sceneItemsStretch = QVBoxLayout()
-        self.lo_sceneItemsStretch.setContentsMargins(0, 0, 0, 0)
-        self.w_sceneItemsStretch.setLayout(self.lo_sceneItemsStretch)
-        self.lo_sceneItemsStretch.addStretch()
-        self.lo_scenefileItems.addWidget(self.w_sceneItemsStretch)
-        policy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        policy.setVerticalStretch(10)
-        self.w_sceneItemsStretch.setSizePolicy(policy)
+    @err_catcher(name=__name__)
+    def validateVisibleScenefileItems(self, refreshId=None, processEvents=True):
+        refreshId = refreshId or self.prevRefreshId
+        if processEvents:
+            QApplication.processEvents()
+
+        if refreshId and refreshId == self.prevRefreshId:
+            for widget in self.sceneItemWidgets:
+                if not widget.isLoaded and not widget.visibleRegion().isEmpty():
+                    widget.refreshUi()
+
+        if (not self.sceneItemWidgets or self.sceneItemWidgets[-1].isLoaded) and self.scenefileQueue:
+            self.addScenefileItems(self.scenefileQueue[:20], refreshId=refreshId)
+            self.scenefileQueue = self.scenefileQueue[20:]
+            self.validateVisibleScenefileItems(refreshId=refreshId, processEvents=processEvents)
 
     @err_catcher(name=__name__)
     def clearScenefileItems(self):
+        self.prevRefreshId = None
         self.sceneItemWidgets = []
         for idx in reversed(range(self.lo_scenefileItems.count())):
             item = self.lo_scenefileItems.takeAt(idx)
+            if not item:
+                continue
+
             w = item.widget()
             if w:
                 w.setVisible(False)
                 w.setParent(None)
                 w.deleteLater()
+        
+        self.processEvents()
 
     @err_catcher(name=__name__)
-    def addScenefileItem(self, data):
-        item = ScenefileItem(self, data)
-        item.signalSelect.connect(self.itemSelected)
-        item.signalReleased.connect(self.itemReleased)
-        self.sceneItemWidgets.append(item)
-        self.lo_scenefileItems.addWidget(item)
+    def addScenefileItems(self, itemsData, refreshId):
+        for data in itemsData:
+            item = ScenefileItem(self, data)
+            item.signalSelect.connect(self.itemSelected)
+            item.signalReleased.connect(self.itemReleased)
+            if refreshId and refreshId == self.prevRefreshId:
+                self.sceneItemWidgets.append(item)
+                self.lo_scenefileItems.insertWidget(self.lo_scenefileItems.count()-1, item)
 
     @err_catcher(name=__name__)
     def itemSelected(self, item):
@@ -1568,7 +1773,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         return filepath
 
     @err_catcher(name=__name__)
-    def refreshScenefileList(self, sceneData):
+    def refreshScenefileList(self, sceneData, worker=None):
         twSorting = [
             self.tw_scenefiles.horizontalHeader().sortIndicatorSection(),
             self.tw_scenefiles.horizontalHeader().sortIndicatorOrder(),
@@ -1579,10 +1784,10 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         model.setHorizontalHeaderLabels(
             [
                 "",
-                self.tableColumnLabels["Version"],
-                self.tableColumnLabels["Comment"],
-                self.tableColumnLabels["Date"],
-                self.tableColumnLabels["User"],
+                self.tableColumnLabels[self.core.tr("Version")],
+                self.tableColumnLabels[self.core.tr("Comment")],
+                self.tableColumnLabels[self.core.tr("Date")],
+                self.tableColumnLabels[self.core.tr("User")],
             ]
         )
         # example filename: Body_mod_Modelling_v0002_details-added_rfr_.max
@@ -1590,10 +1795,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
 
         for data in sceneData:
             row = []
-            if pVersion == 2:
-                item = QStandardItem(unicode("█", "utf-8"))
-            else:
-                item = QStandardItem("█")
+            item = QStandardItem("█")
             item.setFont(QFont("SansSerif", 100))
             item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
             item.setData(data["filename"], Qt.UserRole)
@@ -1661,7 +1863,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
 
     @err_catcher(name=__name__)
     def taskChanged(self, current=None, prev=None):
-        self.refreshScenefiles(restoreSelection=True)
+        self.refreshScenefilesThreaded(restoreSelection=True)
 
     @err_catcher(name=__name__)
     def refreshEntityInfo(self):
@@ -1690,7 +1892,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
 
         if curEntities:
             if len(curEntities) > 1:
-                description = "Multiple assets selected"
+                description = self.core.tr("Multiple assets selected")
                 l_info = QLabel(description)
                 self.lo_entityInfo.addWidget(l_info)
             else:
@@ -1762,7 +1964,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
 
         if curEntities:
             if len(curEntities) > 1:
-                l_info = QLabel("Multiple shots selected")
+                l_info = QLabel(self.core.tr("Multiple shots selected"))
                 self.lo_entityInfo.addWidget(l_info)
             else:
                 curEntity = curEntities[0]
@@ -1792,7 +1994,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
                             suffix = " (%s - %s)" % (handleStartFrame, handleEndFrame)
 
                     rangeStr = "%s - %s%s" % (startFrame, endFrame, suffix)
-                    l_range1 = QLabel("Framerange:    ")
+                    l_range1 = QLabel(self.core.tr("Framerange") + ":    ")
                     l_range2 = QLabel(rangeStr)
                     self.lo_entityInfo.addWidget(l_range1, 0, 0)
                     self.lo_entityInfo.addWidget(l_range2, 0, 1)
@@ -1829,60 +2031,60 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         rcmenu = QMenu(self)
 
         entity = self.getCurrentEntity()
-        if not entity:
+        if not entity or (entity.get("type") == "asset" and not entity.get("asset_path")) or (entity.get("type") == "shot" and not entity.get("shot")):
             return
 
         if entity["type"] == "asset":
-            exp = QAction("Edit asset description...", self)
+            exp = QAction(self.core.tr("Edit asset description..."), self)
             exp.triggered.connect(self.editAsset)
             rcmenu.addAction(exp)
 
-            copAct = QAction("Capture assetpreview", self)
+            copAct = QAction(self.core.tr("Capture assetpreview"), self)
             copAct.triggered.connect(lambda: self.captureEntityPreview(entity))
             rcmenu.addAction(copAct)
 
-            copAct = QAction("Browse assetpreview...", self)
+            copAct = QAction(self.core.tr("Browse assetpreview..."), self)
             copAct.triggered.connect(lambda: self.browseEntityPreview(entity))
             rcmenu.addAction(copAct)
 
-            clipAct = QAction("Paste assetpreview from clipboard", self)
+            clipAct = QAction(self.core.tr("Paste assetpreview from clipboard"), self)
             clipAct.triggered.connect(
                 lambda: self.pasteEntityPreviewFromClipboard(entity)
             )
             rcmenu.addAction(clipAct)
 
         elif entity["type"] == "shot":
-            exp = QAction("Edit shot settings...", self)
+            exp = QAction(self.core.tr("Edit shot settings..."), self)
             exp.triggered.connect(lambda: self.editShot(entity))
             rcmenu.addAction(exp)
 
-            copAct = QAction("Capture shotpreview", self)
+            copAct = QAction(self.core.tr("Capture shotpreview"), self)
             copAct.triggered.connect(lambda: self.captureEntityPreview(entity))
             rcmenu.addAction(copAct)
 
-            copAct = QAction("Browse shotpreview...", self)
+            copAct = QAction(self.core.tr("Browse shotpreview..."), self)
             copAct.triggered.connect(lambda: self.browseEntityPreview(entity))
             rcmenu.addAction(copAct)
 
-            clipAct = QAction("Paste shotpreview from clipboard", self)
+            clipAct = QAction(self.core.tr("Paste shotpreview from clipboard"), self)
             clipAct.triggered.connect(
                 lambda: self.pasteEntityPreviewFromClipboard(entity)
             )
             rcmenu.addAction(clipAct)
         elif entity["type"] == "sequence":
-            exp = QAction("Edit sequence settings...", self)
+            exp = QAction(self.core.tr("Edit sequence settings..."), self)
             exp.triggered.connect(lambda: self.editShot(entity))
             rcmenu.addAction(exp)
 
-            copAct = QAction("Capture sequencepreview", self)
+            copAct = QAction(self.core.tr("Capture sequencepreview"), self)
             copAct.triggered.connect(lambda: self.captureEntityPreview(entity))
             rcmenu.addAction(copAct)
 
-            copAct = QAction("Browse sequencepreview...", self)
+            copAct = QAction(self.core.tr("Browse sequencepreview..."), self)
             copAct.triggered.connect(lambda: self.browseEntityPreview(entity))
             rcmenu.addAction(copAct)
 
-            clipAct = QAction("Paste sequencepreview from clipboard", self)
+            clipAct = QAction(self.core.tr("Paste sequencepreview from clipboard"), self)
             clipAct.triggered.connect(
                 lambda: self.pasteEntityPreviewFromClipboard(entity)
             )
@@ -1895,7 +2097,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         formats = "Image File (*.jpg *.png *.exr)"
 
         imgPath = QFileDialog.getOpenFileName(
-            self, "Select preview-image", self.core.projectPath, formats
+            self, self.core.tr("Select preview-image"), self.core.projectPath, formats
         )[0]
 
         if not imgPath:
@@ -1908,7 +2110,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         else:
             previewImg = self.core.media.getPixmapFromPath(imgPath)
             if previewImg.width() == 0:
-                warnStr = "Cannot read image: %s" % imgPath
+                warnStr = self.core.tr("Cannot read image") + ": %s" % imgPath
                 self.core.popup(warnStr)
                 return
 
@@ -1939,7 +2141,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
     def pasteEntityPreviewFromClipboard(self, entity):
         pmap = self.core.media.getPixmapFromClipboard()
         if not pmap:
-            self.core.popup("No image in clipboard.")
+            self.core.popup(self.core.tr("No image in clipboard."))
             return
 
         self.core.entities.setEntityPreview(
@@ -1960,7 +2162,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
     @err_catcher(name=__name__)
     def editAsset(self):
         assetData = self.getCurrentEntity()
-        if not assetData:
+        if not assetData or (assetData.get("type") == "asset" and not assetData.get("asset_path")):
             return
 
         assetName = self.core.entities.getAssetNameFromPath(assetData["asset_path"])
@@ -1968,8 +2170,8 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
 
         descriptionDlg = PrismWidgets.EnterText()
         self.core.parentWindow(descriptionDlg)
-        descriptionDlg.setWindowTitle("Assetinfo")
-        descriptionDlg.l_info.setText("Description:")
+        descriptionDlg.setWindowTitle(self.core.tr("Assetinfo"))
+        descriptionDlg.l_info.setText(self.core.tr("Description:"))
         descriptionDlg.te_text.setPlainText(description)
 
         c = descriptionDlg.te_text.textCursor()
@@ -1995,142 +2197,6 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         self.w_entities.getCurrentPage().editShotDlg(shotData)
 
     @err_catcher(name=__name__)
-    def setRecent(self):
-        model = QStandardItemModel()
-
-        model.setHorizontalHeaderLabels(
-            [
-                "",
-                self.tableColumnLabels["Name"],
-                self.tableColumnLabels["Department"],
-                self.tableColumnLabels["Version"],
-                self.tableColumnLabels["Comment"],
-                self.tableColumnLabels["Date"],
-                self.tableColumnLabels["User"],
-                "Filepath",
-            ]
-        )
-        # example filename: Body_mod_v0002_details-added_rfr_.max
-        # example filename: shot_0010_mod_main_v0002_details-added_rfr_.max
-        rSection = "recent_files_" + self.core.projectName
-        recentfiles = self.core.getConfig(cat=rSection) or []
-
-        for i in recentfiles:
-            if not self.core.isStr(i):
-                continue
-
-            row = []
-            fname = self.core.getScenefileData(i)
-
-            if "type" not in fname:
-                continue
-
-            if os.path.exists(i):
-                if pVersion == 2:
-                    item = QStandardItem(unicode("█", "utf-8"))
-                else:
-                    item = QStandardItem("█")
-                item.setFont(QFont("SansSerif", 100))
-                item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
-                item.setData(i, Qt.UserRole)
-
-                icon = self.core.getIconForFileType(fname["extension"])
-                if icon:
-                    item.setIcon(icon)
-                else:
-                    colorVals = [128, 128, 128]
-                    if fname["extension"] in self.core.appPlugin.sceneFormats:
-                        colorVals = self.core.appPlugin.appColor
-                    else:
-                        for k in self.core.unloadedAppPlugins.values():
-                            if fname["extension"] in k.sceneFormats:
-                                colorVals = k.appColor
-
-                    item.setForeground(QColor(colorVals[0], colorVals[1], colorVals[2]))
-
-                row.append(item)
-                if fname["type"] == "asset":
-                    item = QStandardItem(fname["asset_path"])
-                    item.setTextAlignment(Qt.Alignment(Qt.AlignCenter))
-                    row.append(item)
-                    item = QStandardItem(fname.get("department", ""))
-                    item.setTextAlignment(Qt.Alignment(Qt.AlignCenter))
-                    row.append(item)
-                    item = QStandardItem(fname["version"])
-                    item.setTextAlignment(Qt.Alignment(Qt.AlignCenter))
-                    row.append(item)
-                    if fname["comment"] == "nocomment":
-                        item = QStandardItem("")
-                    else:
-                        item = QStandardItem(fname["comment"])
-                    row.append(item)
-                    cdate = datetime.datetime.fromtimestamp(os.path.getmtime(i))
-                    cdate = cdate.replace(microsecond=0)
-                    cdate = cdate.strftime("%d.%m.%y,  %H:%M:%S")
-                    item = QStandardItem(str(cdate))
-                    item.setTextAlignment(Qt.Alignment(Qt.AlignCenter))
-                    item.setData(
-                        QDateTime.fromString(cdate, "dd.MM.yy,  hh:mm:ss").addYears(
-                            100
-                        ),
-                        0,
-                    )
-                    #   item.setToolTip(cdate)
-                    row.append(item)
-                    item = QStandardItem(fname["user"])
-                    item.setTextAlignment(Qt.Alignment(Qt.AlignCenter))
-                    row.append(item)
-                elif fname["type"] == "shot":
-                    item = QStandardItem(self.core.entities.getShotName(fname))
-                    item.setTextAlignment(Qt.Alignment(Qt.AlignCenter))
-                    row.append(item)
-                    item = QStandardItem(fname.get("department", ""))
-                    item.setTextAlignment(Qt.Alignment(Qt.AlignCenter))
-                    row.append(item)
-                    item = QStandardItem(fname["version"])
-                    item.setTextAlignment(Qt.Alignment(Qt.AlignCenter))
-                    row.append(item)
-                    if fname.get("comment", "nocomment") == "nocomment":
-                        item = QStandardItem("")
-                    else:
-                        item = QStandardItem(fname["comment"])
-                    row.append(item)
-                    cdate = datetime.datetime.fromtimestamp(os.path.getmtime(i))
-                    cdate = cdate.replace(microsecond=0)
-                    cdate = cdate.strftime("%d.%m.%y,  %H:%M:%S")
-                    item = QStandardItem(str(cdate))
-                    item.setTextAlignment(Qt.Alignment(Qt.AlignCenter))
-                    item.setData(
-                        QDateTime.fromString(cdate, "dd.MM.yy,  hh:mm:ss").addYears(
-                            100
-                        ),
-                        0,
-                    )
-                    #   item.setToolTip(cdate)
-                    row.append(item)
-                    item = QStandardItem(fname["user"])
-                    item.setTextAlignment(Qt.Alignment(Qt.AlignCenter))
-                    row.append(item)
-                else:
-                    continue
-
-                item = QStandardItem(i)
-                item.setToolTip(i)
-                row.append(item)
-
-                model.appendRow(row)
-
-        self.tw_recent.setModel(model)
-        self.tw_recent.resizeColumnsToContents()
-        self.tw_recent.horizontalHeader().setMinimumSectionSize(10)
-        self.tw_recent.setColumnWidth(0, 20 * self.core.uiScaleFactor)
-        #   self.tw_recent.setColumnWidth(2,40*self.core.uiScaleFactor)
-        #   self.tw_recent.setColumnWidth(3,60*self.core.uiScaleFactor)
-        #   self.tw_recent.setColumnWidth(6,50*self.core.uiScaleFactor)
-
-        self.tw_recent.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
-
-    @err_catcher(name=__name__)
     def createTaskDlg(self):
         entities = self.getCurrentEntities()
         curDep = self.getCurrentDepartment()
@@ -2141,12 +2207,12 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         self.newItem = ItemList.ItemList(core=self.core, entities=entities, mode="tasks")
         self.newItem.setModal(True)
         self.newItem.tw_steps.setColumnCount(1)
-        self.newItem.tw_steps.setHorizontalHeaderLabels(["Department"])
+        self.newItem.tw_steps.setHorizontalHeaderLabels([self.core.tr("Department")])
         self.newItem.tw_steps.horizontalHeader().setVisible(False)
-        self.core.parentWindow(self.newItem)
+        self.core.parentWindow(self.newItem, parent=self)
         self.newItem.e_tasks.setFocus()
         self.newItem.tw_steps.doubleClicked.connect(lambda x=None, b=self.newItem.buttonBox.buttons()[0]:self.newItem.buttonboxClicked(b))
-        self.newItem.setWindowTitle("Add Tasks")
+        self.newItem.setWindowTitle(self.core.tr("Add Tasks"))
 
         iconPath = os.path.join(
             self.core.prismRoot, "Scripts", "UserInterfacesPrism", "create.png"
@@ -2197,8 +2263,10 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
 
     @err_catcher(name=__name__)
     def createDepartmentDlg(self):
-        entities = self.getCurrentEntities()
-        basePath = self.core.getEntityPath(reqEntity="step", entity=entities[0])
+        entities = self.getCurrentEntities() or []
+        entities = [entity for entity in entities if entity.get("type") != "assetFolder"]
+        if not entities:
+            return
 
         if entities[0].get("type", "") == "asset":
             deps = self.core.projects.getAssetDepartments()
@@ -2209,8 +2277,11 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
 
         validDeps = []
         for dep in deps:
-            if not os.path.exists(os.path.join(basePath, dep["abbreviation"])):
-                validDeps.append(dep)
+            for entity in entities:
+                basePath = self.core.getEntityPath(reqEntity="step", entity=entity)
+                if not os.path.exists(os.path.join(basePath, dep["abbreviation"])):
+                    validDeps.append(dep)
+                    break
 
         self.ss = ItemList.ItemList(core=self.core, entities=entities, mode="departments")
         iconPath = os.path.join(
@@ -2225,13 +2296,13 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         icon = self.core.media.getColoredIcon(iconPath)
         self.ss.buttonBox.buttons()[-1].setIcon(icon)
 
-        self.ss.setWindowTitle("Add Departments")
+        self.ss.setWindowTitle(self.core.tr("Add Departments"))
         self.core.parentWindow(self.ss, parent=self)
         self.ss.tw_steps.setFocus()
         self.ss.tw_steps.doubleClicked.connect(lambda x=None, b=self.ss.buttonBox.buttons()[0]:self.ss.buttonboxClicked(b))
 
         self.ss.tw_steps.setColumnCount(1)
-        self.ss.tw_steps.setHorizontalHeaderLabels(["Department"])
+        self.ss.tw_steps.setHorizontalHeaderLabels([self.core.tr("Department")])
         self.ss.tw_steps.horizontalHeader().setVisible(False)
         for department in validDeps:
             rc = self.ss.tw_steps.rowCount()
@@ -2255,7 +2326,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
             if os.path.exists(dstPath):
                 for i in os.walk(dstPath):
                     if i[2] != []:
-                        msg = "Found existing files in the global directory. Copy to global was canceled."
+                        msg = self.core.tr("Found existing files in the global directory. Copy to global was canceled.")
                         self.core.popup(msg)
                         return
 
@@ -2266,7 +2337,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
             try:
                 shutil.rmtree(localPath)
             except:
-                msg = "Could not delete the local file. Probably it is used by another process."
+                msg = self.core.tr("Could not delete the local file. Probably it is used by another process.")
                 self.core.popup(msg)
 
         else:
@@ -2274,8 +2345,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
                 os.makedirs(os.path.dirname(dstPath))
 
             self.core.copySceneFile(localPath, dstPath)
-
-            self.refreshScenefiles()
+            self.refreshScenefilesThreaded()
 
     @err_catcher(name=__name__)
     def editComment(self, filepath):
@@ -2289,9 +2359,9 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         dlg_ec.setModal(True)
         self.core.parentWindow(dlg_ec)
         dlg_ec.e_item.setFocus()
-        dlg_ec.setWindowTitle("Edit Comment")
-        dlg_ec.l_item.setText("New comment:")
-        dlg_ec.buttonBox.buttons()[0].setText("Save")
+        dlg_ec.setWindowTitle(self.core.tr("Edit Comment"))
+        dlg_ec.l_item.setText(self.core.tr("New comment:"))
+        dlg_ec.buttonBox.buttons()[0].setText(self.core.tr("Save"))
 
         result = dlg_ec.exec_()
 
@@ -2301,7 +2371,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         comment = dlg_ec.e_item.text()
         newPath = self.core.entities.setComment(filepath, comment)
 
-        self.refreshScenefiles()
+        self.refreshScenefilesThreaded(wait=True)
         fileNameData = self.core.getScenefileData(newPath)
         self.navigate(data=fileNameData)
 
@@ -2313,8 +2383,8 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         descriptionDlg = PrismWidgets.EnterText()
         descriptionDlg.setModal(True)
         self.core.parentWindow(descriptionDlg, parent=self)
-        descriptionDlg.setWindowTitle("Enter description")
-        descriptionDlg.l_info.setText("Description:")
+        descriptionDlg.setWindowTitle(self.core.tr("Enter description"))
+        descriptionDlg.l_info.setText(self.core.tr("Description:"))
         descriptionDlg.te_text.setPlainText(description)
         descriptionDlg.te_text.selectAll()
         result = descriptionDlg.exec_()
@@ -2324,7 +2394,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
 
         description = descriptionDlg.te_text.toPlainText()
         self.core.entities.setDescription(filepath, description)
-        self.refreshScenefiles()
+        self.refreshScenefilesThreaded(wait=True)
         fileNameData = self.core.getScenefileData(filepath)
         self.navigate(data=fileNameData)
 
@@ -2383,7 +2453,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
     def ingestScenefiles(self, entity, files):
         task = self.getCurrentTask()
         if not task:
-            self.core.popup("No valid context is selected")
+            self.core.popup(self.core.tr("No valid context is selected"))
             return
 
         if getattr(self, "dlg_ingestSettings", None):
@@ -2405,20 +2475,20 @@ class IngestSettings(QDialog):
 
     @err_catcher(name=__name__)
     def setupUi(self):
-        self.setWindowTitle("Ingest Scenefile")
+        self.setWindowTitle(self.core.tr("Ingest Scenefile"))
         self.core.parentWindow(self, parent=self.browser)
 
-        self.l_version = QLabel("Version:")
+        self.l_version = QLabel(self.core.tr("Version:"))
         self.sp_version = QSpinBox()
         self.sp_version.setValue(1)
         self.sp_version.setMinimum(1)
         self.sp_version.setMaximum(99999)
         self.sp_version.setContextMenuPolicy(Qt.CustomContextMenu)
         self.sp_version.customContextMenuRequested.connect(self.onVersionRightClicked)
-        self.l_comment = QLabel("Comment:")
+        self.l_comment = QLabel(self.core.tr("Comment:"))
         self.e_comment = QLineEdit()
 
-        self.l_rename = QLabel("Rename files:")
+        self.l_rename = QLabel(self.core.tr("Rename files:"))
         self.chb_rename = QCheckBox()
         self.chb_rename.setChecked(True)
 
@@ -2426,8 +2496,8 @@ class IngestSettings(QDialog):
         self.setLayout(self.lo_main)
 
         self.bb_main = QDialogButtonBox()
-        self.bb_main.addButton("Ingest", QDialogButtonBox.AcceptRole)
-        self.bb_main.addButton("Cancel", QDialogButtonBox.RejectRole)
+        self.bb_main.addButton(self.core.tr("Ingest"), QDialogButtonBox.AcceptRole)
+        self.bb_main.addButton(self.core.tr("Cancel"), QDialogButtonBox.RejectRole)
 
         self.bb_main.clicked.connect(self.onButtonClicked)
         self.lo_main.addWidget(self.l_version)
@@ -2450,11 +2520,11 @@ class IngestSettings(QDialog):
     def onVersionRightClicked(self, pos):
         rcmenu = QMenu(self)
 
-        copAct = QAction("Next available version", self)
+        copAct = QAction(self.core.tr("Next available version"), self)
         copAct.triggered.connect(self.setVersionNext)
         rcmenu.addAction(copAct)
 
-        exp = QAction("Detect version from filename", self)
+        exp = QAction(self.core.tr("Detect version from filename"), self)
         exp.triggered.connect(self.setVersionFromSource)
         rcmenu.addAction(exp)
 
@@ -2479,7 +2549,7 @@ class IngestSettings(QDialog):
 
     @err_catcher(name=__name__)
     def onButtonClicked(self, button):
-        if button.text() == "Ingest":
+        if button.text() == self.core.tr("Ingest"):
             department = self.browser.getCurrentDepartment()
             task = self.browser.getCurrentTask()
             data = {
@@ -2491,12 +2561,12 @@ class IngestSettings(QDialog):
                 self.entity,
                 department,
                 task,
-                finishCallback=self.browser.refreshScenefiles,
+                finishCallback=self.browser.refreshScenefilesThreaded,
                 data=data,
                 rename=self.chb_rename.isChecked(),
             )
             self.accept()
-        elif button.text() == "Cancel":
+        elif button.text() == self.core.tr("Cancel"):
             self.close()
 
 
@@ -2510,12 +2580,12 @@ class ScenefileItem(QWidget):
         self.core = browser.core
         self.browser = browser
         self.data = data
+        self.isLoaded = False
         self.state = "deselected"
         self.previewSize = [self.core.scenePreviewWidth, self.core.scenePreviewHeight]
         self.itemPreviewWidth = 120
         self.itemPreviewHeight = 69
         self.setupUi()
-        self.refreshUi()
 
     def mouseReleaseEvent(self, event):
         super(ScenefileItem, self).mouseReleaseEvent(event)
@@ -2556,26 +2626,22 @@ class ScenefileItem(QWidget):
         self.l_description = QLabel()
 
         self.lo_user = QVBoxLayout()
-        path = os.path.join(self.core.prismRoot, "Scripts", "UserInterfacesPrism", "user.png")
-        icon = self.core.media.getColoredIcon(path)
         self.w_user = QWidget()
         self.lo_userIcon = QHBoxLayout(self.w_user)
         self.lo_userIcon.setContentsMargins(0, 0, 0, 0)
         self.l_userIcon = QLabel()
-        self.l_userIcon.setPixmap(icon.pixmap(15, 15))
+        self.l_userIcon.setPixmap(self.browser.pmapUser)
         self.l_user = QLabel()
         self.l_user.setAlignment(Qt.AlignRight)
         self.lo_userIcon.addStretch()
         self.lo_userIcon.addWidget(self.l_userIcon)
         self.lo_userIcon.addWidget(self.l_user)
 
-        path = os.path.join(self.core.prismRoot, "Scripts", "UserInterfacesPrism", "date.png")
-        icon = self.core.media.getColoredIcon(path)
         self.w_date = QWidget()
         self.lo_dateIcon = QHBoxLayout(self.w_date)
         self.lo_dateIcon.setContentsMargins(0, 0, 0, 0)
         self.l_dateIcon = QLabel()
-        self.l_dateIcon.setPixmap(icon.pixmap(15, 15))
+        self.l_dateIcon.setPixmap(self.browser.pmapDate)
         self.l_date = QLabel()
         self.l_date.setAlignment(Qt.AlignRight)
         self.lo_dateIcon.addStretch()
@@ -2619,7 +2685,7 @@ class ScenefileItem(QWidget):
 
             for location in self.browser.projectBrowser.locations:
                 l_loc = QLabel()
-                l_loc.setToolTip("Version exists in %s" % location["name"])
+                l_loc.setToolTip(self.core.tr("Version exists in") + " %s" % location["name"])
                 self.locationLabels[location["name"]] = l_loc
                 if "icon" not in location:
                     location["icon"] = self.browser.projectBrowser.getLocationIcon(location["name"])
@@ -2644,6 +2710,7 @@ class ScenefileItem(QWidget):
 
     @err_catcher(name=__name__)
     def refreshUi(self):
+        self.isLoaded = True
         version = self.getVersion()
         descr = self.getDescription()
         comment = self.getComment()
@@ -2704,9 +2771,11 @@ class ScenefileItem(QWidget):
 
     @err_catcher(name=__name__)
     def getPreviewImage(self):
+        pixmap = None
         if self.data.get("preview", ""):
             pixmap = self.core.media.getPixmapFromPath(self.data.get("preview", ""))
-        else:
+        
+        if not pixmap:
             pixmap = QPixmap(300, 169)
             pixmap.fill(Qt.black)
 
@@ -2858,21 +2927,21 @@ class ScenefileItem(QWidget):
     def previewRightClicked(self, pos):
         rcmenu = QMenu(self.browser)
 
-        copAct = QAction("Capture preview", self.browser)
+        copAct = QAction(self.core.tr("Capture preview"), self.browser)
         copAct.triggered.connect(lambda: self.captureScenePreview(self.data))
 
-        exp = QAction("Browse preview...", self.browser)
+        exp = QAction(self.core.tr("Browse preview..."), self.browser)
         exp.triggered.connect(self.browseScenePreview)
         rcmenu.addAction(exp)
 
         rcmenu.addAction(copAct)
-        clipAct = QAction("Paste preview from clipboard", self.browser)
+        clipAct = QAction(self.core.tr("Paste preview from clipboard"), self.browser)
         clipAct.triggered.connect(
             lambda: self.pasteScenePreviewFromClipboard(self.data)
         )
         rcmenu.addAction(clipAct)
 
-        prvAct = QAction("Set as %spreview" % self.data.get("type", ""), self)
+        prvAct = QAction(self.core.tr("Set as %spreview" % self.data.get("type", "")), self)
         prvAct.triggered.connect(self.setPreview)
         rcmenu.addAction(prvAct)
         rcmenu.exec_(QCursor.pos())
@@ -2888,7 +2957,7 @@ class ScenefileItem(QWidget):
         formats = "Image File (*.jpg *.png *.exr)"
 
         imgPath = QFileDialog.getOpenFileName(
-            self, "Select preview-image", self.core.projectPath, formats
+            self, self.core.tr("Select preview-image"), self.core.projectPath, formats
         )[0]
 
         if not imgPath:
@@ -2901,7 +2970,7 @@ class ScenefileItem(QWidget):
         else:
             pm = self.core.media.getPixmapFromPath(imgPath)
             if pm.width() == 0:
-                warnStr = "Cannot read image: %s" % imgPath
+                warnStr = self.core.tr("Cannot read image") + ": %s" % imgPath
                 self.core.popup(warnStr)
                 return
 
@@ -2938,7 +3007,7 @@ class ScenefileItem(QWidget):
     def pasteScenePreviewFromClipboard(self, pos):
         pmap = self.core.media.getPixmapFromClipboard()
         if not pmap:
-            self.core.popup("No image in clipboard.")
+            self.core.popup(self.core.tr("No image in clipboard."))
             return
 
         pmap = self.core.media.scalePixmap(

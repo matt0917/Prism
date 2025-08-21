@@ -68,7 +68,7 @@ class Prism_Nuke_Integration(object):
     def getExecutable(self):
         execPath = ""
         if platform.system() == "Windows":
-            execPath = "C:\\Program Files\\Nuke11.2v2\\Nuke11.2.exe"
+            execPath = "C:\\Program Files\\Nuke15.0v4\\Nuke15.0.exe"
 
         return execPath
 
@@ -86,6 +86,7 @@ class Prism_Nuke_Integration(object):
             integrationBase = os.path.join(
                 os.path.dirname(os.path.dirname(__file__)), "Integration"
             )
+            integrationBase = os.path.realpath(integrationBase)
             addedFiles = []
 
             integrationFiles = ["menu.py", "init.py"]

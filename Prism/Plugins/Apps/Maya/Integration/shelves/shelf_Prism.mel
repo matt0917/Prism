@@ -25,7 +25,6 @@ global proc shelf_Prism () {
         -flipX 0
         -flipY 0
         -useAlpha 1
-        -font "plainLabelFont" 
         -overlayLabelColor 0.8 0.8 0.8 
         -overlayLabelBackColor 0 0 0 0.5 
         -image "prismSave.png" 
@@ -35,6 +34,7 @@ global proc shelf_Prism () {
         -marginHeight 1
         -command "try:\n\tpcore.saveScene()\nexcept:\n\ttry:\n\t\tfrom PySide6.QtWidgets import *\n\texcept:\n\t\tfrom PySide2.QtWidgets import *\n\tmsg = QMessageBox(QMessageBox.Warning, \"Prism Warning\", \"Failed to load Prism.\")\n\tmsg.addButton(\"Details\", QMessageBox.YesRole)\n\tmsg.addButton(\"Close\", QMessageBox.RejectRole)\n\tmsg.exec_()\n\tbutton = msg.clickedButton()\n\tif button and button.text() == \"Details\":\n\t\ttry:\n\t\t\timport PrismInit\n\t\t\tprismInitLoaded = True\n\t\texcept Exception as e:\n\t\t\tprismInitError = e\n\t\t\tprismInitLoaded = False\n\n\t\ttry:\n\t\t\tpcoreTest = PrismInit.prismInit(prismArgs=[\"noUI\"])\n\t\t\tprismLoaded = bool(pcoreTest)\n\t\texcept Exception as e:\n\t\t\tprismError = e\n\t\t\tprismLoaded = False\n\n\t\tif not prismInitLoaded:\n\t\t\timport pkgutil\n\t\t\tpkg = pkgutil.get_loader(\"PrismInit\")\n\t\t\tif not pkg:\n\t\t\t\tsolution = \"No PrismInit.py found. Add the Prism integration to Maya in the standalone Prism User Settings window.\"\n\t\t\telse:\n\t\t\t\tsolution = \"Failed to load this file:\\n\\n%s\\n\\nError:\\n\\n%s\" % (pkg.path, userSetupError)\n\t\telif not prismLoaded:\n\t\t\tsolution = \"Prism encountered an error. Please contact the support.\\n\\n%s\" % (prismError)\n\t\telse:\n\t\t\tsolution = \"\"\"No problem with Prism could be detected.\n\nMake sure that the userSetup.py file in your Maya user preferences doesn't contain errors.\nYou can check the Maya Output Window for errors and remove all non Prism code from the userSetup.py file.\n\nIf the problems persists please contact the support.\"\"\"\n\n\t\tQMessageBox.information(None, \"Prism\", solution)" 
         -sourceType "python" 
+        -doubleClickCommand "pcore.saveWithComment()" 
         -commandRepeatable 1
         -flat 1
         -mi "Save with comment" ( "pcore.saveWithComment()" )
@@ -61,7 +61,6 @@ global proc shelf_Prism () {
         -flipX 0
         -flipY 0
         -useAlpha 1
-        -font "plainLabelFont" 
         -overlayLabelColor 0.8 0.8 0.8 
         -overlayLabelBackColor 0 0 0 0.5 
         -image "prismBrowser.png" 
@@ -95,7 +94,6 @@ global proc shelf_Prism () {
         -flipX 0
         -flipY 0
         -useAlpha 1
-        -font "plainLabelFont" 
         -overlayLabelColor 0.8 0.8 0.8 
         -overlayLabelBackColor 0 0 0 0.5 
         -image "prismImport.png" 
@@ -105,6 +103,7 @@ global proc shelf_Prism () {
         -marginHeight 1
         -command "try:\n\tpcore.getPlugin(\"Maya\").onShelfClickedImport()\nexcept:\n\ttry:\n\t\tfrom PySide6.QtWidgets import *\n\texcept:\n\t\tfrom PySide2.QtWidgets import *\n\tmsg = QMessageBox(QMessageBox.Warning, \"Prism Warning\", \"Failed to load Prism.\")\n\tmsg.addButton(\"Details\", QMessageBox.YesRole)\n\tmsg.addButton(\"Close\", QMessageBox.RejectRole)\n\tmsg.exec_()\n\tbutton = msg.clickedButton()\n\tif button and button.text() == \"Details\":\n\t\ttry:\n\t\t\timport PrismInit\n\t\t\tprismInitLoaded = True\n\t\texcept Exception as e:\n\t\t\tprismInitError = e\n\t\t\tprismInitLoaded = False\n\n\t\ttry:\n\t\t\tpcoreTest = PrismInit.prismInit(prismArgs=[\"noUI\"])\n\t\t\tprismLoaded = bool(pcoreTest)\n\t\texcept Exception as e:\n\t\t\tprismError = e\n\t\t\tprismLoaded = False\n\n\t\tif not prismInitLoaded:\n\t\t\timport pkgutil\n\t\t\tpkg = pkgutil.get_loader(\"PrismInit\")\n\t\t\tif not pkg:\n\t\t\t\tsolution = \"No PrismInit.py found. Add the Prism integration to Maya in the standalone Prism User Settings window.\"\n\t\t\telse:\n\t\t\t\tsolution = \"Failed to load this file:\\n\\n%s\\n\\nError:\\n\\n%s\" % (pkg.path, userSetupError)\n\t\telif not prismLoaded:\n\t\t\tsolution = \"Prism encountered an error. Please contact the support.\\n\\n%s\" % (prismError)\n\t\telse:\n\t\t\tsolution = \"\"\"No problem with Prism could be detected.\n\nMake sure that the userSetup.py file in your Maya user preferences doesn't contain errors.\nYou can check the Maya Output Window for errors and remove all non Prism code from the userSetup.py file.\n\nIf the problems persists please contact the support.\"\"\"\n\n\t\tQMessageBox.information(None, \"Prism\", solution)" 
         -sourceType "python" 
+        -doubleClickCommand "pcore.getPlugin(\"Maya\").onShelfClickedImport(doubleclick=True)" 
         -commandRepeatable 1
         -flat 1
         -mi "Import Connected Assets..." ( "pcore.getPlugin(\"Maya\").onShelfClickedImportConnectedAssets()" )
@@ -131,7 +130,6 @@ global proc shelf_Prism () {
         -flipX 0
         -flipY 0
         -useAlpha 1
-        -font "plainLabelFont" 
         -overlayLabelColor 0.8 0.8 0.8 
         -overlayLabelBackColor 0 0 0 0.5 
         -image "prismExport.png" 
@@ -144,6 +142,8 @@ global proc shelf_Prism () {
         -doubleClickCommand "pcore.getPlugin(\"Maya\").onShelfClickedExport(doubleclick=True)" 
         -commandRepeatable 1
         -flat 1
+        -mi "Instant Export" ( "pcore.getPlugin(\"Maya\").onShelfClickedExport(doubleclick=True)" )
+        -mip 0
     ;
     shelfButton
         -enableCommandRepeat 1
@@ -166,7 +166,6 @@ global proc shelf_Prism () {
         -flipX 0
         -flipY 0
         -useAlpha 1
-        -font "plainLabelFont" 
         -overlayLabelColor 0.8 0.8 0.8 
         -overlayLabelBackColor 0 0 0 0.5 
         -image "prismPlayblast.png" 
@@ -179,6 +178,8 @@ global proc shelf_Prism () {
         -doubleClickCommand "pcore.getPlugin(\"Maya\").onShelfClickedPlayblast(doubleclick=True)" 
         -commandRepeatable 1
         -flat 1
+        -mi "Instant Playblast" ( "pcore.getPlugin(\"Maya\").onShelfClickedPlayblast(doubleclick=True)" )
+        -mip 0
     ;
     shelfButton
         -enableCommandRepeat 1
@@ -201,7 +202,6 @@ global proc shelf_Prism () {
         -flipX 0
         -flipY 0
         -useAlpha 1
-        -font "plainLabelFont" 
         -overlayLabelColor 0.8 0.8 0.8 
         -overlayLabelBackColor 0 0 0 0.5 
         -image "prismRender.png" 
@@ -214,6 +214,8 @@ global proc shelf_Prism () {
         -doubleClickCommand "pcore.getPlugin(\"Maya\").onShelfClickedRender(doubleclick=True)" 
         -commandRepeatable 1
         -flat 1
+        -mi "Instant Render" ( "pcore.getPlugin(\"Maya\").onShelfClickedRender(doubleclick=True)" )
+        -mip 0
     ;
     shelfButton
         -enableCommandRepeat 1
@@ -236,7 +238,6 @@ global proc shelf_Prism () {
         -flipX 0
         -flipY 0
         -useAlpha 1
-        -font "plainLabelFont" 
         -overlayLabelColor 0.8 0.8 0.8 
         -overlayLabelBackColor 0 0 0 0.5 
         -image "prismStates.png" 
@@ -270,7 +271,6 @@ global proc shelf_Prism () {
         -flipX 0
         -flipY 0
         -useAlpha 1
-        -font "plainLabelFont" 
         -overlayLabelColor 0.8 0.8 0.8 
         -overlayLabelBackColor 0 0 0 0.5 
         -image "prismSettings.png" 

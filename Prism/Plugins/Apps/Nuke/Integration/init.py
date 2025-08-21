@@ -11,13 +11,18 @@ if ((not nuke.env["studio"]) or nuke.env["indie"]) and not nuke.env.get("gui"):
         import os
         import sys
 
-        try:
-            from PySide2.QtCore import *
-            from PySide2.QtGui import *
-            from PySide2.QtWidgets import *
-        except:
-            from PySide.QtCore import *
-            from PySide.QtGui import *
+        if nuke.NUKE_VERSION_MAJOR >= 16:
+            from PySide6.QtCore import *
+            from PySide6.QtGui import *
+            from PySide6.QtWidgets import *
+        else:
+            try:
+                from PySide2.QtCore import *
+                from PySide2.QtGui import *
+                from PySide2.QtWidgets import *
+            except:
+                from PySide.QtCore import *
+                from PySide.QtGui import *
 
         prismRoot = os.getenv("PRISM_ROOT")
         if not prismRoot:

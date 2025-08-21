@@ -55,9 +55,19 @@ def activated(origin):
     if idx == -1:
         origin.cb_format.addItem(deep)
 
+    deep = ".exr (deep alpha only)"
+    idx = origin.cb_format.findText(deep)
+    if idx == -1:
+        origin.cb_format.addItem(deep)
+
 
 def deactivated(origin):
     deep = ".exr (deep)"
+    idx = origin.cb_format.findText(deep)
+    if idx != -1:
+        origin.cb_format.removeItem(idx)
+
+    deep = ".exr (deep alpha only)"
     idx = origin.cb_format.findText(deep)
     if idx != -1:
         origin.cb_format.removeItem(idx)
@@ -71,6 +81,8 @@ def getFormatFromNode(node):
     fmt = node.parm("default_image_format").eval()
     if fmt == "deepexr":
         fmt = ".exr (deep)"
+    elif fmt == "deepalphaexr":
+        fmt = ".exr (deep alpha only)"
     else:
         fmt = "." + fmt
 
@@ -221,6 +233,8 @@ def executeAOVs(origin, outputName):
     if ext == ".exr":
         if origin.cb_format.currentText() == ".exr (deep)":
             formatVal = "deepexr"
+        elif origin.cb_format.currentText() == ".exr (deep alpha only)":
+            formatVal = "deepalphaexr"
         else:
             formatVal = "exr"
     elif ext == ".png":

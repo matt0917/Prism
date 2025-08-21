@@ -46,9 +46,7 @@ if sys.version[0] == "3":
 if __name__ == "__main__":
     import PrismCore
 
-if platform.system() == "Windows":
-    import psutil
-
+import psutil
 from qtpy.QtCore import *
 from qtpy.QtGui import *
 from qtpy.QtWidgets import *
@@ -102,7 +100,7 @@ class PrismTray:
             self.settingsAction = QAction(
                 "Settings...",
                 self.core.messageParent,
-                triggered=self.openSettings,
+                triggered=lambda: self.core.prismSettings(),
             )
             self.trayIconMenu.addAction(self.settingsAction)
             self.trayIconMenu.addSeparator()
@@ -203,45 +201,6 @@ class PrismTray:
         self.launching = False
         return
 
-        # the following code starts the RenderHandler in a new process, but is a lot slower
-        try:
-            browserPath = os.path.join(os.path.dirname(__file__), "PrismCore.py")
-            if not os.path.exists(browserPath):
-                self.trayIcon.showMessage(
-                    "Script missing",
-                    "PrismCore.py does not exist.",
-                    icon=QSystemTrayIcon.Warning,
-                )
-                return None
-
-            if platform.system() == "Windows":
-                command = '"%s/Tools/Prism Project Browser.lnk"' % self.core.prismLibs
-            else:
-                command = "python %s" % os.path.join(
-                    self.core.prismRoot, "Scripts", "PrismCore.py"
-                )
-
-            self.browserProc = subprocess.Popen(command, shell=True)
-
-            if platform.system() == "Windows":
-                PROCNAME = "Prism.exe"
-                for proc in psutil.process_iter():
-                    if proc.name() == PROCNAME:
-                        if proc.pid == self.browserProc.pid:
-                            continue
-
-                        p = psutil.Process(proc.pid)
-
-                        if not "SYSTEM" in p.username():
-                            proc.kill()
-        except Exception as e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            self.trayIcon.showMessage(
-                "Unknown Error",
-                "startBrowser - %s - %s - %s" % (str(e), exc_type, exc_tb.tb_lineno),
-                icon=QSystemTrayIcon.Critical,
-            )
-
     def openFolder(self, path="", location=None):
         if location == "Prism":
             path = self.core.prismRoot
@@ -261,46 +220,6 @@ class PrismTray:
 
     def openSettings(self):
         self.core.prismSettings()
-        return
-
-        # the following code starts the RenderHandler in a new process, but is a lot slower
-        try:
-            settingsPath = os.path.join(os.path.dirname(__file__), "PrismSettings.py")
-            if not os.path.exists(settingsPath):
-                self.trayIcon.showMessage(
-                    "Script missing",
-                    "PrismSettings.py does not exist.",
-                    icon=QSystemTrayIcon.Warning,
-                )
-                return None
-
-            if platform.system() == "Windows":
-                command = '"%s/Tools/PrismSettings.lnk"' % self.core.prismLibs
-            else:
-                command = "python %s" % os.path.join(
-                    self.core.prismRoot, "Scripts", "PrismSettings.py"
-                )
-
-            self.settingsProc = subprocess.Popen(command, shell=True)
-
-            if platform.system() == "Windows":
-                PROCNAME = "Prism.exe"
-                for proc in psutil.process_iter():
-                    if proc.name() == PROCNAME:
-                        if proc.pid == self.settingsProc.pid:
-                            continue
-                        p = psutil.Process(proc.pid)
-
-                        if not "SYSTEM" in p.username():
-                            proc.kill()
-
-        except Exception as e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            self.trayIcon.showMessage(
-                "Unknown Error",
-                "openSettings - %s - %s - %s" % (str(e), exc_type, exc_tb.tb_lineno),
-                icon=QSystemTrayIcon.Critical,
-            )
 
     def restartTray(self):
         self.listenerThread.shutDown()
@@ -308,7 +227,7 @@ class PrismTray:
         pythonPath = self.core.getPythonPath(executable="Prism")
         filepath = os.path.join(self.core.prismRoot, "Scripts", "PrismTray.py")
         cmd = """start "" "%s" "%s" showSplash ignore_pid=%s""" % (pythonPath, filepath, os.getpid())
-        subprocess.Popen(cmd, cwd=self.core.prismRoot, shell=True)
+        subprocess.Popen(cmd, cwd=self.core.prismRoot, shell=True, env=self.core.startEnv)
         sys.exit(0)
 
     def exitTray(self):
@@ -335,7 +254,12 @@ class ListenerThread(QThread):
             try:
                 self.listener = Listener(address)
             except Exception as e:
-                if e.errno == 10048:
+                if platform.system() == "Windows":
+                    errid = 10048
+                else:
+                    errid = 98
+
+                if e.errno == errid:
                     logging.warning("Port %s is already in use. Please contact the support." % port)
                     return
                 else:

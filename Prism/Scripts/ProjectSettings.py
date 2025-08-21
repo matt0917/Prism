@@ -105,8 +105,9 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
             "Presets/Projects/Default/00_Pipeline/Fallbacks/noFileBig.jpg",
         )
         pmap = self.core.media.getPixmapFromPath(imgFile)
-        self.l_preview.setMinimumSize(pmap.width(), pmap.height())
-        self.l_preview.setPixmap(pmap)
+        if pmap:
+            self.l_preview.setMinimumSize(pmap.width(), pmap.height())
+            self.l_preview.setPixmap(pmap)
 
         iconPath = os.path.join(
             self.core.prismRoot, "Scripts", "UserInterfacesPrism", "help.png"
@@ -135,61 +136,7 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
         )
         self.l_helpRenderLocations.msg = msg
         self.lo_renderLocationsHeader.addWidget(self.l_helpRenderLocations)
-
-        iconPath = os.path.join(
-            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "reset.png"
-        )
-        icon = self.core.media.getColoredIcon(iconPath)
-        self.b_resetStructure.setIcon(icon)
-        self.b_resetStructure.setToolTip("Reset all fields to their default")
-
-        if self.projectData:
-            items = self.projectData.get("folder_structure", "")
-            if items:
-                items = self.core.projects.getProjectStructure(projectStructure=items)
-            else:
-                items = self.core.projects.getDefaultProjectStructure()
-        else:
-            items = self.core.projects.getProjectStructure()
-
-        self.folderStructureWidgets = []
-        iconPath = os.path.join(
-            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "help.png"
-        )
-        icon = self.core.media.getColoredIcon(iconPath)
-        self.helpPixmap = icon.pixmap(20, 20)
-        self.invalidHelpPixmap = self.core.media.getColoredIcon(
-            iconPath, r=200, g=10, b=10
-        ).pixmap(20, 20)
-        for idx, key in enumerate(items):
-            l_item = QLabel(items[key]["label"] + ":  ")
-            l_item.setToolTip(items[key]["key"])
-            e_item = QLineEdit(items[key]["value"])
-            l_help = HelpLabel(self)
-            e_item.textChanged.connect(lambda x, w=e_item: self.validateFolderWidget(w))
-            e_item.helpWidget = l_help
-            e_item.setContextMenuPolicy(Qt.CustomContextMenu)
-            e_item.customContextMenuRequested.connect(
-                lambda x, w=e_item: self.rclStructureKey(w)
-            )
-            l_help.editWidget = e_item
-            l_help.key = key
-            l_help.item = items[key]
-            l_help.msg = ""
-            l_help.setPixmap(self.helpPixmap)
-            l_help.setMouseTracking(True)
-            l_help.signalEntered.connect(self.structureItemEntered)
-            self.validateFolderWidget(e_item)
-
-            self.lo_structure.addWidget(l_item, idx, 0)
-            self.lo_structure.addWidget(e_item, idx, 1)
-            self.lo_structure.addWidget(l_help, idx, 2)
-
-            data = {"key": key, "item": items[key], "widget": e_item}
-            self.folderStructureWidgets.append(data)
-
-        sp_structure = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
-        self.lo_structure.addItem(sp_structure, idx + 1, 1)
+        self.refreshFolderStructure()
 
         self.origKeyPressEvent = self.keyPressEvent
         self.keyPressEvent = lambda x: self.keyPressedDialog(x)
@@ -207,6 +154,9 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
         if self.core.prism1Compatibility:
             self.tw_settings.removeTab(self.tw_settings.indexOf(self.tab_folderStructure))
 
+        self.refreshHooks(reloadHooks=False)
+        self.b_addHook.setToolTip("Add Hook")
+        self.b_removeHook.setToolTip("Delete selected Hooks")
         self.b_assetDepAdd = QToolButton()
         self.b_assetDepAdd.setToolTip("Add asset department...")
         self.b_assetDepAdd.setFocusPolicy(Qt.NoFocus)
@@ -222,6 +172,7 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
         self.b_assetDepAdd.setIcon(icon)
         self.b_addTaskPresetsAsset.setIcon(icon)
         self.b_addTaskPresetsShot.setIcon(icon)
+        self.b_addHook.setIcon(icon)
 
         path = os.path.join(
             self.core.prismRoot, "Scripts", "UserInterfacesPrism", "remove.png"
@@ -230,6 +181,7 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
         self.b_assetDepRemove.setIcon(icon)
         self.b_removeTaskPresetsAsset.setIcon(icon)
         self.b_removeTaskPresetsShot.setIcon(icon)
+        self.b_removeHook.setIcon(icon)
 
         self.b_assetDepAdd.clicked.connect(self.addAssetDepartmentClicked)
         self.b_assetDepRemove.clicked.connect(self.removeAssetDepartmentClicked)
@@ -237,6 +189,12 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
         self.b_removeTaskPresetsAsset.clicked.connect(self.removeTaskPresetsAssetClicked)
         self.b_addTaskPresetsShot.clicked.connect(self.addTaskPresetsShotClicked)
         self.b_removeTaskPresetsShot.clicked.connect(self.removeTaskPresetsShotClicked)
+        self.b_addHook.clicked.connect(self.addHookClicked)
+        self.b_removeHook.clicked.connect(self.removeHookClicked)
+        self.lw_hooks.customContextMenuRequested.connect(self.hooksRightClicked)
+        self.lw_hooks.itemSelectionChanged.connect(self.hookSelectionChanged)
+        self.b_saveHook.clicked.connect(self.saveHook)
+        PythonHighlighter(self.te_hook.document())
 
         self.tw_assetDepartments.verticalHeader().setSectionsMovable(True)
         self.tw_assetDepartments.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
@@ -302,6 +260,71 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
         self.lw_categories.currentItemChanged.connect(self.onCategoryChanged)
         self.selectCategory("General")
         self.core.callback(name="projectSettings_loadUI", args=[self])
+
+    @err_catcher(name=__name__)
+    def refreshFolderStructure(self):
+        for idx in reversed(range(self.lo_structure.count())):
+            item = self.lo_structure.takeAt(idx)
+            w = item.widget()
+            if w:
+                w.setVisible(False)
+                w.setParent(None)
+                w.deleteLater()
+
+        iconPath = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "reset.png"
+        )
+        icon = self.core.media.getColoredIcon(iconPath)
+        self.b_resetStructure.setIcon(icon)
+        self.b_resetStructure.setToolTip("Reset all fields to their default")
+
+        if self.projectData:
+            items = self.projectData.get("folder_structure", "")
+            if items:
+                items = self.core.projects.getProjectStructure(projectStructure=items)
+            else:
+                items = self.core.projects.getDefaultProjectStructure()
+        else:
+            items = self.core.projects.getProjectStructure()
+
+        self.folderStructureWidgets = []
+        iconPath = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "help.png"
+        )
+        icon = self.core.media.getColoredIcon(iconPath)
+        self.helpPixmap = icon.pixmap(20, 20)
+        self.invalidHelpPixmap = self.core.media.getColoredIcon(
+            iconPath, r=200, g=10, b=10
+        ).pixmap(20, 20)
+        for idx, key in enumerate(items):
+            l_item = QLabel(items[key]["label"] + ":  ")
+            l_item.setToolTip(items[key]["key"])
+            e_item = QLineEdit(items[key]["value"])
+            l_help = HelpLabel(self)
+            e_item.textChanged.connect(lambda x, w=e_item: self.validateFolderWidget(w))
+            e_item.helpWidget = l_help
+            e_item.setContextMenuPolicy(Qt.CustomContextMenu)
+            e_item.customContextMenuRequested.connect(
+                lambda x, w=e_item: self.rclStructureKey(w)
+            )
+            l_help.editWidget = e_item
+            l_help.key = key
+            l_help.item = items[key]
+            l_help.msg = ""
+            l_help.setPixmap(self.helpPixmap)
+            l_help.setMouseTracking(True)
+            l_help.signalEntered.connect(self.structureItemEntered)
+            self.validateFolderWidget(e_item)
+
+            self.lo_structure.addWidget(l_item, idx, 0)
+            self.lo_structure.addWidget(e_item, idx, 1)
+            self.lo_structure.addWidget(l_help, idx, 2)
+
+            data = {"key": key, "item": items[key], "widget": e_item}
+            self.folderStructureWidgets.append(data)
+
+        sp_structure = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        self.lo_structure.addItem(sp_structure, idx + 1, 1)
 
     @err_catcher(name=__name__)
     def addTab(self, widget, name):
@@ -375,6 +398,7 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
         self.chb_curPuseFps.toggled.connect(self.pfpsToggled)
         self.chb_prjResolution.toggled.connect(self.prjResolutionToggled)
         self.chb_curPRequirePublishComment.toggled.connect(self.requirePublishCommentToggled)
+        self.chb_curPepisodes.toggled.connect(self.episodesToggled)
         self.chb_curPproductTasks.toggled.connect(self.productTasksToggled)
         self.b_addExportPath.clicked.connect(self.addExportPathClicked)
         self.b_removeExportPath.clicked.connect(self.removeExportPathClicked)
@@ -755,6 +779,25 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
         self.l_publishCommentChars.setEnabled(checked)
 
     @err_catcher(name=__name__)
+    def episodesToggled(self, checked):
+        if checked:
+            template = "@episode_path@/@sequence@"
+        else:
+            template = "@project_path@/03_Production/Shots/@sequence@"            
+
+        for widget in self.folderStructureWidgets:
+            if widget["key"] == "sequences":
+                if widget["widget"].text() != template:
+                    msg = "Do you want to update your \"Sequences\" folder template to the recommended value?\n\nCurrent template:\n%s\n\nRecommended template:\n%s" % (widget["widget"].text(), template)
+                    result = self.core.popupQuestion(msg)
+                    if result == "Yes":
+                        widget["widget"].setText(template)
+
+        self.saveSettings(changeProject=False)
+        self.core.projects.refreshUseEpisode(self.projectConfig)
+        self.refreshFolderStructure()
+
+    @err_catcher(name=__name__)
     def productTasksToggled(self, checked):
         if checked:
             if os.getenv("PRISM_USE_DEPARTMENTS_FOR_PRODUCTS", "1") == "1":
@@ -903,6 +946,9 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
             "useMasterRenderVersion"
         ] = self.chb_curPuseMasterRender.isChecked()
         cData["globals"][
+            "useEpisodes"
+        ] = self.chb_curPepisodes.isChecked()
+        cData["globals"][
             "backupScenesOnPublish"
         ] = self.chb_curPbackupPublishes.isChecked()
         cData["globals"][
@@ -956,9 +1002,12 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
             if configPath == self.core.prismIni and not export:
                 self.core.projects.refreshLocalFiles()
                 if changeProject:
+                    self.core.callback(name="postProjectSettingsSave", args=[self, cData])
+                    self.signalSaved.emit(cData)
                     self.core.changeProject(
                         self.core.prismIni, settingsTab=self.tw_settings.currentIndex(), settingsType="Project",
                     )
+                    return
 
         self.core.callback(name="postProjectSettingsSave", args=[self, cData])
         self.signalSaved.emit(cData)
@@ -1106,6 +1155,10 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
             self.chb_curPuseMaster.setChecked(gblData["useMasterVersion"])
         if "useMasterRenderVersion" in gblData:
             self.chb_curPuseMasterRender.setChecked(gblData["useMasterRenderVersion"])
+        if "useEpisodes" in gblData:
+            self.chb_curPepisodes.setChecked(
+                gblData["useEpisodes"]
+            )
         if "backupScenesOnPublish" in gblData:
             self.chb_curPbackupPublishes.setChecked(
                 gblData["backupScenesOnPublish"]
@@ -1176,7 +1229,7 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
             name = "%s (%s)" % (dep.get("name"), dep.get("abbreviation"))
             nameItem = QTableWidgetItem(name)
             nameItem.setData(Qt.UserRole, dep)
-            taskItem = QTableWidgetItem("\n".join(dep.get("defaultTasks")))
+            taskItem = QTableWidgetItem("\n".join(dep.get("defaultTasks") or []))
 
             rc = self.tw_assetDepartments.rowCount()
             self.tw_assetDepartments.insertRow(rc)
@@ -1709,8 +1762,7 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
         items = self.lw_taskPresetsShot.selectedItems()
         rows = []
         for item in items:
-            if item.column() == 0:
-                rows.append(self.lw_taskPresetsShot.row(item))
+            rows.append(self.lw_taskPresetsShot.row(item))
 
         presets = self.getShotTaskPresets()
         for idx in sorted(rows):
@@ -1726,10 +1778,9 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
         items = self.lw_taskPresetsShot.selectedItems()
         rows = []
         for item in items:
-            if item.column() == 0:
-                rows.append(self.lw_taskPresetsShot.row(item))
+            rows.append(self.lw_taskPresetsShot.row(item))
 
-        presets = self.getShotDepartments()
+        presets = self.getShotTaskPresets()
         for idx in sorted(rows):
             row = presets.pop(idx)
             presets.insert(idx+1, row)
@@ -1817,6 +1868,157 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
     def saveShotTaskPresets(self):
         deps = self.getShotTaskPresets()
         self.core.projects.setTaskPresets("shot", deps, configData=self.projectData)
+
+    @err_catcher(name=__name__)
+    def refreshHooks(self, reloadHooks=False):
+        self.lw_hooks.clear()
+        if reloadHooks:
+            self.core.callbacks.registerProjectHooks()
+
+        for hook in sorted(self.core.callbacks.registeredHooks, key=lambda x: x.lower()):
+            item = QListWidgetItem(hook)
+            self.lw_hooks.addItem(item)
+
+    @err_catcher(name=__name__)
+    def hooksRightClicked(self, pos=None):
+        rcmenu = QMenu(self)
+
+        exp = QAction("Add...", self)
+        exp.triggered.connect(self.addHookClicked)
+        rcmenu.addAction(exp)
+        iconPath = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "add.png"
+        )
+        icon = self.core.media.getColoredIcon(iconPath)
+        exp.setIcon(icon)
+
+        copAct = QAction("Delete Selected...", self)
+        copAct.triggered.connect(self.removeHookClicked)
+        rcmenu.addAction(copAct)
+        iconPath = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "delete.png"
+        )
+        icon = self.core.media.getColoredIcon(iconPath)
+        copAct.setIcon(icon)
+
+        iname = (self.lw_hooks.indexAt(pos)).data()
+        if iname:
+            clipAct = QAction("Open in explorer", self)
+            clipAct.triggered.connect(lambda: self.openHookInExplorer(pos))
+            rcmenu.addAction(clipAct)
+
+        clipAct = QAction("Refresh", self)
+        clipAct.triggered.connect(lambda: self.refreshHooks(reloadHooks=True))
+        rcmenu.addAction(clipAct)
+        iconPath = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "refresh.png"
+        )
+        icon = self.core.media.getColoredIcon(iconPath)
+        clipAct.setIcon(icon)
+
+        rcmenu.exec_(QCursor.pos())
+
+    @err_catcher(name=__name__)
+    def hookSelectionChanged(self):
+        self.te_hook.clear()
+        items = self.lw_hooks.selectedItems()
+        if len(items) != 1:
+            return
+
+        filepath = self.core.callbacks.registeredHooks[items[0].text()][0]["filepath"]
+        if not os.path.exists(filepath):
+            return
+
+        with open(filepath, "r") as f:
+            text = f.read()
+
+        self.te_hook.setPlainText(text)
+
+    @err_catcher(name=__name__)
+    def saveHook(self):
+        text = self.te_hook.toPlainText()
+        items = self.lw_hooks.selectedItems()
+        if len(items) != 1:
+            return
+
+        filepath = self.core.callbacks.registeredHooks[items[0].text()][0]["filepath"]
+        with open(filepath, "w") as f:
+            f.write(text)
+
+    @err_catcher(name=__name__)
+    def addHookClicked(self):
+        availableCallbacks = self.core.callbacks.availableCallbacks
+        availableHooks = []
+        existingHooks = [self.lw_hooks.item(idx).text() for idx in range(self.lw_hooks.count())]
+        for availableCallback in availableCallbacks:
+            if availableCallback not in existingHooks:
+                availableHooks.append(availableCallback)
+
+        availableHooks = sorted(availableHooks, key=lambda x: x.lower())
+        dlg_ec = PrismWidgets.CreateItem(
+            core=self.core, showType=False, valueRequired=True, validate=True, showTasks=bool(availableHooks), presets=availableHooks
+        )
+
+        dlg_ec.setModal(True)
+        self.core.parentWindow(dlg_ec, parent=self)
+        dlg_ec.e_item.setFocus()
+        dlg_ec.setWindowTitle("Create Hook")
+        dlg_ec.l_item.setText("Hook Name:")
+        dlg_ec.buttonBox.buttons()[0].setText("Create")
+        result = dlg_ec.exec_()
+        if not result:
+            return
+
+        hookName = dlg_ec.e_item.text()
+        content = """# def main(*args, **kwargs):
+#     print(args)
+#     print(kwargs)"""
+        self.core.callbacks.createProjectHook(hookName, content=content)
+        self.refreshHooks(reloadHooks=True)
+        if hookName.endswith(".py"):
+            hookName = hookName[:-3]
+
+        fItems = self.lw_hooks.findItems(hookName, Qt.MatchExactly)
+        if fItems:
+            for item in fItems:
+                item.setSelected(True)
+
+    @err_catcher(name=__name__)
+    def removeHookClicked(self):
+        items = self.lw_hooks.selectedItems()
+        if not items:
+            self.core.popup("No items selected.")
+            return
+
+        msg = "Are you sure you want to delete the following hooks?\n"
+        for item in items:
+            msg += "\n" + item.text()
+
+        result = self.core.popupQuestion(msg)
+        if result != "Yes":
+            return
+
+        for item in items:
+            cb = item.text()
+            if cb not in self.core.callbacks.registeredHooks:
+                continue
+
+            path = self.core.callbacks.registeredHooks[cb][0]["filepath"]
+            try:
+                os.remove(path)
+            except:
+                self.core.popup("Failed to remove file:\n\n%s\n\nError:\n%s" % (path, str(e)))
+
+        self.refreshHooks(reloadHooks=True)
+
+    @err_catcher(name=__name__)
+    def openHookInExplorer(self, pos):
+        iname = (self.lw_hooks.indexAt(pos)).data()
+        if not iname:
+            return
+
+        filepath = self.core.callbacks.registeredHooks[iname][0]["filepath"]
+        self.core.openFolder(filepath)
 
     @err_catcher(name=__name__)
     def validateFolderWidget(self, widget):
@@ -2217,6 +2419,191 @@ class ExpressionWindow(QDialog):
                 msg += "\n\n%s" % result["error"]
 
             self.core.popup(msg)
+
+
+class PythonHighlighter (QSyntaxHighlighter):
+    """Syntax highlighter for the Python language.
+    """
+    # Python keywords
+    keywords = [
+        'and', 'assert', 'break', 'class', 'continue', 'def',
+        'del', 'elif', 'else', 'except', 'exec', 'finally',
+        'for', 'from', 'global', 'if', 'import', 'in',
+        'is', 'lambda', 'not', 'or', 'pass', 'print',
+        'raise', 'return', 'try', 'while', 'yield',
+        'None', 'True', 'False',
+    ]
+
+    # Python operators
+    operators = [
+        '=',
+        # Comparison
+        '==', '!=', '<', '<=', '>', '>=',
+        # Arithmetic
+        '\+', '-', '\*', '/', '//', '\%', '\*\*',
+        # In-place
+        '\+=', '-=', '\*=', '/=', '\%=',
+        # Bitwise
+        '\^', '\|', '\&', '\~', '>>', '<<',
+    ]
+
+    # Python braces
+    braces = [
+        '\{', '\}', '\(', '\)', '\[', '\]',
+    ]
+
+    def format(color, style=''):
+        """Return a QTextCharFormat with the given attributes.
+        """
+        _color = QColor()
+        _color.setNamedColor(color)
+
+        _format = QTextCharFormat()
+        _format.setForeground(_color)
+        if 'bold' in style:
+            _format.setFontWeight(QFont.Bold)
+        if 'italic' in style:
+            _format.setFontItalic(True)
+
+        return _format
+
+    # Syntax styles that can be shared by all languages
+    STYLES = {
+        'keyword': (format('#66d9ef')),
+        'operator': (format('#ff4689')),
+        'brace': (format('darkGray')),
+        'defclass': (format('#a6e22e', 'bold')),
+        'string': (format('#e6db74')),
+        'string2': (format('#e6db74')),
+        'comment': (format('#959077', 'italic')),
+        'self': (format('#66d9ef', 'italic')),
+        'numbers': (format('#ae81ff')),
+    }
+
+    def __init__(self, parent: QTextDocument) -> None:
+        super().__init__(parent)
+
+        # Multi-line strings (expression, flag, style)
+        self.tri_single = (QRegularExpression("'''"), 1, self.STYLES['string2'])
+        self.tri_double = (QRegularExpression('"""'), 2, self.STYLES['string2'])
+
+        rules = []
+
+        # Keyword, operator, and brace rules
+        rules += [(r'\b%s\b' % w, 0, self.STYLES['keyword'])
+            for w in PythonHighlighter.keywords]
+        rules += [(r'%s' % o, 0, self.STYLES['operator'])
+            for o in PythonHighlighter.operators]
+        rules += [(r'%s' % b, 0, self.STYLES['brace'])
+            for b in PythonHighlighter.braces]
+
+        # All other rules
+        rules += [
+            # 'self'
+            (r'\bself\b', 0, self.STYLES['self']),
+
+            # 'def' followed by an identifier
+            (r'\bdef\b\s*(\w+)', 1, self.STYLES['defclass']),
+            # 'class' followed by an identifier
+            (r'\bclass\b\s*(\w+)', 1, self.STYLES['defclass']),
+
+            # Numeric literals
+            (r'\b[+-]?[0-9]+[lL]?\b', 0, self.STYLES['numbers']),
+            (r'\b[+-]?0[xX][0-9A-Fa-f]+[lL]?\b', 0, self.STYLES['numbers']),
+            (r'\b[+-]?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\b', 0, self.STYLES['numbers']),
+
+            # Double-quoted string, possibly containing escape sequences
+            (r'"[^"\\]*(\\.[^"\\]*)*"', 0, self.STYLES['string']),
+            # Single-quoted string, possibly containing escape sequences
+            (r"'[^'\\]*(\\.[^'\\]*)*'", 0, self.STYLES['string']),
+
+            # From '#' until a newline
+            (r'#[^\n]*', 0, self.STYLES['comment']),
+        ]
+
+        # Build a QRegExp for each pattern
+        self.rules = [(QRegularExpression(pat), index, fmt)
+            for (pat, index, fmt) in rules]
+
+    def highlightBlock(self, text):
+        """Apply syntax highlighting to the given block of text.
+        """
+        self.tripleQuoutesWithinStrings = []
+        # Do other syntax formatting
+        for expression, nth, format in self.rules:
+            match_iter = index = expression.globalMatch(text)
+            while match_iter.hasNext():
+                match = match_iter.next()
+                index = match.capturedStart(nth)
+                length = match.capturedLength(nth)
+
+                # if there is a string we check
+                # if there are some triple quotes within the string
+                # they will be ignored if they are matched again
+                if expression.pattern() in [r'"[^"\\]*(\\.[^"\\]*)*"', r"'[^'\\]*(\\.[^'\\]*)*'"]:
+                    innerIndex = self.tri_single[0].match(text, index + 1).capturedStart()
+                    if innerIndex == -1:
+                        innerIndex = self.tri_double[0].match(text, index + 1).capturedStart()
+
+                    if innerIndex != -1:
+                        tripleQuoteIndexes = range(innerIndex, innerIndex + 3)
+                        self.tripleQuoutesWithinStrings.extend(tripleQuoteIndexes)
+
+                # skipping triple quotes within strings
+                if index in self.tripleQuoutesWithinStrings:
+                    continue
+
+                self.setFormat(index, length, format)
+
+        self.setCurrentBlockState(0)
+
+        # Do multi-line strings
+        in_multiline = self.match_multiline(text, *self.tri_single)
+        if not in_multiline:
+            in_multiline = self.match_multiline(text, *self.tri_double)
+
+    def match_multiline(self, text, delimiter, in_state, style):
+        """Do highlighting of multi-line strings. ``delimiter`` should be a
+        ``QRegExp`` for triple-single-quotes or triple-double-quotes, and
+        ``in_state`` should be a unique integer to represent the corresponding
+        state changes when inside those strings. Returns True if we're still
+        inside a multi-line string when this function is finished.
+        """
+        # If inside triple-single quotes, start at 0
+        if self.previousBlockState() == in_state:
+            start = 0
+            add = 0
+        # Otherwise, look for the delimiter on this line
+        else:
+            start = delimiter.match(text).capturedStart()
+            # skipping triple quotes within strings
+            if start in self.tripleQuoutesWithinStrings:
+                return False
+            # Move past this match
+            add = delimiter.match(text).capturedLength()
+
+        # As long as there's a delimiter match on this line...
+        while start >= 0:
+            # Look for the ending delimiter
+            end = delimiter.match(text, start + add).capturedStart()
+            # Ending delimiter on this line?
+            if end >= add:
+                length = end - start + add + delimiter.match(text).capturedLength()
+                self.setCurrentBlockState(0)
+            # No; multi-line string
+            else:
+                self.setCurrentBlockState(in_state)
+                length = len(text) - start + add
+            # Apply formatting
+            self.setFormat(start, length, style)
+            # Look for the next match
+            start = delimiter.match(text, start + length).capturedStart()
+
+        # Return True if still inside a multi-line string, False otherwise
+        if self.currentBlockState() == in_state:
+            return True
+        else:
+            return False
 
 
 if __name__ == "__main__":

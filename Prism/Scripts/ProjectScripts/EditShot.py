@@ -49,17 +49,22 @@ class EditShot(QDialog, EditShot_ui.Ui_dlg_EditShot):
     shotSaved = Signal()
     nextClicked = Signal()
 
-    def __init__(self, core, shotData, sequences, editSequence=False, parent=None):
+    def __init__(self, core, shotData, sequences, parent=None, episodes=None, editEpisode=False):
         QDialog.__init__(self)
         self.setupUi(self)
 
         self.core = core
         self.shotData = shotData or {}
         self.sequences = sequences
-        self.editSequence = editSequence
+        self.episodes = episodes or []
         self.core.parentWindow(self, parent=parent)
         self.shotPrvXres = 250
         self.shotPrvYres = 141
+        self.useEpisodes = self.core.getConfig(
+            "globals",
+            "useEpisodes",
+            config="project",
+        ) or False
 
         self.loadLayout()
 
@@ -75,22 +80,42 @@ class EditShot(QDialog, EditShot_ui.Ui_dlg_EditShot):
 
     @err_catcher(name=__name__)
     def connectEvents(self):
+        self.b_showEpisodes.clicked.connect(self.showEpisodes)
         self.b_showSeq.clicked.connect(self.showSequences)
         self.buttonBox.clicked.connect(self.buttonboxClicked)
         self.e_shotName.textEdited.connect(lambda x: self.validate(self.e_shotName))
         self.e_sequence.textEdited.connect(lambda x: self.validate(self.e_sequence))
+        self.e_episode.textEdited.connect(lambda x: self.validate(self.e_episode))
         self.l_shotPreview.mouseReleaseEvent = self.previewMouseReleaseEvent
         self.l_shotPreview.customContextMenuRequested.connect(self.rclShotPreview)
         self.b_deleteShot.clicked.connect(self.deleteShot)
 
     @err_catcher(name=__name__)
     def loadLayout(self):
+        if self.useEpisodes and len(self.episodes) == 0:
+            self.b_showEpisodes.setVisible(False)
+
         if len(self.sequences) == 0:
             self.b_showSeq.setVisible(False)
 
         self.b_deleteShot.setVisible(False)
         self.metaWidget = MetaDataWidget.MetaDataWidget(self.core, self.shotData)
         self.layout().insertWidget(self.layout().count() - 2, self.metaWidget)
+
+    @err_catcher(name=__name__)
+    def showEpisodes(self):
+        smenu = QMenu(self)
+
+        for i in self.episodes:
+            sAct = QAction(i, self)
+            sAct.triggered.connect(lambda x=None, t=i: self.episodeClicked(t))
+            smenu.addAction(sAct)
+
+        smenu.exec_(QCursor.pos())
+
+    @err_catcher(name=__name__)
+    def episodeClicked(self, ep):
+        self.e_episode.setText(ep)
 
     @err_catcher(name=__name__)
     def showSequences(self):
@@ -217,21 +242,30 @@ class EditShot(QDialog, EditShot_ui.Ui_dlg_EditShot):
     @err_catcher(name=__name__)
     def createEntities(self):
         result = None
+        if self.useEpisodes:
+            epName = self.shotData["episode"].replace(os.pathsep, ",")
+            eps = [ep.strip() for ep in epName.split(",") if ep.strip()]
+        else:
+            eps = [None]
+
         seqName = self.shotData["sequence"].replace(os.pathsep, ",")
         shotName = self.shotData["shot"].replace(os.pathsep, ",")
         seqs = [seq.strip() for seq in seqName.split(",") if seq.strip()]
-        for seq in seqs:
-            shots = [shot.strip() for shot in shotName.split(",") if shot.strip()]
-            for shot in shots:
-                shotData = self.shotData.copy()
-                shotData["sequence"] = seq
-                shotData["shot"] = shot
+        for ep in eps:
+            for seq in seqs:
+                shots = [shot.strip() for shot in shotName.split(",") if shot.strip()]
+                for shot in shots:
+                    shotData = self.shotData.copy()
+                    shotData["sequence"] = seq
+                    shotData["shot"] = shot
+                    if self.useEpisodes:
+                        shotData["episode"] = ep
 
-                result = self.core.entities.createEntity(shotData, frameRange=[self.sp_startFrame.value(), self.sp_endFrame.value()], preview=getattr(self, "pmap", None))
-                if self.chb_taskPreset.isChecked():
-                    self.core.entities.createTasksFromPreset(shotData, self.cb_taskPreset.currentData())
+                    result = self.core.entities.createEntity(shotData, frameRange=[self.sp_startFrame.value(), self.sp_endFrame.value()], preview=getattr(self, "pmap", None))
+                    if self.chb_taskPreset.isChecked():
+                        self.core.entities.createTasksFromPreset(shotData, self.cb_taskPreset.currentData())
 
-                self.shotCreated.emit(shotData)
+                    self.shotCreated.emit(shotData)
 
         return result
 
@@ -284,6 +318,9 @@ class EditShot(QDialog, EditShot_ui.Ui_dlg_EditShot):
             "sequence": self.e_sequence.text(),
             "shot": self.e_shotName.text(),
         }
+        if self.useEpisodes:
+            data["episode"] = self.e_episode.text()
+
         return data
 
     @err_catcher(name=__name__)
@@ -291,12 +328,16 @@ class EditShot(QDialog, EditShot_ui.Ui_dlg_EditShot):
         if newShotData is None:
             newShotData = self.getShotData()
 
-        if not self.editSequence and not newShotData["shot"] or (newShotData["shot"].startswith("_") and newShotData["shot"] != "_sequence"):
-            self.core.popup("Invalid shotname", parent=self)
+        if self.useEpisodes and (not newShotData["episode"] or newShotData["episode"].startswith("_")):
+            self.core.popup("Invalid episodename", parent=self)
             return False
 
-        if not newShotData["sequence"] or newShotData["sequence"].startswith("_"):
+        if not newShotData["sequence"] or (newShotData["sequence"].startswith("_") and newShotData["sequence"] != "_episode"):
             self.core.popup("Invalid sequencename", parent=self)
+            return False
+
+        if not newShotData["shot"] or (newShotData["shot"].startswith("_") and newShotData["shot"] != "_sequence"):
+            self.core.popup("Invalid shotname", parent=self)
             return False
 
         return True
@@ -308,7 +349,27 @@ class EditShot(QDialog, EditShot_ui.Ui_dlg_EditShot):
         if not result:
             return result
 
-        if self.shotData.get("sequence") and newShotData["sequence"] != self.shotData["sequence"]:
+        if self.useEpisodes and self.shotData.get("episode") and newShotData["episode"] != self.shotData["episode"]:
+            msgText = (
+                'Are you sure you want to rename this episode from "%s" to "%s"?\n\nThis will rename all files in the subfolders of the episode, which may cause errors, if these files are referenced somewhere else.'
+                % (self.shotData["episode"], newShotData["episode"])
+            )
+
+            result = self.core.popupQuestion(msgText, parent=self)
+            if result == "No":
+                return False
+
+            self.core.entities.renameEpisode(self.shotData["episode"], newShotData["episode"])
+            if self.core.useLocalFiles:
+                self.core.createCmd(["renameLocalSequence", self.shotData["episode"], newShotData["episode"]])
+            self.shotData = newShotData
+            if self.core.pb:
+                self.core.pb.refreshUI()
+                curw = self.core.pb.tbw_project.currentWidget()
+                if hasattr(curw, "w_entities"):
+                    curw.w_entities.navigate(newShotData)
+
+        elif self.shotData.get("sequence") and newShotData["sequence"] != self.shotData["sequence"]:
             msgText = (
                 'Are you sure you want to rename this sequence from "%s" to "%s"?\n\nThis will rename all files in the subfolders of the sequence, which may cause errors, if these files are referenced somewhere else.'
                 % (self.shotData["sequence"], newShotData["sequence"])
@@ -350,7 +411,7 @@ class EditShot(QDialog, EditShot_ui.Ui_dlg_EditShot):
         else:
             self.shotData = newShotData
 
-        if not self.editSequence:
+        if self.shotData.get("shot", "") != "_sequence":
             self.core.entities.setShotRange(
                 self.shotData, self.sp_startFrame.value(), self.sp_endFrame.value()
             )
@@ -369,6 +430,11 @@ class EditShot(QDialog, EditShot_ui.Ui_dlg_EditShot):
         if seqName:
             self.e_sequence.setText(self.shotData["sequence"])
 
+        if self.useEpisodes:
+            epName = self.shotData.get("episode")
+            if epName:
+                self.e_episode.setText(self.shotData["episode"])
+
         iconPath = os.path.join(
             self.core.prismRoot, "Scripts", "UserInterfacesPrism", "sequence.png"
         )
@@ -380,7 +446,22 @@ class EditShot(QDialog, EditShot_ui.Ui_dlg_EditShot):
         )
         icon = self.core.media.getColoredIcon(iconPath)
         self.l_shotIcon.setPixmap(icon.pixmap(15, 15))
-        self.w_shotName.layout().addWidget(self.e_shotName, 1, 2, 1, 2)
+        self.w_shotName.layout().addWidget(self.e_shotName, 2, 2, 1, 2)
+
+        self.l_episodeIcon.setHidden(not self.useEpisodes)
+        self.l_episode.setHidden(not self.useEpisodes)
+        self.e_episode.setHidden(not self.useEpisodes)
+        self.b_showEpisodes.setHidden(not self.useEpisodes)
+        if self.useEpisodes:
+            epName = self.shotData.get("episode")
+            if epName:
+                self.e_episode.setText(self.shotData["episode"])
+
+            iconPath = os.path.join(
+                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "episode.png"
+            )
+            icon = self.core.media.getColoredIcon(iconPath)
+            self.l_episodeIcon.setPixmap(icon.pixmap(15, 15))
 
         pmap = None
         if shotName:
@@ -440,10 +521,22 @@ class EditShot(QDialog, EditShot_ui.Ui_dlg_EditShot):
             )
             icon = self.core.media.getColoredIcon(iconPath)
             b_cancel.setIcon(icon)
+            if self.useEpisodes and self.e_episode.text():
+                self.e_sequence.setFocus()
+
             if self.e_sequence.text():
                 self.e_shotName.setFocus()
 
             self.buttonBox.setStyleSheet("* { button-layout: 2}")
+
+            self.b_incrementEpisode = QToolButton()
+            self.b_incrementEpisode.setToolTip("Increment episode name.\nHold CTRL to append incremented name.")
+            iconPath = os.path.join(
+                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "add.png"
+            )
+            icon = self.core.media.getColoredIcon(iconPath)
+            self.b_incrementEpisode.setIcon(icon)
+            self.b_incrementEpisode.clicked.connect(self.onEpisodeIncrementClicked)
 
             self.b_incrementSeq = QToolButton()
             self.b_incrementSeq.setToolTip("Increment sequence name.\nHold CTRL to append incremented name.")
@@ -463,9 +556,14 @@ class EditShot(QDialog, EditShot_ui.Ui_dlg_EditShot):
             self.b_incrementShot.setIcon(icon)
             self.b_incrementShot.clicked.connect(self.onShotIncrementClicked)
 
-            self.w_shotName.layout().addWidget(self.b_incrementSeq, 0, 4)
-            self.w_shotName.layout().addWidget(self.b_incrementShot, 1, 4)
+            if self.useEpisodes:
+                self.w_shotName.layout().addWidget(self.b_incrementEpisode, 0, 4)
 
+            self.w_shotName.layout().addWidget(self.b_incrementSeq, 1, 4)
+            self.w_shotName.layout().addWidget(self.b_incrementShot, 2, 4)
+
+            self.l_episode.setText("Episode(s):")
+            self.e_episode.setToolTip("Episode name or comma separated list of episode names")
             self.l_seq.setText("Sequence(s):")
             self.e_sequence.setToolTip("Sequence name or comma separated list of sequence names")
             self.l_shot.setText("Shot(s):")
@@ -489,6 +587,9 @@ class EditShot(QDialog, EditShot_ui.Ui_dlg_EditShot):
                 for preset in presets:
                     self.cb_taskPreset.addItem(preset.get("name", ""), preset)
 
+                if "Default" in [p.get("name") for p in presets]:
+                    self.cb_taskPreset.setCurrentText("Default")
+
                 self.layout().insertWidget(self.layout().indexOf(self.w_buttons)-2, self.w_taskPreset)
 
         if not pmap:
@@ -497,8 +598,10 @@ class EditShot(QDialog, EditShot_ui.Ui_dlg_EditShot):
             )
             pmap = self.core.media.getPixmapFromPath(imgFile)
 
-        self.l_shotPreview.setMinimumSize(pmap.width(), pmap.height())
-        self.l_shotPreview.setPixmap(pmap)
+        if pmap:
+            self.l_shotPreview.setMinimumSize(pmap.width(), pmap.height())
+            self.l_shotPreview.setPixmap(pmap)
+
         self.core.callback(name="onEditShotDlgLoaded", args=[self])
 
     @err_catcher(name=__name__)
@@ -507,6 +610,29 @@ class EditShot(QDialog, EditShot_ui.Ui_dlg_EditShot):
             self.buttonboxClicked(self.buttonBox.buttons()[0])
         elif event.key() == Qt.Key_Escape:
             self.reject()
+
+    @err_catcher(name=__name__)
+    def onEpisodeIncrementClicked(self):
+        origName = self.e_episode.text()
+        name = origName.replace(os.pathsep, ",").split(",")[-1]
+        num = self.getNumFromStr(name)
+        inc = 1
+        if num:
+            intnum = int(num) + inc
+            newNum = str(intnum).zfill(len(num))
+            newName = name[:-len(num)] + newNum
+        else:
+            strNum = str(inc).zfill(2)
+            if name:
+                newName = name + strNum
+            else:
+                newName = "ep" + strNum
+
+        mods = QApplication.keyboardModifiers()
+        if mods == Qt.ControlModifier:
+            newName = origName + "," + newName
+
+        self.e_episode.setText(newName.strip(","))
 
     @err_catcher(name=__name__)
     def onSeqIncrementClicked(self):
@@ -521,9 +647,9 @@ class EditShot(QDialog, EditShot_ui.Ui_dlg_EditShot):
         else:
             strNum = str(inc).zfill(3)
             if name:
-                newName = name + "_" + strNum
+                newName = name + strNum
             else:
-                newName = "sq_" + strNum
+                newName = "sq" + strNum
 
         mods = QApplication.keyboardModifiers()
         if mods == Qt.ControlModifier:
@@ -544,9 +670,9 @@ class EditShot(QDialog, EditShot_ui.Ui_dlg_EditShot):
         else:
             strNum = str(inc).zfill(3)
             if name:
-                newName = name + "_" + strNum
+                newName = name + strNum
             else:
-                newName = "sh_" + strNum
+                newName = "sh" + strNum
 
         mods = QApplication.keyboardModifiers()
         if mods == Qt.ControlModifier:

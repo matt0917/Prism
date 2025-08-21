@@ -50,7 +50,7 @@ class InstallHDAClass(hou_ImportFile.ImportFileClass):
 
     @err_catcher(name=__name__)
     def setup(
-        self, state, core, stateManager, node=None, importPath=None, stateData=None
+        self, state, core, stateManager, node=None, importPath=None, stateData=None, openProductsBrowser=True
     ):
         self.state = state
         self.core = core
@@ -196,22 +196,24 @@ class InstallHDAClass(hou_ImportFile.ImportFileClass):
         if nodePath.isInsideLockedHDA():
             return
 
+        mNode = None
         if os.path.exists(self.getImportPath()):
             defs = hou.hda.definitionsInFile(self.getImportPath())
             if len(defs) > 0:
                 tname = defs[0].nodeTypeName()
-                mNode = None
                 try:
                     mNode = nodePath.createNode(tname)
                     mNode.moveToGoodPosition()
                 except:
                     return
+
         if mNode is None:
             return
 
         mNode.setDisplayFlag(True)
         if hasattr(mNode, "setRenderFlag"):
             mNode.setRenderFlag(True)
+
         mNode.setPosition(paneTab.visibleBounds().center())
         mNode.setCurrent(True, clear_all_selected=True)
 

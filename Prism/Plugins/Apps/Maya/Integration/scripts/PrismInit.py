@@ -22,13 +22,14 @@ def prismInit(prismArgs=[]):
         if not qapp:
             QtWidgets.QApplication(sys.argv)
 
+        prismArgs.append("noUI")
+
     scriptDir = os.path.join(prismRoot, "Scripts")
 
     if scriptDir not in sys.path:
         sys.path.append(scriptDir)
 
     import PrismCore
-
     global pcore
     pcore = PrismCore.PrismCore(app="Maya", prismArgs=prismArgs)
     return pcore

@@ -71,7 +71,7 @@ class PlayblastClass(object):
 
         self.camlist = []
 
-        self.rangeTypes = ["Scene", "Shot", "Single Frame", "Custom"]
+        self.rangeTypes = ["Scene", "Shot", "Shot + 1", "Single Frame", "Custom"]
         self.cb_rangeType.addItems(self.rangeTypes)
         for idx, rtype in enumerate(self.rangeTypes):
             self.cb_rangeType.setItemData(
@@ -107,6 +107,9 @@ class PlayblastClass(object):
         self.warnPalette.setColor(QPalette.Button, QColor(200, 0, 0))
         self.warnPalette.setColor(QPalette.ButtonText, QColor(255, 255, 255))
 
+        self.cb_cams.showPopupOrig = self.cb_cams.showPopup
+        self.cb_cams.showPopup = self.showCameraPopup
+
         self.setTaskWarn(True)
         self.updateUi()
         if stateData is not None:
@@ -121,8 +124,9 @@ class PlayblastClass(object):
         elif "statename" in data:
             self.e_name.setText(data["statename"] + " ({identifier})")
         if "taskname" in data:
-            self.setTaskname(data["taskname"])
-            self.nameChanged(self.e_name.text())
+            self.setIdentifier(data["taskname"])
+        if "identifier" in data:
+            self.setIdentifier(data["identifier"])
         if "rangeType" in data:
             idx = self.cb_rangeType.findText(data["rangeType"])
             if idx != -1:
@@ -217,7 +221,7 @@ class PlayblastClass(object):
         self.sp_dlConcurrentTasks.editingFinished.connect(
             self.stateManager.saveStatesToScene
         )
-        self.b_pathLast.clicked.connect(self.showLastPathMenu)
+        self.b_pathLast.clicked.connect(lambda: self.stateManager.showLastPathMenu(self))
 
     @err_catcher(name=__name__)
     def initializeContextBasedSettings(self):
@@ -232,33 +236,33 @@ class PlayblastClass(object):
             self.setRangeType("Scene")
 
         if context.get("task"):
-            self.setTaskname(context.get("task"))
+            self.setIdentifier(context.get("task"))
 
     @err_catcher(name=__name__)
-    def showLastPathMenu(self):
+    def getLastPathOptions(self):
         path = self.l_pathLast.text()
         if path == "None":
             return
 
-        menu = QMenu(self)
-
-        act_open = QAction("Play", self)
-        act_open.triggered.connect(lambda: self.core.media.playMediaInExternalPlayer(path))
-        menu.addAction(act_open)
-
-        act_open = QAction("Open in Media Browser", self)
-        act_open.triggered.connect(lambda: self.openInMediaBrowser(path))
-        menu.addAction(act_open)
-
-        act_open = QAction("Open in explorer", self)
-        act_open.triggered.connect(lambda: self.core.openFolder(path))
-        menu.addAction(act_open)
-
-        act_copy = QAction("Copy", self)
-        act_copy.triggered.connect(lambda: self.core.copyToClipboard(path, file=True))
-        menu.addAction(act_copy)
-
-        menu.exec_(QCursor.pos())
+        options = [
+            {
+                "label": "Play...",
+                "callback": lambda: self.core.media.playMediaInExternalPlayer(path)
+            },
+            {
+                "label": "Open in Media Browser...",
+                "callback": lambda: self.openInMediaBrowser(path)
+            },
+            {
+                "label": "Open in Explorer...",
+                "callback": lambda: self.core.openFolder(path)
+            },
+            {
+                "label": "Copy",
+                "callback": lambda: self.core.copyToClipboard(path, file=True)
+            },
+        ]
+        return options
 
     @err_catcher(name=__name__)
     def openInMediaBrowser(self, path):
@@ -299,7 +303,7 @@ class PlayblastClass(object):
     def nameChanged(self, text):
         text = self.e_name.text()
         context = {}
-        context["identifier"] = self.getTaskname() or "None"
+        context["identifier"] = self.getIdentifier() or "None"
         num = 0
         try:
             if "{#}" in text:
@@ -329,25 +333,33 @@ class PlayblastClass(object):
         self.state.setText(0, name)
 
     @err_catcher(name=__name__)
+    def getIdentifier(self):
+        identifier = self.l_taskName.text()
+        return identifier
+
+    @err_catcher(name=__name__)
     def getTaskname(self):
-        taskName = self.l_taskName.text()
-        return taskName
+        return self.getIdentifier()
 
     @err_catcher(name=__name__)
     def getSortKey(self):
-        return self.getTaskname()
+        return self.getIdentifier()
+
+    @err_catcher(name=__name__)
+    def setIdentifier(self, identifier):
+        self.l_taskName.setText(identifier)
+        self.setTaskWarn(not bool(identifier))
+        self.updateUi()
 
     @err_catcher(name=__name__)
     def setTaskname(self, taskname):
-        self.l_taskName.setText(taskname)
-        self.setTaskWarn(not bool(taskname))
-        self.updateUi()
+        self.setIdentifier(taskname)
 
     @err_catcher(name=__name__)
     def changeTask(self):
         from PrismUtils import PrismWidgets
         self.nameWin = PrismWidgets.CreateItem(
-            startText=self.getTaskname(),
+            startText=self.getIdentifier(),
             showTasks=True,
             taskType="playblast",
             core=self.core,
@@ -360,7 +372,7 @@ class PlayblastClass(object):
         result = self.nameWin.exec_()
 
         if result == 1:
-            self.setTaskname(self.nameWin.e_item.text())
+            self.setIdentifier(self.nameWin.e_item.text())
             self.nameChanged(self.e_name.text())
             self.stateManager.saveStatesToScene()
 
@@ -447,7 +459,12 @@ class PlayblastClass(object):
         return False
 
     @err_catcher(name=__name__)
-    def updateUi(self):
+    def showCameraPopup(self):
+        self.refreshCameras()
+        self.cb_cams.showPopupOrig()
+
+    @err_catcher(name=__name__)
+    def refreshCameras(self):
         # update Cams
         self.cb_cams.clear()
         self.cb_cams.addItem("Don't override")
@@ -465,6 +482,9 @@ class PlayblastClass(object):
             self.cb_cams.setCurrentIndex(0)
             self.curCam = None
 
+    @err_catcher(name=__name__)
+    def updateUi(self):
+        self.refreshCameras()
         if not self.core.mediaProducts.getUseMaster():
             self.w_master.setVisible(False)
 
@@ -531,6 +551,14 @@ class PlayblastClass(object):
                 frange = self.core.entities.getShotRange(context)
                 if frange:
                     startFrame, endFrame = frange
+        elif rangeType == "Shot + 1":
+            context = self.getCurrentContext()
+            if context.get("type") == "shot" and "sequence" in context:
+                frange = self.core.entities.getShotRange(context)
+                if frange:
+                    startFrame, endFrame = frange
+                    startFrame -= 1
+                    endFrame += 1
         elif rangeType == "Single Frame":
             if hasattr(self.core.appPlugin, "getCurrentFrame"):
                 startFrame = self.core.appPlugin.getCurrentFrame()
@@ -575,6 +603,14 @@ class PlayblastClass(object):
 
     @err_catcher(name=__name__)
     def managerChanged(self, text=None):
+        if getattr(self.cb_manager, "prevManager", None):
+            self.cb_manager.prevManager.unsetManager(self)
+
+        plugin = self.core.plugins.getRenderfarmPlugin(self.cb_manager.currentText())
+        if plugin:
+            plugin.sm_render_managerChanged(self)
+
+        self.cb_manager.prevManager = plugin
         self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
@@ -586,7 +622,7 @@ class PlayblastClass(object):
     def preExecuteState(self):
         warnings = []
 
-        if not self.getTaskname():
+        if not self.getIdentifier():
             warnings.append(["No identifier is given.", "", 3])
 
         rangeType = self.cb_rangeType.currentText()
@@ -601,10 +637,10 @@ class PlayblastClass(object):
 
     @err_catcher(name=__name__)
     def getOutputName(self, useVersion="next", extension=None):
-        if not self.getTaskname():
+        identifier = self.getIdentifier()
+        if not identifier:
             return
 
-        task = self.getTaskname()
         extension = extension or self.cb_formats.currentText()
         context = self.getCurrentContext()
         framePadding = (
@@ -624,7 +660,7 @@ class PlayblastClass(object):
 
         outputPathData = self.core.mediaProducts.generatePlayblastPath(
             entity=context,
-            task=task,
+            task=identifier,
             extension=extension,
             framePadding=framePadding,
             comment=comment,
@@ -641,10 +677,7 @@ class PlayblastClass(object):
 
     @err_catcher(name=__name__)
     def executeState(self, parent, useVersion="next"):
-        # 	if not self.core.uiAvailable:
-        # 		return [self.state.text(0) + ": error - Playblasts are not supported without UI."]
-
-        if not self.getTaskname():
+        if not self.getIdentifier():
             return [
                 self.state.text(0)
                 + ": error - No identifier is given. Skipped the activation of this state."
@@ -666,7 +699,7 @@ class PlayblastClass(object):
         if platform.system() == "Windows" and os.getenv("PRISM_IGNORE_PATH_LENGTH") != "1" and outLength > 255:
             return [
                 self.state.text(0)
-                + " - error - The outputpath is longer than 255 characters (%s), which is not supported on Windows. Please shorten the outputpath by changing the comment, taskname or projectpath."
+                + " - error - The outputpath is longer than 255 characters (%s), which is not supported on Windows. Please shorten the outputpath by changing the comment, identifier or projectpath."
                 % outLength
             ]
 
@@ -719,8 +752,10 @@ class PlayblastClass(object):
         del details["extension"]
         details["version"] = hVersion
         details["sourceScene"] = fileName
-        details["identifier"] = self.getTaskname()
+        details["identifier"] = self.getIdentifier()
         details["comment"] = self.stateManager.publishComment
+        details["startframe"] = jobFrames[0]
+        details["endframe"] = jobFrames[1]
 
         self.core.saveVersionInfo(filepath=outputPath, details=details)
 
@@ -731,6 +766,7 @@ class PlayblastClass(object):
             self.core.saveScene(versionUp=False, prismReq=False)
 
         try:
+            submitResult = None
             if not self.gb_submit.isHidden() and self.gb_submit.isChecked():
                 handleMaster = "media" if self.isUsingMasterVersion() else False
                 plugin = self.core.plugins.getRenderfarmPlugin(self.cb_manager.currentText())
@@ -787,6 +823,7 @@ class PlayblastClass(object):
                 "startframe": jobFrames[0],
                 "endframe": jobFrames[1],
                 "outputpath": outputName,
+                "result": submitResult,
             }
             result = self.core.callback("postPlayblast", **kwargs)
 
@@ -882,7 +919,7 @@ class PlayblastClass(object):
         stateProps.update(
             {
                 "stateName": self.e_name.text(),
-                "taskname": self.getTaskname(),
+                "identifier": self.getIdentifier(),
                 "rangeType": str(self.cb_rangeType.currentText()),
                 "startframe": self.sp_rangeStart.value(),
                 "endframe": self.sp_rangeEnd.value(),

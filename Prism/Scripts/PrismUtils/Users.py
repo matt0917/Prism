@@ -35,6 +35,7 @@
 import os
 import sys
 import socket
+import platform
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -78,7 +79,7 @@ class Users(object):
         result = cu.exec_()
 
         if result == 0:
-            if self.core.appPlugin.pluginName == "Standalone":
+            if getattr(self.core, "appPlugin", None) and self.core.appPlugin.pluginName == "Standalone":
                 sys.exit()
             return
         else:
@@ -162,7 +163,11 @@ class Users(object):
     def getDefaultUsername(self):
         user = os.getenv("USERNAME", "")
         if not user:
-            user = socket.gethostname()
+            if platform.system() == "Linux":
+                import getpass
+                user = getpass.getuser()
+            else:
+                user = socket.gethostname()
 
         return user
 
@@ -179,9 +184,15 @@ class Users(object):
         return variables
 
     @err_catcher(name=__name__)
-    def refreshEnvironment(self):
+    def getUserEnvironment(self, appPluginName=None):
         variables = self.getUserEnvironmentVariables()
         envVars = []
+        if not appPluginName:
+            if getattr(self.core, "appPlugin", None):
+                appPluginName = self.core.appPlugin.pluginName
+            else:
+                appPluginName = ""
+
         for key in variables:
             val = os.path.expandvars(str(variables[key]))
             res = self.core.callback(name="expandEnvVar", args=[val])
@@ -189,7 +200,7 @@ class Users(object):
                 if r:
                     val = r
 
-            if key.lower().startswith("ocio") and hasattr(self.core, "appPlugin") and self.core.appPlugin.pluginName.lower() == key.split("_")[-1]:
+            if key.lower().startswith("ocio") and appPluginName.lower() == key.split("_")[-1]:
                 key = "OCIO"
 
             item = {
@@ -198,7 +209,16 @@ class Users(object):
                 "orig": os.getenv(key),
             }
             envVars.append(item)
-            os.environ[str(key)] = val
+
+        return envVars
+
+    @err_catcher(name=__name__)
+    def refreshEnvironment(self):
+        envVars = []
+        usrVars = self.getUserEnvironment()
+        for envVar in usrVars:
+            envVars.append(envVar)
+            os.environ[envVar["key"]] = envVar["value"]
 
         self.core.callback(name="updatedEnvironmentVars", args=["refreshUser", envVars])
 

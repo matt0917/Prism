@@ -307,7 +307,11 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
     def showEvent(self, event):
         if not getattr(self, "headerHeightSet", False):
             spacing = self.w_tasks.layout().spacing()
-            h = self.w_entities.w_header.geometry().height() - spacing
+            if self.w_entities.isHidden():
+                h = self.w_version.geometry().height()
+            else:
+                h = self.w_entities.w_header.geometry().height() - spacing
+
             self.setHeaderHeight(h)
 
     @err_catcher(name=__name__)
@@ -480,6 +484,7 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
     @err_catcher(name=__name__)
     def getCurrentProduct(self, allowMultiple=False):
         items = self.tw_identifier.selectedItems()
+        items = [item for item in items if not (item.data(0, Qt.UserRole) or {}).get("isGroup")]
         if not items:
             return
 
@@ -514,7 +519,7 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
             refresh = self.updateIdentifiers
             rcmenu = QMenu(viewUi)
             item = self.tw_identifier.itemAt(pos)
-
+            isGroup = False
             if not item:
                 entity = self.getCurrentEntity()
                 if not entity:
@@ -524,7 +529,8 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
                 path = self.core.products.getProductPathFromEntity(entity)
             else:
                 data = item.data(0, Qt.UserRole)
-                if data:
+                isGroup = data and data.get("isGroup")
+                if data and not isGroup:
                     path = list(data["locations"].values())[0]
                 else:
                     entity = self.getCurrentEntity()
@@ -532,13 +538,12 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
                         return
 
                     path = self.core.products.getProductPathFromEntity(entity)
-                    item = None
 
             depAct = QAction("Create Product...", viewUi)
             depAct.triggered.connect(self.createProductDlg)
             rcmenu.addAction(depAct)
 
-            if item:
+            if item and not isGroup:
                 depAct = QAction("Edit Tags...", viewUi)
                 depAct.triggered.connect(lambda: self.editTags(data))
                 rcmenu.addAction(depAct)
@@ -550,6 +555,16 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
                 icon = self.core.media.getColoredIcon(iconPath)
                 depAct.setIcon(icon)
                 depAct.triggered.connect(self.groupProductsDlg)
+                rcmenu.addAction(depAct)
+
+            if isGroup:
+                depAct = QAction("Ungroup", viewUi)
+                iconPath = os.path.join(
+                    self.core.prismRoot, "Scripts", "UserInterfacesPrism", "folder.png"
+                )
+                icon = self.core.media.getColoredIcon(iconPath)
+                depAct.setIcon(icon)
+                depAct.triggered.connect(lambda: self.ungroupProducts(item.text(0)))
                 rcmenu.addAction(depAct)
 
         elif listType == "versions":
@@ -731,6 +746,19 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         self.updateIdentifiers(restoreSelection=True)
 
     @err_catcher(name=__name__)
+    def ungroupProducts(self, group):
+        products = []
+        identifiers = self.getIdentifiers()
+        for identifierName in identifiers:
+            pgroup = self.core.products.getGroupFromProduct(identifiers[identifierName])
+            if pgroup == group:
+                products.append(identifiers[identifierName])
+
+        if products:
+            self.core.products.setProductsGroup(products, group=None)
+            self.updateIdentifiers(restoreSelection=True)
+
+    @err_catcher(name=__name__)
     def prepareNewVersion(self):
         curEntity = self.getCurrentEntity()
         curProduct = self.getCurrentProductName()
@@ -801,7 +829,7 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         location = self.newItem.cb_location.currentText()
         self.core.products.createProduct(entity=curEntity, product=itemName, location=location)
         selItems = self.tw_identifier.selectedItems()
-        if len(selItems) == 1 and not selItems[0].data(0, Qt.UserRole):
+        if len(selItems) == 1 and (selItems[0].data(0, Qt.UserRole) or {}).get("isGroup"):
             item = selItems[0]
             group = selItems[0].text(0)
             while item.parent():
@@ -1095,15 +1123,15 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
                 if useDep:
                     dep = identifiers[tn].get("department") or "unknown"
                     if dep not in items:
-                        item = QTreeWidgetItem([dep])
-                        items[dep] = {"item": item, "tasks": {}}
-                        self.tw_identifier.invisibleRootItem().addChild(item)
+                        ditem = QTreeWidgetItem([dep])
+                        items[dep] = {"item": ditem, "tasks": {}}
+                        self.tw_identifier.invisibleRootItem().addChild(ditem)
 
                     task = identifiers[tn].get("task") or "unknown"
                     if task not in items[dep]["tasks"]:
-                        item = QTreeWidgetItem([task])
-                        items[dep]["tasks"][task] = {"item": item}
-                        items[dep]["item"].addChild(item)
+                        titem = QTreeWidgetItem([task])
+                        items[dep]["tasks"][task] = {"item": titem}
+                        items[dep]["item"].addChild(titem)
 
                     if tn in groups:
                         parent = groupItems[groups[tn]]
@@ -1112,9 +1140,9 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
                 else:
                     task = identifiers[tn].get("task") or "unknown"
                     if task not in items:
-                        item = QTreeWidgetItem([task])
-                        items[task] = {"item": item}
-                        self.tw_identifier.invisibleRootItem().addChild(item)
+                        titem = QTreeWidgetItem([task])
+                        items[task] = {"item": titem}
+                        self.tw_identifier.invisibleRootItem().addChild(titem)
 
                     if tn in groups:
                         parent = groupItems[groups[tn]]
@@ -1177,6 +1205,7 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
                     continue
 
                 item = QTreeWidgetItem([gfolder])
+                item.setData(0, Qt.UserRole, {"isGroup": True})
                 iconPath = os.path.join(
                     self.core.prismRoot, "Scripts", "UserInterfacesPrism", "folder.png"
                 )
@@ -1292,6 +1321,14 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
             dateStamp = dateStamp or self.core.getFileModificationDate(filepath, asString=False)
         else:
             depExt = ""
+
+        if dateStamp and self.core.isStr(dateStamp):
+            from datetime import datetime
+            try:
+                timeStamp = datetime.strptime(dateStamp, "%d.%m.%y %X")
+                dateStamp = datetime.timestamp(timeStamp)
+            except:
+                pass
 
         row = self.tw_versions.rowCount()
         self.tw_versions.insertRow(row)
@@ -1461,10 +1498,11 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
     @err_catcher(name=__name__)
     def navigateToFile(self, fileName=None, identifier=None, version=None, scenefile=False, data=None):
         if not data:
-            if not fileName:
+            if not fileName and not (identifier and (version or scenefile)):
                 return False
 
-            data = self.getDataFromPath(fileName) or {}
+            if fileName:
+                data = self.getDataFromPath(fileName) or {}
 
         if not identifier:
             identifier = data.get("product") or ""

@@ -37,7 +37,7 @@ import os
 
 class Prism_Blender_Variables(object):
     def __init__(self, core, plugin):
-        self.version = "v2.0.10"
+        self.version = "v2.0.16"
         self.pluginName = "Blender"
         self.pluginType = "App"
         self.appShortName = "Bld"
@@ -49,7 +49,7 @@ class Prism_Blender_Variables(object):
         self.appColor = [200, 180, 0]
         self.canDeleteRenderPasses = False
         self.colorButtonWithStyleSheet = True
-        self.platforms = ["Windows", "Linux"]
+        self.platforms = ["Windows", "Linux", "Darwin"]
         self.pluginDirectory = os.path.abspath(
             os.path.dirname(os.path.dirname(__file__))
         )

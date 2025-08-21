@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 
 class Prism_3dsMax_Functions(object):
     # TODO smaller stuff
-    #region Init
+    # region Init
     def __init__(self, core, plugin):
         self.core = core
         self.plugin = plugin
@@ -71,6 +71,16 @@ class Prism_3dsMax_Functions(object):
         self.core.registerCallback(
             "onStateManagerOpen", self.onStateManagerOpen, plugin=self.plugin
         )
+        self.importHandlers = {
+            ".abc": {"importFunction": self.importAbc},
+            ".fbx": {"importFunction": self.importFbx},
+        }
+        self.exportHandlers = {
+            ".abc": {"exportFunction": self.exportAbc},
+            ".fbx": {"exportFunction": self.exportFbx},
+            ".obj": {"exportFunction": self.exportObj},
+            ".max": {"exportFunction": self.exportMax},
+        }
 
     @err_catcher(name=__name__)
     def onProductBrowserOpen(self, origin):
@@ -84,14 +94,13 @@ class Prism_3dsMax_Functions(object):
         parent = QWidget.find(rt.windows.getMAXHWND())
         origin.messageParent = parent
 
-        if self.appVersion[0] < 23: # before Max2021
+        if self.appVersion[0] < 23:  # before Max2021
             MaxPlus.NotificationManager.Register(
                 MaxPlus.NotificationCodes.FilePostOpenProcess, origin.sceneOpen
             )
-        else: # Max2021+
+        else:  # Max2021+
             rt.callbacks.addScript(rt.Name("filePostOpenProcess"), origin.sceneOpen, id=rt.Name("filePostOpenProcess_sceneOpen"))
-            
-        
+
         origin.startAutosaveTimer()
 
     @err_catcher(name=__name__)
@@ -328,7 +337,107 @@ class Prism_3dsMax_Functions(object):
         # TODO: store and restore selection
         rt.clearSelection()
 
-    #region sm_export_exportAppObjects
+    @err_catcher(name=__name__)
+    def exportObj(self, outputName, origin, startFrame, endFrame, nodes):
+        for frame in range(startFrame, endFrame + 1):
+            self.setCurrentFrame(origin, frame)
+
+            foutputName = outputName.replace("####", format(frame, "04"))
+            selectedOnly = not origin.chb_wholeScene.isChecked()
+            additionalOptions = origin.chb_additionalOptions.isChecked()
+            if additionalOptions:
+                rt.exportFile(foutputName, selectedOnly=selectedOnly)
+            else:
+                rt.exportFile(foutputName, rt.Name("NoPrompt"), selectedOnly=selectedOnly)
+
+        outputName = foutputName
+        return outputName
+
+    @err_catcher(name=__name__)
+    def exportFbx(self, outputName, origin, startFrame, endFrame, nodes):
+        if startFrame == endFrame:
+            rt.execute('FbxExporterSetParam "Animation" False')
+            self.setCurrentFrame(origin, startFrame)
+        else:
+            rt.execute('FbxExporterSetParam "Animation" True')
+
+        selectedOnly = not origin.chb_wholeScene.isChecked()
+        additionalOptions = origin.chb_additionalOptions.isChecked()
+        if additionalOptions:
+            rt.exportFile(outputName, selectedOnly=selectedOnly, using=rt.FBXEXP)
+        else:
+            rt.exportFile(outputName, rt.Name("NoPrompt"), selectedOnly=selectedOnly, using=rt.FBXEXP)
+
+        return outputName
+
+    @err_catcher(name=__name__)
+    def exportAbc(self, outputName, origin, startFrame, endFrame, nodes):
+        rt.execute("AlembicExport.CoordinateSystem = #Maya")
+        selectedOnly = not origin.chb_wholeScene.isChecked()
+        additionalOptions = origin.chb_additionalOptions.isChecked()
+
+        # TODO fix versions
+        if 18 <= self.appVersion[0] < 21:  # Max 2016 - 2018
+            rt.execute("AlembicExport.CacheTimeRange = #StartEnd")
+            rt.execute("AlembicExport.StepFrameTime = 1")
+            rt.execute("AlembicExport.StartFrameTime = %s" % startFrame)
+            rt.execute("AlembicExport.EndFrameTime = %s" % endFrame)
+            rt.execute("AlembicExport.ParticleAsMesh = False")
+        elif self.appVersion[0] >= 21:  # Max 2019+
+            rt.execute("AlembicExport.AnimTimeRange = #StartEnd")
+            rt.execute("AlembicExport.SamplesPerFrame = 1")
+            rt.execute("AlembicExport.StartFrame = %s" % startFrame)
+            rt.execute("AlembicExport.EndFrame = %s" % endFrame)
+            rt.execute("AlembicExport.ParticleAsMesh = False")
+        else:
+            rt.messageBox("There is no alembic support for this version of 3dsMax.", title="Alembic not supported")
+
+        if additionalOptions:
+            rt.exportFile(outputName, selectedOnly=selectedOnly, using=rt.Alembic_Export)
+        else:
+            rt.exportFile(outputName, rt.Name("NoPrompt"), selectedOnly=selectedOnly, using=rt.Alembic_Export)
+
+        return outputName
+
+    @err_catcher(name=__name__)
+    def exportMax(self, outputName, origin, startFrame, endFrame, nodes):
+        selectedOnly = not origin.chb_wholeScene.isChecked()
+        if selectedOnly:
+            rt.saveNodes(nodes, outputName, quiet=True)
+        else:
+            rt.saveMaxFile(outputName, useNewFile=False, quiet=True)
+
+        return outputName
+
+    @err_catcher(name=__name__)
+    def exportUsd(self, outputName, origin, startFrame, endFrame, nodes):
+        selectedOnly = not origin.chb_wholeScene.isChecked()
+        additionalOptions = origin.chb_additionalOptions.isChecked()
+        export_options = rt.USDExporter.createOptions()
+
+        # export_options.Meshes = True
+        # export_options.Lights = False
+        # export_options.Cameras = False
+        # export_options.Materials = False
+        if outputName.endswith(".usda"):
+            export_options.FileFormat = rt.name('ascii')
+        else:
+            export_options.FileFormat = rt.name('binary')
+
+        # export_options.UpAxis = rt.name('y')
+        # export_options.LogLevel = rt.name('info')
+        # export_options.PreserveEdgeOrientation = True
+        # export_options.Normals = rt.name('none')
+        # export_options.TimeMode = rt.name('current')
+        rt.USDexporter.UIOptions = export_options
+
+        if additionalOptions:
+            rt.exportFile(outputName, selectedOnly=selectedOnly, using=rt.USDExporter)
+        else:
+            rt.exportFile(outputName, rt.Name("NoPrompt"), selectedOnly=selectedOnly, using=rt.USDExporter)
+
+        return outputName
+
     @err_catcher(name=__name__)
     def sm_export_exportAppObjects(
         self,
@@ -343,79 +452,27 @@ class Prism_3dsMax_Functions(object):
             self.setFrameRange(origin, startFrame=startFrame, endFrame=endFrame)
 
         expNodeHandles = origin.nodes
-
-        additionalOptions = origin.chb_additionalOptions.isChecked()
         selectedOnly = not origin.chb_wholeScene.isChecked()
-
         if selectedOnly:
             rt.clearSelection()
-
             nodeHandles = [handle for handle in expNodeHandles if self.isNodeValid(origin,handle)]
             nodes = [rt.maxOps.getNodeByHandle(handle) for handle in nodeHandles]
             rt.select(nodes)
 
-        if origin.cb_outType.currentText() == ".obj":
-            for i in range(startFrame, endFrame + 1):
-                self.setCurrentFrame(origin,i)
-
-                foutputName = outputName.replace("####", format(i, "04"))
-                
-                if additionalOptions:
-                    rt.exportFile(foutputName, selectedOnly=selectedOnly)
-                else:
-                    rt.exportFile(foutputName, rt.Name("NoPrompt"), selectedOnly=selectedOnly)
-
-            outputName = foutputName
-
-        elif origin.cb_outType.currentText() == ".fbx":
-            if startFrame == endFrame:
-                rt.execute('FbxExporterSetParam "Animation" False')
-
-                self.setCurrentFrame(origin, startFrame)
-            else:
-                rt.execute('FbxExporterSetParam "Animation" True')
-
-            if additionalOptions:
-                rt.exportFile(outputName, selectedOnly=selectedOnly, using=rt.FBXEXP)
-            else:
-                rt.exportFile(outputName, rt.Name("NoPrompt"), selectedOnly=selectedOnly, using=rt.FBXEXP)
-
-        elif origin.cb_outType.currentText() == ".abc":
-            rt.execute( "AlembicExport.CoordinateSystem = #Maya")
-
-            # TODO fix versions
-            if 18 <= self.appVersion[0] < 21: # Max 2016 - 2018
-                rt.execute( "AlembicExport.CacheTimeRange = #StartEnd")
-                rt.execute( "AlembicExport.StepFrameTime = 1")
-                rt.execute("AlembicExport.StartFrameTime = %s" % startFrame)
-                rt.execute( "AlembicExport.EndFrameTime = %s" % endFrame)
-                rt.execute( "AlembicExport.ParticleAsMesh = False")
-            elif self.appVersion[0] >= 21: # Max 2019+
-                rt.execute( "AlembicExport.AnimTimeRange = #StartEnd")
-                rt.execute( "AlembicExport.SamplesPerFrame = 1")
-                rt.execute( "AlembicExport.StartFrame = %s" % startFrame)
-                rt.execute( "AlembicExport.EndFrame = %s" % endFrame)
-                rt.execute( "AlembicExport.ParticleAsMesh = False")
-            else:
-                rt.messageBox("There is no alembic support for this version of 3dsMax.", title="Alembic not supported")
-
-            if additionalOptions:
-                rt.exportFile(outputName, selectedOnly=selectedOnly, using=rt.Alembic_Export)
-            else:
-                rt.exportFile(outputName, rt.Name("NoPrompt"), selectedOnly=selectedOnly, using=rt.Alembic_Export)
-
-        elif origin.cb_outType.currentText() == ".max":
-            if selectedOnly:
-                rt.saveNodes(nodes, outputName, quiet=True)
-            else:
-                rt.saveMaxFile(outputName, useNewFile=False, quiet=True)
+        ext = origin.cb_outType.currentText()
+        if ext in self.exportHandlers:
+            outputName = self.exportHandlers[ext]["exportFunction"](
+                outputName, origin, startFrame, endFrame, nodes
+            )
+        else:
+            msg = "Canceled: Format \"%s\" is not supported." % ext
+            return msg
 
         # TODO save and restore selection
         if selectedOnly:
             rt.clearSelection()
 
         return outputName
-    #endregion
 
     @err_catcher(name=__name__)
     def sm_export_preExecute(self, origin, startFrame, endFrame):
@@ -485,13 +542,96 @@ class Prism_3dsMax_Functions(object):
         origin.f_abcPath.setVisible(True)
 
     @err_catcher(name=__name__)
+    def importAbc(self, importPath, origin=None):
+        if origin.chb_abcPath.isChecked():
+            for i in origin.nodes:
+                if not self.isNodeValid(origin, i):
+                    continue
+
+                i.source = importPath
+
+                result = True
+                return "updated"
+
+        rt.execute("AlembicImport.ImportToRoot = True")
+        showProps = False
+        modifiers = QApplication.keyboardModifiers()
+        if modifiers == Qt.ControlModifier:
+            showProps = True
+
+        if showProps:
+            result = rt.importFile(importPath, using=rt.Alembic_Import)
+        else:
+            result = rt.importFile(importPath, rt.Name("NoPrompt"), using=rt.Alembic_Import)
+
+        return result
+
+    @err_catcher(name=__name__)
+    def importFbx(self, importPath, origin=None):
+        rt.execute('FBXImporterSetParam "Mode" #create')
+        rt.execute('FBXImporterSetParam "ConvertUnit" #cm')
+
+        prevLayers = []
+        layerManager = rt.LayerManager
+
+        for i in range(layerManager.count):
+            prevLayers.append(layerManager.getLayer(i))
+
+        showProps = False
+        modifiers = QApplication.keyboardModifiers()
+        if modifiers == Qt.ControlModifier:
+            showProps = True
+
+        if showProps:
+            result = rt.importFile(importPath, using=rt.FBXIMP)
+        else:
+            result = rt.importFile(importPath, rt.Name("NoPrompt"), using=rt.FBXIMP)
+
+        delLayers = []
+        for i in range(layerManager.count):
+            curLayer = layerManager.getLayer(i)
+            isLayerUsed = layerManager.doesLayerHierarchyContainNodes(layerManager.getLayer(i).name)
+            if curLayer not in prevLayers and not isLayerUsed:
+                delLayers.append(curLayer.name)
+
+        for i in delLayers:
+            layerManager.deleteLayerByName(i)
+
+        return result
+
+    @err_catcher(name=__name__)
+    def importUsd(self, importPath, origin=None):
+        if origin.chb_abcPath.isChecked():
+            for i in origin.nodes:
+                if not self.isNodeValid(origin, i):
+                    continue
+
+                i.source = importPath
+
+                result = True
+                return "updated"
+
+        showProps = False
+        modifiers = QApplication.keyboardModifiers()
+        if modifiers == Qt.ControlModifier:
+            showProps = True
+
+        if showProps:
+            result = rt.importFile(importPath, using=rt.USDImporter)
+        else:
+            result = rt.importFile(importPath, rt.Name("NoPrompt"), using=rt.USDImporter)
+
+        return result
+
+    @err_catcher(name=__name__)
     def sm_import_importToApp(self, origin, doImport, update, impFileName):
         impFileName = os.path.normpath(impFileName)
         fileName = os.path.splitext(os.path.basename(impFileName))
+        ext = fileName[1]
         result = False
-        
+
         #region max
-        if fileName[1] == ".max":
+        if ext == ".max":
             validNodeHandles = [x for x in origin.nodes if self.isNodeValid(origin, x)]
             if not update or len(validNodeHandles) == 0:
                 msg = QMessageBox(
@@ -572,69 +712,25 @@ record != undefined\n\
         #endregion
 
         else:
-            if not (fileName[1] == ".abc" and origin.chb_abcPath.isChecked()):
+            if not (ext == ".abc" and origin.chb_abcPath.isChecked()):
                 origin.preDelete(
                     baseText="Do you want to delete the currently connected objects?\n\n"
                 )
-            if fileName[1] == ".abc":
-                if origin.chb_abcPath.isChecked():
-                    for i in origin.nodes:
-                        if not self.isNodeValid(origin, i):
-                            continue
 
-                        i.source = impFileName
-
-                        result = True
-                        doImport = False
-                rt.execute( "AlembicImport.ImportToRoot = True")
-
-            elif fileName[1] == ".fbx":
-                rt.execute( 'FBXImporterSetParam "Mode" #create')
-                rt.execute( 'FBXImporterSetParam "ConvertUnit" #cm')
-
-                prevLayers = []
-                layerManager = rt.LayerManager
-
-                for i in range(layerManager.count):
-                    prevLayers.append(layerManager.getLayer(i))
-
-            if doImport:
+            if ext in self.importHandlers:
+                result = self.importHandlers[ext]["importFunction"](impFileName, origin)
+                if result == "updated":
+                    doImport = False
+            else:
                 showProps = False
                 modifiers = QApplication.keyboardModifiers()
                 if modifiers == Qt.ControlModifier:
                     showProps = True
 
-
-                if fileName[1] == ".abc":
-                    if showProps:
-                        result = rt.importFile(impFileName, using=rt.Alembic_Import)
-                    else:
-                        result = rt.importFile(impFileName, rt.Name("NoPrompt"), using=rt.Alembic_Import)
-
-                elif fileName[1] == ".fbx":
-                    if showProps:
-                        result = rt.importFile(impFileName, using=rt.FBXIMP)
-                    else:
-                        result = rt.importFile(impFileName, rt.Name("NoPrompt"), using=rt.FBXIMP)
-
+                if showProps:
+                    result = rt.importFile(impFileName)
                 else:
-                    if showProps:
-                        result = rt.importFile(impFileName)
-                    else:
-                        result = rt.importFile(impFileName, rt.Name("NoPrompt"))
-
-            if fileName[1] == ".fbx":
-                delLayers = []
-
-                layerManager = rt.LayerManager
-                for i in range(layerManager.count):
-                    curLayer = layerManager.getLayer(i)
-                    isLayerUsed = layerManager.doesLayerHierarchyContainNodes(layerManager.getLayer(i).name)
-                    if not curLayer in prevLayers and not isLayerUsed:
-                        delLayers.append(curLayer.name)
-
-                for i in delLayers:
-                    layerManager.deleteLayerByName(i)
+                    result = rt.importFile(impFileName, rt.Name("NoPrompt"))
 
         if doImport:
             importedNodeHandles = [x.handle for x in rt.selection]
@@ -643,7 +739,7 @@ record != undefined\n\
                 origin.nodes = importedNodeHandles
 
         if origin.taskName == "ShotCam":
-            rt.execute( "setTransformLockFlags selection #all")
+            rt.execute("setTransformLockFlags selection #all")
 
             layerManager = rt.LayerManager
             camLayer = layerManager.getLayerFromName("00_Cams")
@@ -687,33 +783,31 @@ record != undefined\n\
     # PrismStates and PrismImports (for import paths)
     @err_catcher(name=__name__)
     def getImportPaths(self, origin):
-        num = rt.execute('fileProperties.findProperty #custom "PrismImports"')
+        num = rt.fileProperties.findProperty(rt.Name('custom'), "PrismImports")
         if num == 0:
             return False
         else:
-            return rt.execute("fileProperties.getPropertyValue #custom %s" % num)
+            return rt.fileProperties.getPropertyValue(rt.Name('custom'), num)
 
     @err_catcher(name=__name__)
     def sm_saveStates(self, origin, buf):
-        rt.execute('fileProperties.addProperty #custom "PrismStates" "%s"'
-            % buf.replace('"', '\\"').replace("\\\\", "\\\\\\\\"),
-        )
+        rt.fileProperties.addProperty(rt.Name('custom'), "PrismStates", buf)
 
     @err_catcher(name=__name__)
     def sm_saveImports(self, origin, importPaths):
-        rt.execute('fileProperties.addProperty #custom "PrismImports" "%s"' % importPaths)
+        rt.fileProperties.addProperty(rt.Name('custom'), "PrismImports", importPaths)
 
     @err_catcher(name=__name__)
     def sm_readStates(self, origin):
-        num = rt.execute('fileProperties.findProperty #custom "PrismStates"')
+        num = rt.fileProperties.findProperty(rt.Name('custom'), "PrismStates")
         if num != 0:
-            return rt.execute("fileProperties.getPropertyValue #custom %s" % num)
+            return rt.fileProperties.getPropertyValue(rt.Name('custom'), num)
 
     @err_catcher(name=__name__)
     def sm_deleteStates(self, origin):
-        num = rt.execute('fileProperties.findProperty #custom "PrismStates"')
+        num = rt.fileProperties.findProperty(rt.Name('custom'), "PrismStates")
         if num != 0:
-            rt.execute('fileProperties.deleteProperty #custom "PrismStates"')
+            rt.fileProperties.deleteProperty(rt.Name('custom'), "PrismStates")
     #endregion
 
     #region Playblast
@@ -864,9 +958,26 @@ animationrange = interval tmpanimrange.x tmpanimrange.y
                 origin.state.text(0)
                 + ": error - Playblasts in 3ds Max are only supported with at least two frames."
             ]
-    #endregion 
 
-    #region render
+    @err_catcher(name=__name__)
+    def captureViewportThumbnail(self):
+        import tempfile
+        path = tempfile.NamedTemporaryFile(suffix=".jpg").name
+        viewSize = rt.getViewSize()
+        bmp = rt.bitmap(viewSize.x, viewSize.y, filename=path)
+        dib = rt.gw.getViewportDib()
+        rt.copy(dib, bmp)
+        rt.save(bmp)
+        rt.close(bmp)
+        rt.gc()
+        pm = self.core.media.getPixmapFromPath(path)
+        try:
+            os.remove(path)
+        except:
+            pass
+
+        return pm
+
     @err_catcher(name=__name__)
     def getCurrentRenderer(self, origin):
         return rt.execute("classof renderers.current as string")

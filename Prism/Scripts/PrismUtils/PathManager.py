@@ -72,6 +72,7 @@ class PathManager(object):
             else:
                 version = useVersion
 
+            fileType = fileType or ""
             extension = "." + fileType
             framePadding = "#" * self.core.framePadding if extension not in self.core.media.videoFormats else ""
             outputData = self.core.mediaProducts.generateMediaProductPath(
@@ -96,6 +97,7 @@ class PathManager(object):
 
         if render and outputPath != "FileNotInPipeline":
             expandedOutputpath = os.path.expandvars(outputPath)
+            expandedOutputpath = expandedOutputpath.replace("%PRISM_JOB", os.getenv("PRISM_JOB"))
             if not os.path.exists(os.path.dirname(expandedOutputpath)):
                 try:
                     os.makedirs(os.path.dirname(expandedOutputpath))
@@ -164,7 +166,6 @@ class PathManager(object):
             return ""
 
         context = entity.copy()
-
         if step:
             context["department"] = step
             path = self.core.projects.getResolvedProjectStructurePath(
@@ -188,9 +189,18 @@ class PathManager(object):
                     "assets", entity
                 )
             elif entity["type"] == "shot":
-                path = self.core.projects.getResolvedProjectStructurePath(
-                    "shots", context
-                )
+                if context.get("sequence") == "_episode":
+                    path = self.core.projects.getResolvedProjectStructurePath(
+                        "episodes", context
+                    )
+                elif context.get("shot") == "_sequence":
+                    path = self.core.projects.getResolvedProjectStructurePath(
+                        "sequences", context
+                    )
+                else:
+                    path = self.core.projects.getResolvedProjectStructurePath(
+                        "shots", context
+                    )
             elif entity["type"] == "sequence":
                 path = self.core.projects.getResolvedProjectStructurePath(
                     "sequences", context
@@ -321,15 +331,17 @@ class PathManager(object):
         return cacheData
 
     @err_catcher(name=__name__)
-    def getMediaProductData(self, productPath, isFilepath=True, addPathData=True, mediaType="3drenders", validateModTime=False):
+    def getMediaProductData(self, productPath, isFilepath=True, addPathData=True, mediaType=None, validateModTime=False):
+        mediaType = mediaType or "3drenders"
         if mediaType == "playblasts":
             return self.getPlayblastProductData(productPath, isFilepath=isFilepath, addPathData=addPathData, validateModTime=validateModTime)
         else:
             return self.getRenderProductData(productPath, isFilepath=isFilepath, addPathData=addPathData, mediaType=mediaType, validateModTime=validateModTime)
 
     @err_catcher(name=__name__)
-    def getRenderProductData(self, productPath, isFilepath=True, addPathData=True, mediaType="3drenders", validateModTime=False, isVersionFolder=False, allowCache=True):
+    def getRenderProductData(self, productPath, isFilepath=True, addPathData=True, mediaType=None, validateModTime=False, isVersionFolder=False, allowCache=True):
         productPath = os.path.normpath(productPath)
+        mediaType = mediaType or "3drenders"
         if os.path.splitext(productPath)[1]:
             productConfig = self.core.mediaProducts.getMediaVersionInfoPathFromFilepath(productPath, mediaType=mediaType)
         else:
@@ -353,6 +365,7 @@ class PathManager(object):
             productData.update(pathData)
 
         productData["locations"] = {}
+        productData["mediaType"] = mediaType
         loc = self.core.paths.getLocationFromPath(os.path.normpath(productPath))
         if len(self.core.paths.getRenderProductBasePaths()) > 1:
             globalPath = self.core.convertPath(os.path.normpath(productPath), "global")
@@ -587,28 +600,23 @@ class PathManager(object):
 
     @err_catcher(name=__name__)
     def getLocationFromPath(self, path):
-        if path.startswith(getattr(self.core, "projectPath", "")):
-            return "global"
-        elif self.core.useLocalFiles and path.startswith(self.core.localProjectPath):
-            return "local"
-        else:
-            locations = []
-            productPaths = self.getExportProductBasePaths()
-            for ppath in productPaths:
-                if path.startswith(productPaths[ppath]):
-                    locations.append(ppath)
+        locations = []
+        productPaths = self.getExportProductBasePaths()
+        for ppath in productPaths:
+            if path.startswith(productPaths[ppath]):
+                locations.append(ppath)
 
-            if locations:
-                return sorted(locations, key=lambda x: len(productPaths[x]), reverse=True)[0]
+        if locations:
+            return sorted(locations, key=lambda x: len(productPaths[x]), reverse=True)[0]
 
-            locations = []
-            renderPaths = self.getRenderProductBasePaths()
-            for rpath in renderPaths:
-                if path.startswith(renderPaths[rpath]):
-                    locations.append(rpath)
+        locations = []
+        renderPaths = self.getRenderProductBasePaths()
+        for rpath in renderPaths:
+            if path.startswith(renderPaths[rpath]):
+                locations.append(rpath)
 
-            if locations:
-                return sorted(locations, key=lambda x: len(renderPaths[x]), reverse=True)[0]
+        if locations:
+            return sorted(locations, key=lambda x: len(renderPaths[x]), reverse=True)[0]
 
     @err_catcher(name=__name__)
     def getLocationPath(self, locationName):
@@ -643,7 +651,17 @@ class PathManager(object):
 
         assetPath = os.path.splitdrive(assetPath)[1]
 
-        sequencePath = self.core.sequencePath
+        useEpisodes = self.core.getConfig(
+            "globals",
+            "useEpisodes",
+            config="project",
+        ) or False
+
+        if useEpisodes:
+            sequencePath = self.core.episodePath
+        else:
+            sequencePath = self.core.sequencePath
+
         if projectPath:
             sequencePath = sequencePath.replace(os.path.normpath(self.core.projectPath), projectPath)
 

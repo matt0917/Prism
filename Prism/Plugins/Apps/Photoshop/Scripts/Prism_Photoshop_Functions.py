@@ -420,8 +420,11 @@ class Prism_Photoshop_Functions(object):
         return True
 
     @err_catcher(name=__name__)
-    def importImages(self, origin):
-        self.photoshopImportSource(origin)
+    def importImages(self, filepath=None, mediaBrowser=None, parent=None):
+        if mediaBrowser:
+            self.photoshopImportSource(mediaBrowser)
+        elif filepath:
+            self.openScene(None, filepath, force=True)
 
     @err_catcher(name=__name__)
     def photoshopImportSource(self, origin):

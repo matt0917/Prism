@@ -76,6 +76,14 @@ class Prism_Nuke_externalAccess_Functions(object):
         origin.chb_nukeRelativePaths = QCheckBox("Use relative paths")
         tab.layout().addWidget(origin.chb_nukeRelativePaths)
 
+        origin.chb_nukeUseReadPrism = QCheckBox("Open Prism window with \"R\" shortcut")
+        origin.chb_nukeUseReadPrism.setChecked(True)
+        tab.layout().addWidget(origin.chb_nukeUseReadPrism)
+
+        origin.chb_nukeUseWritePrism = QCheckBox("Use WritePrism gizmo")
+        origin.chb_nukeUseWritePrism.setChecked(False)
+        tab.layout().addWidget(origin.chb_nukeUseWritePrism)
+
     @err_catcher(name=__name__)
     def userSettings_saveSettings(self, origin, settings):
         if "nuke" not in settings:
@@ -83,6 +91,8 @@ class Prism_Nuke_externalAccess_Functions(object):
 
         settings["nuke"]["nukeVersion"] = origin.cb_nukeVersion.currentText()
         settings["nuke"]["useRelativePaths"] = origin.chb_nukeRelativePaths.isChecked()
+        settings["nuke"]["useReadPrism"] = origin.chb_nukeUseReadPrism.isChecked()
+        settings["nuke"]["useWritePrism"] = origin.chb_nukeUseWritePrism.isChecked()
 
     @err_catcher(name=__name__)
     def userSettings_loadSettings(self, origin, settings):
@@ -91,6 +101,10 @@ class Prism_Nuke_externalAccess_Functions(object):
                 origin.cb_nukeVersion.setCurrentText(settings["nuke"]["nukeVersion"])
             if "useRelativePaths" in settings["nuke"]:
                 origin.chb_nukeRelativePaths.setChecked(settings["nuke"]["useRelativePaths"])
+            if "useReadPrism" in settings["nuke"]:
+                origin.chb_nukeUseReadPrism.setChecked(settings["nuke"]["useReadPrism"])
+            if "useWritePrism" in settings["nuke"]:
+                origin.chb_nukeUseWritePrism.setChecked(settings["nuke"]["useWritePrism"])
 
     @err_catcher(name=__name__)
     def getAutobackPath(self, origin):
@@ -111,7 +125,7 @@ class Prism_Nuke_externalAccess_Functions(object):
         if nukeVersion and nukeVersion != "Default":
             if appPath == "":
                 if not hasattr(self, "nukePath"):
-                    self.nukePath = self.core.getDefaultWindowsAppByExtension(".nk")
+                    self.nukePath = self.core.getDefaultAppByExtension(".nk")
 
                 if self.nukePath is not None and os.path.exists(self.nukePath):
                     appPath = self.nukePath
@@ -140,6 +154,17 @@ class Prism_Nuke_externalAccess_Functions(object):
                     args.insert(-1, "--nc")
                 elif nukeVersion == "Non-Commercial":
                     args.insert(-1, "--nc")
+
+                dccEnv = self.core.startEnv.copy()
+                usrEnv = self.core.users.getUserEnvironment(appPluginName="Nuke")
+                for envVar in usrEnv:
+                    dccEnv[envVar["key"]] = envVar["value"]
+
+                prjEnv = self.core.projects.getProjectEnvironment(appPluginName="Nuke")
+                for envVar in prjEnv:
+                    dccEnv[envVar["key"]] = envVar["value"]
+
+                self.core.callback(name="preLaunchApp", args=[args, dccEnv])
 
                 try:
                     subprocess.Popen(args, env=self.core.startEnv)

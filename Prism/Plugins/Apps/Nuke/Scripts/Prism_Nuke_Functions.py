@@ -47,9 +47,19 @@ if nuke.env.get("gui"):
     except:
         pass
 
-from PySide2.QtCore import *
-from PySide2.QtGui import *
-from PySide2.QtWidgets import *
+try:
+    from qtpy.QtCore import *
+    from qtpy.QtGui import *
+    from qtpy.QtWidgets import *
+except:
+    if nuke.NUKE_VERSION_MAJOR >= 16:
+        from PySide6.QtCore import *
+        from PySide6.QtGui import *
+        from PySide6.QtWidgets import *
+    else:
+        from PySide2.QtCore import *
+        from PySide2.QtGui import *
+        from PySide2.QtWidgets import *
 
 
 try:
@@ -93,6 +103,13 @@ class Prism_Nuke_Functions(object):
         self.core.registerCallback(
             "productSelectorContextMenuRequested", self.productSelectorContextMenuRequested, plugin=self.plugin
         )
+        self.core.registerCallback(
+            "updatedEnvironmentVars", self.updatedEnvironmentVars, plugin=self.plugin
+        )
+        if "OCIO" in [item["key"] for item in self.core.users.getUserEnvironment()]:
+            self.refreshOcio()
+
+        nuke.addOnUserCreate(self.refreshOcio, nodeClass="Root")
 
     @err_catcher(name=__name__)
     def startup(self, origin):
@@ -147,23 +164,32 @@ class Prism_Nuke_Functions(object):
             self.core.prismRoot, "Scripts", "UserInterfacesPrism", "p_tray.png"
         )
         toolbar.addMenu("Prism", icon=iconPath)
-        toolbar.addCommand("Prism/ReadPrism", lambda: nuke.createNode("ReadPrism"))
-        toolbar.addCommand("Prism/WritePrism", lambda: nuke.createNode("WritePrism"), "w", shortcutContext=2)
+        useReadPrism = self.core.getConfig("nuke", "useReadPrism", dft=True, config="user")
+        if useReadPrism:
+            nuke.menu("Nuke").addCommand("Prism/Read...", self.createReadWithBrowse, "r", shortcutContext=2)
+        else:
+            nuke.menu("Nuke").addCommand("Prism/Read...", self.createReadWithBrowse)
+
+        useWritePrism = self.core.getConfig("nuke", "useWritePrism", dft=False, config="user")
+        if useWritePrism:
+            toolbar.addCommand("Prism/WritePrism", lambda: nuke.createNode("WritePrism"), "w", shortcutContext=2)
 
     @err_catcher(name=__name__)
     def addCallbacks(self):
         nuke.addOnScriptLoad(self.core.sceneOpen)
         nuke.addFilenameFilter(self.expandEnvVarsInFilepath)
         nuke.addOnScriptSave(self.core.scenefileSaved)
+        nuke.addOnUserCreate(self.onUserNodeCreated)
 
         import nukescripts
         nukescripts.drop.addDropDataCallback(self.dropHandler)
 
     @err_catcher(name=__name__)
     def dropHandler(self, mimeType, text):
-        if not self.core.getConfig("nuke", "useRelativePaths", dft=False, config="user"):
+        if not getattr(self.core, "projectPath", None):
             return
 
+        useRel = self.core.getConfig("nuke", "useRelativePaths", dft=False, config="user")
         if text.startswith(self.core.projectPath.replace("\\", "/")):
             if os.path.isdir(text):
                 srcs = self.core.media.getImgSources(text)
@@ -172,7 +198,11 @@ class Prism_Nuke_Functions(object):
             else:
                 return
 
+            success = False
             for src in srcs:
+                if os.path.splitext(src)[0] not in self.core.media.supportedFormats:
+                    continue
+
                 if "#"*self.core.framePadding not in src:
                     src = self.core.media.getSequenceFromFilename(src)
 
@@ -182,11 +212,26 @@ class Prism_Nuke_Functions(object):
                     if start and end and start != "?" and end != "?":
                         src += " %s-%s" % (start, end)
 
-                src = src.replace(self.core.projectPath.replace("\\", "/").rstrip("/"), "%PRISM_JOB%")
+                if useRel:
+                    src = self.makePathRelative(src)
+
                 read_node = nuke.createNode("Read", inpanel=False)
                 read_node["file"].fromUserText(src)
+                success = True
             
-            return True
+            if success:
+                return True
+
+    @err_catcher(name=__name__)
+    def makePathRelative(self, path):
+        path = path.replace("\\", "/")
+        prjPath = self.core.projectPath.replace("\\", "/").rstrip("/")
+        if nuke.NUKE_VERSION_MAJOR >= 16:
+            relPath = path.replace(prjPath, "%PRISM_JOB")
+        else:
+            relPath = path.replace(prjPath, "%PRISM_JOB%")
+
+        return relPath
 
     @err_catcher(name=__name__)
     def expandEnvVarsInFilepath(self, path):
@@ -194,7 +239,38 @@ class Prism_Nuke_Functions(object):
             return path
 
         expanded_path = os.path.expandvars(path)
+        prjPath = self.core.projectPath.replace("\\", "/").rstrip("/")
+        expanded_path = expanded_path.replace("%PRISM_JOB", prjPath)
         return expanded_path
+
+    @err_catcher(name=__name__)
+    def updatedEnvironmentVars(self, reason, envVars, beforeRefresh=False):
+        doReload = False
+
+        if reason == "refreshProject" and getattr(self, "unloadedOCIO", False):
+            doReload = True
+        else:
+            for envVar in envVars:
+                if envVar["key"] == "OCIO" and envVar["value"] != envVar["orig"]:
+                    if reason == "unloadProject" and beforeRefresh:
+                        self.unloadedOCIO = True
+                        continue
+
+                    doReload = True
+
+        if doReload:
+            self.unloadedOCIO = False
+            self.refreshOcio()
+
+    @err_catcher(name=__name__)
+    def refreshOcio(self):
+        ocio = os.getenv("OCIO", "")
+        if ocio:
+            r = nuke.root()
+            r["colorManagement"].setValue("OCIO")
+            r["OCIO_config"].setValue("custom")
+            r["customOCIOConfigPath"].setValue(ocio.replace("\\", "/"))
+            r.knob("reloadConfig").execute()
 
     @err_catcher(name=__name__)
     def sceneOpen(self, origin):
@@ -204,7 +280,10 @@ class Prism_Nuke_Functions(object):
     @err_catcher(name=__name__)
     def getCurrentFileName(self, origin, path=True):
         try:
-            currentFileName = os.path.abspath(nuke.value("root.name"))
+            currentFileName = nuke.value("root.name")
+            if currentFileName:
+                currentFileName = os.path.abspath(currentFileName)
+
         except:
             currentFileName = ""
 
@@ -294,12 +373,12 @@ class Prism_Nuke_Functions(object):
                 continue
 
             curPath = i.knob("file").value()
-            curPath = os.path.expandvars(curPath)
+            curPath = self.expandEnvVarsInFilepath(curPath)
             version = self.core.mediaProducts.getLatestVersionFromFilepath(curPath)
             if version and version["path"] not in curPath:
                 filepattern = self.core.mediaProducts.getFilePatternFromVersion(version)
                 if self.core.getConfig("nuke", "useRelativePaths", dft=False, config="user"):
-                    filepattern = os.path.normpath(filepattern).replace(os.path.normpath(self.core.projectPath), "%PRISM_JOB%")
+                    filepattern = self.makePathRelative(filepattern)
 
                 filepattern = filepattern.replace("\\", "/")
                 i.knob("file").setValue(filepattern)
@@ -346,9 +425,15 @@ class Prism_Nuke_Functions(object):
         return True
 
     @err_catcher(name=__name__)
-    def readNode_onBrowseClicked(self, node):
+    def readNode_onBrowseClicked(self, node, quiet=False):
         if hasattr(self, "dlg_media"):
             self.dlg_media.close()
+
+        if not getattr(self.core, "projectPath", None):
+            if not quiet:
+                self.core.popup("There is no active project in Prism.")
+
+            return
 
         self.dlg_media = ReadMediaDialog(self, node)
         self.dlg_media.mediaSelected.connect(lambda x: self.readNode_mediaSelected(node, x))
@@ -365,18 +450,30 @@ class Prism_Nuke_Functions(object):
         baseName, extension = os.path.splitext(validFiles[0])
         seqFiles = self.core.media.detectSequences(validFiles)
         if seqFiles:
-            node.knob("fileName").setValue(list(seqFiles)[0].replace("\\", "/"))
+            path = list(seqFiles)[0].replace("\\", "/")
+            useRel = self.core.getConfig("nuke", "useRelativePaths", dft=False, config="user")
+            if "#"*self.core.framePadding not in path:
+                path = self.core.media.getSequenceFromFilename(path)
+
+            if "#"*self.core.framePadding in path:
+                files = self.core.media.getFilesFromSequence(path)
+                start, end = self.core.media.getFrameRangeFromSequence(files)
+                if start and end and start != "?" and end != "?":
+                    path += " %s-%s" % (start, end)
+
+            if useRel:
+                path = self.makePathRelative(path)
+
+            node.knob("file").fromUserText(path)
 
     @err_catcher(name=__name__)
     def readNode_onOpenInClicked(self, node):
-        self.core.openFolder(node.knob("fileName").value())
+        self.core.openFolder(node.knob("file").value())
 
     @err_catcher(name=__name__)
-    def readNode_onCreateReadClicked(self, node):
-        node.end()
-        filepath = node.knob("fileName").value()
-        readNode = nuke.createNode('Read')
-        readNode.knob('file').fromUserText(filepath)
+    def createReadWithBrowse(self):
+        readNode = nuke.createNode("Read")
+        self.readNode_onBrowseClicked(readNode, quiet=True)
 
     @err_catcher(name=__name__)
     def getIdentifierFromNode(self, node):
@@ -385,14 +482,17 @@ class Prism_Nuke_Functions(object):
     @err_catcher(name=__name__)
     def sm_render_fixOutputPath(self, origin, outputName, singleFrame=False, state=None):
         if self.core.getConfig("nuke", "useRelativePaths", dft=False, config="user"):
-            outputName = os.path.normpath(outputName).replace(os.path.normpath(self.core.projectPath), "%PRISM_JOB%")
+            outputName = self.makePathRelative(outputName)
 
         return outputName
 
     @err_catcher(name=__name__)
-    def getOutputPath(self, node, group, render=False, updateValues=True):
+    def getOutputPath(self, node, group=None, render=False, updateValues=True):
+        if not group:
+            group = node
+
         if not nuke.env.get("gui"):
-            filename = nuke.thisGroup().knob("fileName").toScript()
+            filename = group.knob("fileName").toScript()
             if render and self.core.getConfig("globals", "backupScenesOnPublish", config="project"):
                 self.core.entities.backupScenefile(os.path.dirname(filename))
 
@@ -428,10 +528,15 @@ class Prism_Nuke_Functions(object):
         return outputName
 
     @err_catcher(name=__name__)
-    def startRender(self, node, group, version=None):
-        taskName = self.getIdentifierFromNode(group)
+    def startRender(self, node, group=None, version=None):
+        if not group:
+            group = node
 
-        if taskName is None or taskName == "":
+        if group.knob("submitJob").value():
+            return self.openFarmSubmitter(node, group, version)
+
+        taskName = self.getIdentifierFromNode(group)
+        if not taskName:
             self.core.popup("Please choose an identifier")
             return
 
@@ -457,21 +562,13 @@ class Prism_Nuke_Functions(object):
                 ]
 
         if version:
-            msg = QMessageBox(
-                QMessageBox.Information,
-                "Render",
-                "Are you sure you want to execute this state as version \"%s\"?\nThis may overwrite existing files." % version,
-                QMessageBox.Cancel,
-            )
-            msg.addButton("Continue", QMessageBox.YesRole)
-            self.core.parentWindow(msg)
-            action = msg.exec_()
-
-            if action != 0:
+            msg = "Are you sure you want to execute this state as version \"%s\"?\nThis may overwrite existing files." % version
+            result = self.core.popupQuestion(msg, buttons=["Continue", "Cancel"], title="Render", icon=QMessageBox.Information)
+            if result != "Continue":
                 return
 
         self.useVersion = version
-        self.core.saveScene(versionUp=False)
+        self.core.saveScene(versionUp=False, prismReq=False)
 
         node.knob("Render").execute()
         kwargs = {
@@ -485,7 +582,10 @@ class Prism_Nuke_Functions(object):
         self.useVersion = None
 
     @err_catcher(name=__name__)
-    def renderAsVersion(self, node, group):
+    def renderAsVersion(self, node, group=None):
+        if not group:
+            group = node
+
         self.dlg_version = VersionDlg(self, node, group)
         if not self.dlg_version.isValid:
             return
@@ -501,9 +601,15 @@ class Prism_Nuke_Functions(object):
         nodeName = "root." + node.fullName()
         parentName = ".".join(nodeName.split(".")[:-1])
         group = nuke.toNode(parentName)
+        if not group or group.Class() != "WritePrism":
+            group = node
+
         prevKnob = group.knob("prevFileName")
         if prevKnob:
             prevKnob.setValue(outputPath)
+            prevKnobE = group.knob("prevFileNameEdit")
+            if prevKnobE:
+                prevKnobE.setValue(outputPath)
 
     @err_catcher(name=__name__)
     def isNodeRendering(self, node):
@@ -564,7 +670,8 @@ class Prism_Nuke_Functions(object):
             if mediaBrowser.origin.getCurrentAOV():
                 fString = "Please select an import option:"
                 buttons = ["Current AOV", "All AOVs", "Layout all AOVs"]
-                result = self.core.popupQuestion(fString, buttons=buttons, icon=QMessageBox.NoIcon)
+                parent = parent or mediaBrowser.origin.projectBrowser
+                result = self.core.popupQuestion(fString, buttons=buttons, icon=QMessageBox.NoIcon, parent=parent)
             else:
                 result = "Current AOV"
 
@@ -586,7 +693,7 @@ class Prism_Nuke_Functions(object):
             firstFrame = i[1]
             lastFrame = i[2]
             if self.core.getConfig("nuke", "useRelativePaths", dft=False, config="user"):
-                filePath = os.path.normpath(filePath).replace(os.path.normpath(self.core.projectPath), "%PRISM_JOB%").replace("\\", "/")
+                filePath = self.makePathRelative(filePath)
 
             node = nuke.createNode(
                 "Read",
@@ -607,7 +714,7 @@ class Prism_Nuke_Functions(object):
             firstFrame = i[1]
             lastFrame = i[2]
             if self.core.getConfig("nuke", "useRelativePaths", dft=False, config="user"):
-                filePath = os.path.normpath(filePath).replace(os.path.normpath(self.core.projectPath), "%PRISM_JOB%").replace("\\", "/")
+                filePath = self.makePathRelative(filePath)
 
             node = nuke.createNode(
                 "Read",
@@ -1141,9 +1248,121 @@ class Prism_Nuke_Functions(object):
     def refreshWriteNodes(self):
         for node in nuke.allNodes():
             nodeClass = node.Class()
-
             if nodeClass == "WritePrism":
                 node.knob("refresh").execute()
+
+    @err_catcher(name=__name__)
+    def onUserNodeCreated(self):
+        node = nuke.thisNode()
+        if not node:
+            return
+
+        try:
+            nodeClass = node.Class()
+        except:
+            pass
+
+        try:
+            group = nuke.thisGroup()
+        except:
+            group = None
+
+        addWriteKnobs = os.environ.get("PRISM_NUKE_WRITE_ADD_KNOBS", "1") == "1"
+        if nodeClass == "Write" and (not group or group.Class() != "WritePrism") and addWriteKnobs:
+            if not node.knob("tab_prism"):
+                self.addUiToWriteNode(node)
+
+            self.updateNodeUI("write", node)
+            self.getOutputPath(node)
+
+            cmd = "try:\n\tpcore.getPlugin(\"Nuke\").updateNodeUI(\"write\", nuke.toNode(nuke.thisNode().fullName().rsplit(\".\", 1)[0]))\nexcept:\n\tpass"
+            node.knob("knobChanged").setValue(cmd)
+            idfKnob = node.knob("identifier")
+            if idfKnob and not idfKnob.value():
+                idf = self.core.getCurrentScenefileData().get("task")
+                if idf:
+                    idfKnob.setValue(idf)
+
+        elif nodeClass == "Read" and os.getenv("PRISM_NUKE_READ_ADD_KNOBS", "1") == "1":
+            if not node.knob("tab_prism"):
+                self.addUiToReadNode(node)
+
+            self.updateNodeUI("read", node)
+            cmd = "try:\n\tpcore.getPlugin(\"Nuke\").updateNodeUI(\"read\", nuke.toNode(nuke.thisNode().fullName().rsplit(\".\", 1)[0]))\nexcept:\n\tpass"
+            node.knob("knobChanged").setValue(cmd)
+
+        kwargs = {"origin": self, "node": node}
+        self.core.callback("onNukeNodeCreated", **kwargs)
+
+    @err_catcher(name=__name__)
+    def addUiToWriteNode(self, node):
+        knobs = ["identifier", "comment", "location", "fileName", "refresh", "startRender", "startRenderPrevVersion", "submitJob", "prevFileName", "openDir"]
+        for knob in knobs:
+            k = node.knob(knob)
+            if k:
+                node.removeKnob(k)
+
+        tab = node.knob("tab_prism")
+        if not tab:
+            tab = nuke.Tab_Knob('tab_prism', 'Prism')
+            node.addKnob(tab)
+
+        knobIdf = nuke.EvalString_Knob("identifier", "identifier")
+        node.addKnob(knobIdf)
+        knobComment = nuke.EvalString_Knob("comment", "comment (optional)")
+        node.addKnob(knobComment)
+        knobLoc = nuke.Enumeration_Knob("location", "location", ["                              "])
+        node.addKnob(knobLoc)
+        knobDiv = nuke.Text_Knob("")
+        node.addKnob(knobDiv)
+        knobFilepath = nuke.EvalString_Knob("fileName", "filepath")
+        knobFilepath.setValue("FileNotInPipeline")
+        node.addKnob(knobFilepath)
+        knobRefresh = nuke.PyScript_Knob("refresh", "Refresh", "pcore.appPlugin.getOutputPath(nuke.thisNode())")
+        knobRefresh.setFlag(nuke.STARTLINE)
+        node.addKnob(knobRefresh)
+        knobDiv = nuke.Text_Knob("")
+        node.addKnob(knobDiv)
+        knobRender = nuke.PyScript_Knob("startRender", "Render", "pcore.appPlugin.startRender(nuke.thisNode())")
+        node.addKnob(knobRender)
+        knobRenderPrev = nuke.PyScript_Knob("startRenderPrevVersion", "Render as previous version...", "pcore.appPlugin.renderAsVersion(nuke.thisNode())")
+        node.addKnob(knobRenderPrev)
+        knobSubmit = nuke.Boolean_Knob("submitJob", "Submit Job")
+        node.addKnob(knobSubmit)
+        knobPrev = nuke.Text_Knob("prevFileName", "previous filepath", "-")
+        node.addKnob(knobPrev)
+        knobOpen = nuke.PyScript_Knob("openDir", "Open In...", "pcore.appPlugin.openInClicked(nuke.thisNode())")
+        knobOpen.setFlag(nuke.STARTLINE)
+        node.addKnob(knobOpen)
+        knobOpen = nuke.PyScript_Knob("createRead", "Create Read", "pcore.appPlugin.createRead(nuke.thisNode())")
+        node.addKnob(knobOpen)
+
+        node.knob("create_directories").setValue(True)
+        node.knob("file").setValue("[value fileName]")
+        node.knob("file_type").setValue("exr")
+        node.knob("beforeRender").setValue("try: pcore.appPlugin.getOutputPath(nuke.thisNode(), render=True)\nexcept: pass")
+        node.knob("afterRender").setValue("try: pcore.appPlugin.finishedRendering(nuke.thisNode())\nexcept: pass")
+
+    @err_catcher(name=__name__)
+    def addUiToReadNode(self, node):
+        knobs = ["identifier", "comment", "location", "fileName", "refresh", "startRender", "startRenderPrevVersion", "submitJob", "prevFileName", "openDir"]
+        for knob in knobs:
+            k = node.knob(knob)
+            if k:
+                node.removeKnob(k)
+
+        tab = node.knob("tab_prism")
+        if not tab:
+            tab = nuke.Tab_Knob('tab_prism', 'Prism')
+            node.addKnob(tab)
+
+        knobFilepath = nuke.Text_Knob("fileName", "File", "")
+        node.addKnob(knobFilepath)
+        knobBrowse = nuke.PyScript_Knob("browse", "Browse...", "pcore.appPlugin.readNode_onBrowseClicked(nuke.thisNode())")
+        knobBrowse.setFlag(nuke.STARTLINE)
+        node.addKnob(knobBrowse)
+        knobExplorer = nuke.PyScript_Knob("openExplorer", "Open In Explorer...", "pcore.appPlugin.readNode_onOpenInClicked(nuke.thisNode())")
+        node.addKnob(knobExplorer)
 
     @err_catcher(name=__name__)
     def readGizmoCreated(self):
@@ -1151,10 +1370,25 @@ class Prism_Nuke_Functions(object):
 
     @err_catcher(name=__name__)
     def writeGizmoCreated(self):
-        self.getOutputPath(nuke.thisNode(), nuke.thisGroup())
+        group = nuke.thisGroup()
+        self.getOutputPath(nuke.thisNode(), group)
 
         cmd = "try:\n\tpcore.getPlugin(\"Nuke\").updateNodeUI(\"writePrism\", nuke.toNode(nuke.thisNode().fullName().rsplit(\".\", 1)[0]))\nexcept:\n\tpass"
         nuke.thisNode().node("WritePrismBase").knob("knobChanged").setValue(cmd)
+        idfKnob = nuke.thisNode().knob("identifier")
+        if idfKnob and not idfKnob.value():
+            idf = self.core.getCurrentScenefileData().get("task")
+            if idf:
+                idfKnob.setValue(idf)
+
+        val = group.knob("prevFileName").value()
+        if not val or val == "-":
+            knobe = group.knob("prevFileNameEdit")
+            if knobe:
+                vale = knobe.value()
+                if vale and vale != val:
+                    group.knob("prevFileName").setValue(vale)
+
         kwargs = {"origin": self, "node": nuke.thisNode()}
         self.core.callback("onWriteGizmoCreated", **kwargs)
 
@@ -1163,7 +1397,7 @@ class Prism_Nuke_Functions(object):
         if not nuke.env.get("gui"):
             return
 
-        if nodeType == "writePrism":
+        if nodeType in ["writePrism", "write"]:
             locations = self.core.paths.getRenderProductBasePaths()
             locNames = list(locations.keys())
             try:
@@ -1171,11 +1405,79 @@ class Prism_Nuke_Functions(object):
             except:
                 pass
 
-            base = node.node("WritePrismBase")
-            if base:
-                knobs = base.knobs()
-                node.knobs()["datatype"].setVisible(bool(knobs.get("datatype")))
-                node.knobs()["compression"].setVisible(bool(knobs.get("compression")))
+            if nodeType == "WritePrismBase":
+                base = node.node("WritePrismBase")
+                if base:
+                    knobs = base.knobs()
+                    try:
+                        node.knobs()["datatype"].setVisible(bool(knobs.get("datatype")))
+                    except:
+                        pass
+
+                    try:
+                        node.knobs()["compression"].setVisible(bool(knobs.get("compression")))
+                    except:
+                        pass
+
+        elif nodeType in ["read"]:
+            try:
+                if node.knob("file"):
+                    node.knob("fileName").setValue(node.knob("file").value())
+            except:
+                pass
+
+    @err_catcher(name=__name__)
+    def createRead(self, node, group=None):
+        if group:
+            group.end()
+
+        if not group:
+            group = node
+
+        filepath = group.knob("prevFileName").value()
+        if not os.path.exists(os.path.dirname(filepath)):
+            filepath = group.knob("fileName").value()
+            if not os.path.exists(os.path.dirname(filepath)):
+                context = self.core.paths.getRenderProductData(filepath, mediaType="2drenders")
+                intVersion = self.core.products.getIntVersionFromVersionName(context.get("version") or "")
+                if intVersion is not None:
+                    context["version"] = self.core.versionFormat % (intVersion - 1)
+                    filepath = self.core.mediaProducts.generateMediaProductPath(
+                        entity=context,
+                        task=context["identifier"],
+                        version=context["version"],
+                        extension=context.get("extension", ""),
+                        mediaType="2drenders",
+                        comment=context.get("comment", ""),
+                        location=context.get("location", "global"),
+                        framePadding="#",
+                    )
+
+                filepath = self.expandEnvVarsInFilepath(filepath)
+                if not os.path.exists(os.path.dirname(filepath)):
+                    self.core.popup("Folder doesn't exist: %s" % os.path.dirname(filepath))
+                    return
+
+        seqs = nuke.getFileNameList(os.path.dirname(filepath))
+        if not seqs:
+            self.core.popup("No renderings exist in current filepath.")
+            return
+
+        if "#" not in os.path.basename(filepath):
+            base, ext = os.path.splitext(filepath)
+            filepath = base + "#" + ext
+
+        pattern = os.path.basename(filepath).replace("#", ".*")
+        useRel = self.core.getConfig("nuke", "useRelativePaths", dft=False, config="user")
+        for seq in seqs:
+            if re.match(pattern, seq):
+                readNode = nuke.createNode('Read')
+                filepath = os.path.join(os.path.dirname(filepath), seq)
+                if useRel:
+                    filepath = self.makePathRelative(filepath)
+
+                readNode.knob('file').fromUserText(filepath)
+                break
 
     @err_catcher(name=__name__)
     def sm_render_getDeadlineParams(self, origin, dlParams, homeDir):
@@ -1201,25 +1503,31 @@ class Prism_Nuke_Functions(object):
             "PRISM_JOB",
             os.getenv("PRISM_JOB", "")
         )
+
+        dlParams["jobInfos"]["OutputFilename0"] = self.expandEnvVarsInFilepath(dlParams["jobInfos"]["OutputFilename0"])
         dlParams["pluginInfos"]["Version"] = self.getAppVersion(origin).split("v")[0]
         dlParams["pluginInfos"]["OutputFilePath"] = os.path.split(
             dlParams["jobInfos"]["OutputFilename0"]
         )[0]
-        dlParams["pluginInfos"]["OutputFilePrefix"] = os.path.splitext(
+        base, ext = os.path.splitext(
             os.path.basename(dlParams["jobInfos"]["OutputFilename0"])
-        )[0]
+        )
+        dlParams["pluginInfos"]["OutputFilePrefix"] = base
+        dlParams["pluginInfos"]["BatchMode"] = True
+        dlParams["pluginInfos"]["BatchModeIsMovie"] = ext in self.core.media.videoFormats
         dlParams["pluginInfos"]["WriteNode"] = origin.node.fullName()
 
     @err_catcher(name=__name__)
-    def openFarmSubmitter(self, node, group):
-        taskName = self.getIdentifierFromNode(group)
+    def openFarmSubmitter(self, node, group=None, version=None):
+        if not group:
+            group = node
 
-        if taskName is None or taskName == "":
+        taskName = self.getIdentifierFromNode(group)
+        if not taskName:
             self.core.popup("Please choose an identifier")
             return
 
         fileName = self.getOutputPath(node, group)
-
         if fileName == "FileNotInPipeline":
             self.core.showFileNotInProjectWarning(title="Warning")
             return
@@ -1232,19 +1540,26 @@ class Prism_Nuke_Functions(object):
             self.core.popup(msg)
             return
 
+        if hasattr(self, "submitter") and self.submitter.isVisible():
+            self.submitter.close()
+
+        state.ui.node = node
+        state.ui.group = group
+        self.submitter = Farm_Submitter(self, state, version=version)
+        self.submitter.loadSettings()
         state.ui.setTaskname(self.getIdentifierFromNode(group))
         fmt = "." + group.knob("file_type").value()
         if state.ui.cb_format.findText(fmt) == -1:
             state.ui.cb_format.addItem(fmt)
 
         state.ui.setFormat(fmt)
-        state.ui.node = node
-        state.ui.group = group
-        self.submitter = Farm_Submitter(self, state)
         self.submitter.show()
 
     @err_catcher(name=__name__)
-    def openInClicked(self, node, group):
+    def openInClicked(self, node, group=None):
+        if not group:
+            group = node
+
         path = group.knob("prevFileName").value()
         if path == "None":
             return
@@ -1405,7 +1720,8 @@ class Prism_Nuke_Functions(object):
             result = nuke.nodePaste(impFileName)
         elif ext in [".obj", ".fbx", ".abc"]:
             path = impFileName.replace("\\", "/")
-            node_read = nuke.nodes.ReadGeo2(file=path)
+            node_read = nuke.nodes.ReadGeo2()
+            node_read['file'].setValue(path) 
             node_scene = nuke.nodes.Scene(xpos=node_read.xpos() + 10, ypos=node_read.ypos()+200)
             node_render = nuke.nodes.ScanlineRender(xpos=node_read.xpos(), ypos=node_read.ypos()+400)
             node_render.connectInput(1, node_scene)
@@ -1490,13 +1806,18 @@ if nuke.env.get("gui") and "fnFlipbookRenderer" in globals():
 
 
 class Farm_Submitter(QDialog):
-    def __init__(self, plugin, state):
+    def __init__(self, plugin, state, version=None):
         super(Farm_Submitter, self).__init__()
         self.plugin = plugin
         self.core = self.plugin.core
         self.core.parentWindow(self)
         self.state = state
         self.setupUi()
+        if version:
+            self.state.ui.chb_version.setChecked(True)
+            intVersion = self.core.products.getIntVersionFromVersionName(version)
+            if intVersion is not None:
+                self.state.ui.sp_version.setValue(intVersion)
 
     @err_catcher(name=__name__)
     def setupUi(self):
@@ -1523,6 +1844,20 @@ class Farm_Submitter(QDialog):
         self.b_submit.clicked.connect(self.submit)
 
     @err_catcher(name=__name__)
+    def closeEvent(self, event):
+        self.saveCurrentSettings()
+
+    @err_catcher(name=__name__)
+    def saveCurrentSettings(self):
+        settings = self.state.ui.getStateProps()
+        self.core.setConfig("nuke", "renderSubmissionSettings", val=settings, config="user")
+
+    @err_catcher(name=__name__)
+    def loadSettings(self, settings=None):
+        settings = settings or self.core.getConfig("nuke", "renderSubmissionSettings") or {}
+        self.state.ui.loadData(settings)
+
+    @err_catcher(name=__name__)
     def submit(self):
         self.hide()
         self.state.ui.gb_submit.setCheckable(True)
@@ -1531,7 +1866,21 @@ class Farm_Submitter(QDialog):
         sm = self.core.getStateManager()
         comment = self.state.ui.group.knob("comment").value()
         sm.e_comment.setText(comment)
-        result = sm.publish(successPopup=False, executeState=True, states=[self.state])
+        result = sm.publish(
+            successPopup=False,
+            executeState=True,
+            states=[self.state],
+            saveScene=True,
+            incrementScene=True
+        )
+        prevKnob = self.state.ui.group.knob("prevFileName")
+        if prevKnob:
+            path = self.state.ui.l_pathLast.text() or "-"
+            prevKnob.setValue(path)
+            prevKnobE = self.state.ui.group.knob("prevFileNameEdit")
+            if prevKnobE:
+                prevKnobE.setValue(path)
+
         sm.deleteState(self.state)
         if result:
             msg = "Job submitted successfully."
@@ -1655,6 +2004,7 @@ class Prism_NoQt(object):
             return path
 
         expanded_path = os.path.expandvars(path)
+        expanded_path = expanded_path.replace("%PRISM_JOB", os.getenv("PRISM_JOB"))
         return expanded_path
 
 

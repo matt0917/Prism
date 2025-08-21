@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'hou_Export.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.4.2
+## Created by: Qt User Interface Compiler version 6.8.1
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -16,7 +16,7 @@ class Ui_wg_Export(object):
     def setupUi(self, wg_Export):
         if not wg_Export.objectName():
             wg_Export.setObjectName(u"wg_Export")
-        wg_Export.resize(340, 781)
+        wg_Export.resize(340, 826)
         self.verticalLayout = QVBoxLayout(wg_Export)
         self.verticalLayout.setObjectName(u"verticalLayout")
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
@@ -64,19 +64,19 @@ class Ui_wg_Export(object):
 
         self.l_taskName = QLabel(self.f_taskName)
         self.l_taskName.setObjectName(u"l_taskName")
-        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.l_taskName.sizePolicy().hasHeightForWidth())
         self.l_taskName.setSizePolicy(sizePolicy)
-        self.l_taskName.setAlignment(Qt.AlignCenter)
+        self.l_taskName.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.horizontalLayout_11.addWidget(self.l_taskName)
 
         self.b_changeTask = QPushButton(self.f_taskName)
         self.b_changeTask.setObjectName(u"b_changeTask")
         self.b_changeTask.setEnabled(True)
-        self.b_changeTask.setFocusPolicy(Qt.NoFocus)
+        self.b_changeTask.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout_11.addWidget(self.b_changeTask)
 
@@ -94,7 +94,7 @@ class Ui_wg_Export(object):
 
         self.horizontalLayout.addWidget(self.label_3)
 
-        self.horizontalSpacer_2 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_2 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout.addItem(self.horizontalSpacer_2)
 
@@ -114,7 +114,7 @@ class Ui_wg_Export(object):
         self.l_rangeEnd = QLabel(self.w_frameRangeValues)
         self.l_rangeEnd.setObjectName(u"l_rangeEnd")
         self.l_rangeEnd.setMinimumSize(QSize(30, 0))
-        self.l_rangeEnd.setAlignment(Qt.AlignRight|Qt.AlignTrailing|Qt.AlignVCenter)
+        self.l_rangeEnd.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
         self.gridLayout.addWidget(self.l_rangeEnd, 1, 5, 1, 1)
 
@@ -135,7 +135,7 @@ class Ui_wg_Export(object):
         self.l_rangeStart = QLabel(self.w_frameRangeValues)
         self.l_rangeStart.setObjectName(u"l_rangeStart")
         self.l_rangeStart.setMinimumSize(QSize(30, 0))
-        self.l_rangeStart.setAlignment(Qt.AlignRight|Qt.AlignTrailing|Qt.AlignVCenter)
+        self.l_rangeStart.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
         self.gridLayout.addWidget(self.l_rangeStart, 0, 5, 1, 1)
 
@@ -144,7 +144,7 @@ class Ui_wg_Export(object):
 
         self.gridLayout.addWidget(self.l_rangeStartInfo, 0, 0, 1, 1)
 
-        self.horizontalSpacer_7 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_7 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.gridLayout.addItem(self.horizontalSpacer_7, 0, 4, 1, 1)
 
@@ -167,7 +167,7 @@ class Ui_wg_Export(object):
 
         self.horizontalLayout_20.addWidget(self.l_master)
 
-        self.horizontalSpacer_29 = QSpacerItem(113, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_29 = QSpacerItem(113, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_20.addItem(self.horizontalSpacer_29)
 
@@ -191,7 +191,7 @@ class Ui_wg_Export(object):
 
         self.horizontalLayout_12.addWidget(self.l_outPath)
 
-        self.horizontalSpacer_6 = QSpacerItem(113, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_6 = QSpacerItem(113, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_12.addItem(self.horizontalSpacer_6)
 
@@ -215,7 +215,7 @@ class Ui_wg_Export(object):
 
         self.horizontalLayout_5.addWidget(self.label_5)
 
-        self.horizontalSpacer_3 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_3 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_5.addItem(self.horizontalSpacer_3)
 
@@ -238,7 +238,7 @@ class Ui_wg_Export(object):
 
         self.horizontalLayout_9.addWidget(self.label_6)
 
-        self.horizontalSpacer_4 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_4 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_9.addItem(self.horizontalSpacer_4)
 
@@ -313,13 +313,13 @@ class Ui_wg_Export(object):
 
         self.l_status = QLabel(self.f_status)
         self.l_status.setObjectName(u"l_status")
-        self.l_status.setAlignment(Qt.AlignCenter)
+        self.l_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.horizontalLayout_4.addWidget(self.l_status)
 
         self.b_goTo = QPushButton(self.f_status)
         self.b_goTo.setObjectName(u"b_goTo")
-        self.b_goTo.setFocusPolicy(Qt.NoFocus)
+        self.b_goTo.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout_4.addWidget(self.b_goTo)
 
@@ -333,7 +333,7 @@ class Ui_wg_Export(object):
         self.horizontalLayout_3.setContentsMargins(-1, 0, -1, 0)
         self.b_connect = QPushButton(self.f_connect)
         self.b_connect.setObjectName(u"b_connect")
-        self.b_connect.setFocusPolicy(Qt.NoFocus)
+        self.b_connect.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout_3.addWidget(self.b_connect)
 
@@ -360,7 +360,7 @@ class Ui_wg_Export(object):
 
         self.horizontalLayout_17.addWidget(self.l_manager)
 
-        self.horizontalSpacer_19 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_19 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_17.addItem(self.horizontalSpacer_19)
 
@@ -383,7 +383,7 @@ class Ui_wg_Export(object):
 
         self.horizontalLayout_21.addWidget(self.l_rjPrio)
 
-        self.horizontalSpacer_15 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_15 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_21.addItem(self.horizontalSpacer_15)
 
@@ -407,12 +407,13 @@ class Ui_wg_Export(object):
 
         self.horizontalLayout_22.addWidget(self.label_15)
 
-        self.horizontalSpacer_16 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_16 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_22.addItem(self.horizontalSpacer_16)
 
         self.sp_rjFramesPerTask = QSpinBox(self.f_rjWidgetsPerTask)
         self.sp_rjFramesPerTask.setObjectName(u"sp_rjFramesPerTask")
+        self.sp_rjFramesPerTask.setMinimum(1)
         self.sp_rjFramesPerTask.setMaximum(9999)
         self.sp_rjFramesPerTask.setValue(999)
 
@@ -431,7 +432,7 @@ class Ui_wg_Export(object):
 
         self.horizontalLayout_28.addWidget(self.l_rjTimeout)
 
-        self.horizontalSpacer_22 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_22 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_28.addItem(self.horizontalSpacer_22)
 
@@ -456,7 +457,7 @@ class Ui_wg_Export(object):
 
         self.horizontalLayout_26.addWidget(self.label_18)
 
-        self.horizontalSpacer_20 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_20 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_26.addItem(self.horizontalSpacer_20)
 
@@ -479,7 +480,7 @@ class Ui_wg_Export(object):
 
         self.horizontalLayout_27.addWidget(self.label_19)
 
-        self.horizontalSpacer_21 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_21 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_27.addItem(self.horizontalSpacer_21)
 
@@ -502,7 +503,7 @@ class Ui_wg_Export(object):
 
         self.horizontalLayout_23.addWidget(self.label_16)
 
-        self.horizontalSpacer_17 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_17 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_23.addItem(self.horizontalSpacer_17)
 
@@ -525,7 +526,7 @@ class Ui_wg_Export(object):
 
         self.horizontalLayout_24.addWidget(self.label_17)
 
-        self.horizontalSpacer_18 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_18 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_24.addItem(self.horizontalSpacer_18)
 
@@ -551,7 +552,7 @@ class Ui_wg_Export(object):
         self.b_osSlaves = QPushButton(self.gb_osSlaves)
         self.b_osSlaves.setObjectName(u"b_osSlaves")
         self.b_osSlaves.setMaximumSize(QSize(25, 16777215))
-        self.b_osSlaves.setFocusPolicy(Qt.NoFocus)
+        self.b_osSlaves.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout_25.addWidget(self.b_osSlaves)
 
@@ -572,7 +573,7 @@ class Ui_wg_Export(object):
         self.scrollArea.setWidgetResizable(True)
         self.scrollAreaWidgetContents = QWidget()
         self.scrollAreaWidgetContents.setObjectName(u"scrollAreaWidgetContents")
-        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 289, 69))
+        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 289, 54))
         self.verticalLayout_2 = QVBoxLayout(self.scrollAreaWidgetContents)
         self.verticalLayout_2.setObjectName(u"verticalLayout_2")
         self.l_pathLast = QLabel(self.scrollAreaWidgetContents)
@@ -587,7 +588,7 @@ class Ui_wg_Export(object):
         self.b_pathLast = QToolButton(self.gb_previous)
         self.b_pathLast.setObjectName(u"b_pathLast")
         self.b_pathLast.setEnabled(True)
-        self.b_pathLast.setArrowType(Qt.DownArrow)
+        self.b_pathLast.setArrowType(Qt.ArrowType.DownArrow)
 
         self.horizontalLayout_10.addWidget(self.b_pathLast)
 

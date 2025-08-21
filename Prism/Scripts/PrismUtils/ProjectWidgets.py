@@ -34,6 +34,7 @@
 
 import os
 import sys
+import copy
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -46,10 +47,12 @@ from UserInterfacesPrism import CreateProject_ui
 
 
 class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
-    def __init__(self, core, name=None, path=None, settings=None):
+    def __init__(self, core, name=None, path=None, settings=None, enforcedSettings=None):
         QDialog.__init__(self)
         self.core = core
         self.prevName = ""
+        self.projectSettings = {}
+        self.enforcedSettings = enforcedSettings
         if self.core.uiAvailable:
             self.loadLayout()
             if name:
@@ -60,6 +63,8 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
 
             if settings:
                 self.settingsApplied(settings)
+            elif enforcedSettings:
+                self.settingsApplied(None)
 
         self.enableCleanup = True
         self.core.callback(
@@ -134,8 +139,9 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
             "Presets/Projects/Default/00_Pipeline/Fallbacks/noFileBig.jpg",
         )
         pmap = self.core.media.getPixmapFromPath(imgFile)
-        self.l_preview.setMinimumSize(pmap.width(), pmap.height())
-        self.l_preview.setPixmap(pmap)
+        if pmap:
+            self.l_preview.setMinimumSize(pmap.width(), pmap.height())
+            self.l_preview.setPixmap(pmap)
 
         path = os.path.join(
             self.core.prismRoot, "Scripts", "UserInterfacesPrism", "refresh.png"
@@ -345,7 +351,7 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
             )
         else:
             pm = self.core.media.getPixmapFromPath(imgPath)
-            if pm.width() == 0:
+            if not pm or pm.width() == 0:
                 warnStr = "Cannot read image: %s" % imgPath
                 self.core.popup(warnStr)
                 return
@@ -368,11 +374,11 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
     @err_catcher(name=__name__)
     def reloadSettings(self):
         source = self.cb_settings.currentText()
-        self.projectSettings = None
+        self.settingsApplied(None)
         if source == "From Preset":
             name = self.cb_preset.currentText()
             preset = self.core.projects.getPreset(name)
-            self.projectSettings = self.core.projects.getDefaultProjectSettings()
+            self.settingsApplied(self.core.projects.getDefaultProjectSettings())
             self.core.configs.updateNestedDicts(self.projectSettings, preset["settings"])
             self.projectStructure = self.core.projects.getFolderStructureFromPath(preset["path"])
         elif source == "From Project":
@@ -381,12 +387,12 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
                 configPath = self.core.configs.getProjectConfigPath(path)
                 if os.path.exists(configPath):
                     settings = self.core.getConfig(configPath=configPath)
-                    self.projectSettings = self.core.projects.getDefaultProjectSettings()
+                    self.settingsApplied(self.core.projects.getDefaultProjectSettings())
                     self.core.configs.updateNestedDicts(self.projectSettings, settings)
                     self.projectStructure = self.core.projects.getFolderStructureFromPath(path, simple=True)
 
         if source == "Default" or not self.projectSettings:
-            self.projectSettings = self.core.projects.getDefaultProjectSettings()
+            self.settingsApplied(self.core.projects.getDefaultProjectSettings())
             preset = self.core.projects.getPreset("Default")
             self.projectStructure = self.core.projects.getFolderStructureFromPath(preset["path"])
 
@@ -395,6 +401,7 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
             name="onProjectCreationSettingsReloaded",
             args=[self.projectSettings]
         )
+        self.settingsApplied(self.projectSettings)
 
     @err_catcher(name=__name__)
     def createPresetDlg(self):
@@ -525,6 +532,9 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
 
     @err_catcher(name=__name__)
     def customizeSettings(self):
+        if "globals" not in self.projectSettings:
+            self.projectSettings["globals"] = {}
+
         self.projectSettings["globals"]["project_name"] = self.getProjectName()
         self.projectSettings["globals"]["project_path"] = self.getProjectPath()
         self.dlg_settings = self.core.projects.openProjectSettings(
@@ -534,7 +544,12 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
 
     @err_catcher(name=__name__)
     def settingsApplied(self, settings):
-        self.projectSettings = settings
+        if settings:
+            settings = copy.deepcopy(settings)
+
+        self.projectSettings = settings or {}
+        if self.enforcedSettings:
+            self.projectSettings.update(copy.deepcopy(self.enforcedSettings))
 
     @err_catcher(name=__name__)
     def getProjectName(self):
@@ -637,6 +652,7 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
 
             self.e_projectSettings.setText(path)
             self.validateText(path, self.e_projectSettings)
+            self.reloadSettings()
 
     @err_catcher(name=__name__)
     def createClicked(self):
@@ -648,6 +664,9 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
 
         prjName = self.getProjectName()
         prjPath = self.getProjectPath()
+
+        if "globals" not in self.projectSettings:
+            self.projectSettings["globals"] = {}
 
         self.projectSettings["globals"]["project_name"] = prjName
         if "project_path" in self.projectSettings["globals"]:
@@ -1314,8 +1333,10 @@ class CreateAssetDlg(PrismWidgets.CreateItem):
             self.core.projects.getFallbackFolder(), "noFileSmall.jpg"
         )
         pmap = self.core.media.getPixmapFromPath(imgFile)
-        self.l_thumbnail.setMinimumSize(pmap.width(), pmap.height())
-        self.l_thumbnail.setPixmap(pmap)
+        if pmap:
+            self.l_thumbnail.setMinimumSize(pmap.width(), pmap.height())
+            self.l_thumbnail.setPixmap(pmap)
+
         self.l_thumbnail.setContextMenuPolicy(Qt.CustomContextMenu)
 
         self.l_thumbnail.mouseReleaseEvent = self.previewMouseReleaseEvent
@@ -1425,10 +1446,10 @@ class CreateAssetDlg(PrismWidgets.CreateItem):
         return self.pmap
 
 
-class CreateAssetFolderDlg(PrismWidgets.CreateItem):
+class CreateFolderDlg(PrismWidgets.CreateItem):
     def __init__(self, core, parent=None, startText=None):
         startText = startText or ""
-        super(CreateAssetFolderDlg, self).__init__(startText=startText.lstrip("/"), core=core, mode="assetHierarchy", allowChars=["/"])
+        super(CreateFolderDlg, self).__init__(startText=startText.lstrip("/"), core=core, mode="assetHierarchy", allowChars=["/"])
         self.parentDlg = parent
         self.core = core
         self.setupUi_()
@@ -1656,7 +1677,7 @@ class CreateProductVersionDlg(QDialog):
         self.l_version = QLabel("Version:")
         self.sp_version = VersionSpinBox()
         self.sp_version.core = self.core
-        self.sp_version.setRange(1, 99999)
+        self.sp_version.setRange(self.core.lowestVersion, 99999)
         self.lo_settings.addWidget(self.l_version, row, 0)
         self.lo_settings.addWidget(self.sp_version, row, 1)
         row += 1
@@ -1940,7 +1961,7 @@ class CreateIdentifierDlg(QDialog):
         tmenu = QMenu(self)
 
         tasks = self.core.entities.getCategories(self.entity, self.e_department.text())
-        dftTasks = self.core.entities.getDefaultTasksForDepartment(self.entity.get("type"), self.e_department.text())
+        dftTasks = self.core.entities.getDefaultTasksForDepartment(self.entity.get("type"), self.e_department.text()) or []
         for dftTask in dftTasks:
             if dftTask not in tasks:
                 tasks.append(dftTask)
@@ -2012,7 +2033,7 @@ class CreateMediaVersionDlg(QDialog):
         self.l_version = QLabel("Version:")
         self.sp_version = VersionSpinBox()
         self.sp_version.core = self.core
-        self.sp_version.setRange(1, 99999)
+        self.sp_version.setRange(self.core.lowestVersion, 99999)
         self.lo_settings.addWidget(self.l_version, row, 0)
         self.lo_settings.addWidget(self.sp_version, row, 1)
         row += 1
@@ -2056,7 +2077,9 @@ class IngestMediaDlg(QDialog):
         self.onMediaTypeChanged()
         self.setEntity(entity)
         if startText:
-            self.l_mediaPath.setText(startText)
+            self.setMediaPaths(startText)
+            if len(self.l_mediaPath.text().split("\n")) > 10:
+                self.resize(800, 800)
 
         self.sp_version.setValue(1)
         self.b_create.setEnabled(False)
@@ -2064,7 +2087,7 @@ class IngestMediaDlg(QDialog):
 
     @err_catcher(name=__name__)
     def sizeHint(self):
-        return QSize(600, 200)
+        return QSize(800, 200)
 
     @err_catcher(name=__name__)
     def setupUi(self):
@@ -2107,7 +2130,8 @@ class IngestMediaDlg(QDialog):
             self.l_department = QLabel("Department:")
             self.e_department = QLineEdit()
             self.e_department.textEdited.connect(lambda x: self.enableOk())
-            self.b_department = QPushButton("▼")
+            self.b_department = QToolButton()
+            self.b_department.setArrowType(Qt.DownArrow)
             self.b_department.setMaximumSize(QSize(25, 16777215))
             self.b_department.clicked.connect(self.onDepartmentClicked)
             self.lo_settings.addWidget(self.l_department, row, 0)
@@ -2118,7 +2142,8 @@ class IngestMediaDlg(QDialog):
             self.l_task = QLabel("Task:")
             self.e_task = QLineEdit()
             self.e_task.textEdited.connect(lambda x: self.enableOk())
-            self.b_task = QPushButton("▼")
+            self.b_task = QToolButton()
+            self.b_task.setArrowType(Qt.DownArrow)
             self.b_task.setMaximumSize(QSize(25, 16777215))
             self.b_task.clicked.connect(self.onTaskClicked)
             self.lo_settings.addWidget(self.l_task, row, 0)
@@ -2168,7 +2193,8 @@ class IngestMediaDlg(QDialog):
         self.lo_identifier.setContentsMargins(0, 0, 0, 0)
         self.lo_identifier.addWidget(self.e_identifier)
         self.lo_identifier.addWidget(self.cb_identifierType)
-        self.b_identifier = QPushButton("▼")
+        self.b_identifier = QToolButton()
+        self.b_identifier.setArrowType(Qt.DownArrow)
         self.b_identifier.setMaximumSize(QSize(25, 16777215))
         self.b_identifier.clicked.connect(self.onIdentifierClicked)
         self.lo_settings.addWidget(self.l_identifier, row, 0)
@@ -2179,8 +2205,9 @@ class IngestMediaDlg(QDialog):
         self.l_version = QLabel("Version:")
         self.sp_version = VersionSpinBox()
         self.sp_version.core = self.core
-        self.sp_version.setRange(1, 99999)
-        self.b_version = QPushButton("▼")
+        self.sp_version.setRange(self.core.lowestVersion, 99999)
+        self.b_version = QToolButton()
+        self.b_version.setArrowType(Qt.DownArrow)
         self.b_version.setMaximumSize(QSize(25, 16777215))
         self.b_version.clicked.connect(self.onVersionClicked)
         self.lo_settings.addWidget(self.l_version, row, 0)
@@ -2192,7 +2219,8 @@ class IngestMediaDlg(QDialog):
         self.e_aov = QLineEdit()
         self.e_aov.setText("rgb")
         self.e_aov.textEdited.connect(lambda x: self.enableOk())
-        self.b_aov = QPushButton("▼")
+        self.b_aov = QToolButton()
+        self.b_aov.setArrowType(Qt.DownArrow)
         self.b_aov.setMaximumSize(QSize(25, 16777215))
         self.b_aov.clicked.connect(self.onAovClicked)
         self.lo_settings.addWidget(self.l_aov, row, 0)
@@ -2210,8 +2238,11 @@ class IngestMediaDlg(QDialog):
         self.lo_mediaPath = QHBoxLayout(self.w_mediaPath)
         self.lo_mediaPath.setContentsMargins(0, 20, 0, 20)
         self.lo_mediaPath.addWidget(self.l_mediaPath)
+        self.sa_mediaPath = QScrollArea()
+        self.sa_mediaPath.setWidgetResizable(True)
+        self.sa_mediaPath.setWidget(self.w_mediaPath)
         self.lo_settings.addWidget(self.l_mediaPathLabel, row, 0)
-        self.lo_settings.addWidget(self.w_mediaPath, row, 1, 1, 2)
+        self.lo_settings.addWidget(self.sa_mediaPath, row, 1, 1, 2)
         self.w_mediaPath.setAcceptDrops(True)
         self.w_mediaPath.dragEnterEvent = self.mediaDragEnterEvent
         self.w_mediaPath.dragMoveEvent = self.mediaDragMoveEvent
@@ -2244,7 +2275,7 @@ class IngestMediaDlg(QDialog):
         self.bb_main.rejected.connect(self.reject)
 
         self.lo_main.addWidget(self.w_settings)
-        self.lo_main.addStretch()
+        # self.lo_main.addStretch()
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
@@ -2271,6 +2302,17 @@ class IngestMediaDlg(QDialog):
         self.l_entityPreview.setPixmap(pmap)
         entityName = "%s - %s" % (self.entity["type"].capitalize(), self.core.entities.getEntityName(self.entity))
         self.l_entityName.setText(entityName)
+
+    @err_catcher(name=__name__)
+    def setMediaPaths(self, paths):
+        pathList = paths.split("\n")
+        if len(pathList) == 1 and os.path.isdir(pathList[0]):
+            mods = QApplication.keyboardModifiers()
+            if mods != Qt.ControlModifier:
+                pathList = [os.path.join(pathList[0], x) for x in os.listdir(pathList[0])]
+                paths = "\n".join(sorted(pathList))
+
+        self.l_mediaPath.setText(paths)
 
     @err_catcher(name=__name__)
     def mediaMouseClickEvent(self, event):
@@ -2330,7 +2372,7 @@ class IngestMediaDlg(QDialog):
             fname = [
                 os.path.normpath(str(url.toLocalFile())) for url in e.mimeData().urls()
             ]
-            self.l_mediaPath.setText("\n".join(fname))
+            self.setMediaPaths("\n".join(fname))
             self.enableOk()
         else:
             e.ignore()
@@ -2468,7 +2510,7 @@ class IngestMediaDlg(QDialog):
         )
 
         if selectedPath:
-            self.l_mediaPath.setText(selectedPath.replace("\\", "/"))
+            self.setMediaPaths(selectedPath.replace("\\", "/"))
 
     @err_catcher(name=__name__)
     def browseFile(self):
@@ -2478,7 +2520,7 @@ class IngestMediaDlg(QDialog):
         )[0]
 
         if selectedFile:
-            self.l_mediaPath.setText(selectedFile.replace("\\", "/"))
+            self.setMediaPaths(selectedFile.replace("\\", "/"))
 
     @err_catcher(name=__name__)
     def openFolder(self):
@@ -2487,7 +2529,7 @@ class IngestMediaDlg(QDialog):
 
     @err_catcher(name=__name__)
     def clearMedia(self):
-        self.l_mediaPath.setText("< Click or Drag & Drop media >")
+        self.setMediaPaths("< Click or Drag & Drop media >")
 
     @err_catcher(name=__name__)
     def enableOk(self):

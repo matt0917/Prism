@@ -166,7 +166,8 @@ class Page_Start(QWidget):
         self.chb_uninstaller.setChecked(False)
         self.lo_options.addWidget(self.chb_startmenu)
         self.lo_options.addWidget(self.chb_integrations)
-        self.lo_options.addWidget(self.chb_uninstaller)
+        if platform.system() == "Windows":
+            self.lo_options.addWidget(self.chb_uninstaller)
 
         self.w_footer = QWidget()
         self.lo_footer = QHBoxLayout()
@@ -360,9 +361,10 @@ class Page_Finished(QWidget):
 
 
 class PrismInstaller(QDialog, PrismInstaller_ui.Ui_dlg_installer):
-    def __init__(self, core, plugins=None):
+    def __init__(self, core, plugins=None, parent=None):
         QDialog.__init__(self)
         self.core = core
+        self.core.parentWindow(self, parent=parent)
         if not plugins:
             plugins = self.core.getPluginNames()
 

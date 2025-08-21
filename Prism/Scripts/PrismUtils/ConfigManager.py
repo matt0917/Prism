@@ -37,17 +37,17 @@ import sys
 import platform
 import logging
 import time
+import errno
 
 from collections import OrderedDict
 
-if sys.version[0] == "3":
-    import collections.abc as collections
+import collections.abc as collections
+try:
     from configparser import ConfigParser
-    from io import StringIO
-else:
-    import collections
-    from ConfigParser import ConfigParser
-    from StringIO import StringIO
+except:
+    pass
+
+from io import StringIO
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -267,7 +267,7 @@ class ConfigManager(object):
             ]
         )
 
-        self.setConfig(data=uconfig, configPath=self.core.userini)
+        self.setConfig(data=uconfig, configPath=self.core.userini, updateNestedData=False)
 
         if platform.system() in ["Linux", "Darwin"]:
             if os.path.exists(self.core.userini):
@@ -412,15 +412,16 @@ class ConfigManager(object):
 
         isUserConfig = configPath == self.core.userini
 
-        configData = self.readConfig(configPath)
-        if configData is None:
-            configData = OrderedDict([])
-
-        if isUserConfig and not data and not configData:
-            self.createUserPrefs()
+        if data is None or updateNestedData:
             configData = self.readConfig(configPath)
             if configData is None:
-                return
+                configData = OrderedDict([])
+
+            if isUserConfig and not data and not configData:
+                self.createUserPrefs()
+                configData = self.readConfig(configPath)
+                if configData is None:
+                    return
 
         if data is not None:
             if updateNestedData and isinstance(data, collections.Mapping):
@@ -459,8 +460,14 @@ class ConfigManager(object):
                     else:
                         configData = val
 
-        if not os.path.exists(os.path.dirname(configPath)):
-            os.makedirs(os.path.dirname(configPath))
+        dirname = os.path.dirname(configPath)
+        if not os.path.exists(dirname):
+            try:
+                os.makedirs(dirname)
+            except Exception as e:
+                if e.errno != errno.EEXIST:
+                    self.core.popup("Failed to create folder:\n\n%s\n\nError:\n%s" % (dirname, e))
+                    return
 
         lf = Lockfile.Lockfile(self.core, configPath)
         try:
@@ -644,7 +651,7 @@ class ConfigManager(object):
             return stream.getvalue()
 
     @err_catcher(name=__name__)
-    def readJson(self, path=None, stream=None, data=None, ignoreErrors=False):
+    def readJson(self, path=None, stream=None, data=None, ignoreErrors=False, retry=True):
         logger.debug("read from config: %s" % path)
         import json
 
@@ -653,14 +660,87 @@ class ConfigManager(object):
             if not os.path.exists(path):
                 return OrderedDict([])
 
+            lf = Lockfile.Lockfile(self.core, path)
+            try:
+                lf.waitUntilReady()
+            except Lockfile.LockfileException:
+                msg = (
+                    "The following file is locked. It might be used by another process:\n\n%s\n\nReading from this file in a locked state can result in data loss."
+                    % path
+                )
+                result = self.core.popupQuestion(
+                    msg,
+                    buttons=["Retry", "Continue", "Cancel"],
+                    default="Cancel",
+                    icon=QMessageBox.Warning,
+                )
+                if result == "Retry":
+                    return self.readJson(path=path, stream=stream, data=data, ignoreErrors=ignoreErrors)
+                elif result == "Continue":
+                    try:
+                        lf.forceRelease()
+                    except:
+                        msg = (
+                            "Prism can't unlock the file. Make sure no other processes are using this file. You can manually unlock it by deleting the lockfile:\n\n%s\n\nCanceling to read from the file."
+                            % lf.lockPath
+                        )
+                        self.core.popup(msg)
+                        return
+
+                elif result == "Cancel":
+                    return
+
             with open(path, "r") as f:
                 try:
                     jsonData = json.load(f)
                 except Exception as e:
-                    if not ignoreErrors:
-                        msg = "Failed to read json config:\n\n%s\n\n%s" % (path, str(e))
-                        self.core.popup(msg)
-                        return
+                    if retry:
+                        time.sleep(0.5)
+                        return self.readJson(
+                            path=path, stream=stream, data=data, ignoreErrors=ignoreErrors, retry=False
+                        )
+                    else:
+                        if not ignoreErrors:
+                            if os.path.exists(path):
+                                msg = (
+                                    "Cannot read the content of this file:\n\n%s\n\nThe file exists, but the content is not in a valid json format."
+                                    % path
+                                )
+                            else:
+                                msg = (
+                                    "Cannot read the content of this file because the file can't be accessed:\n\n%s"
+                                    % path
+                                )
+
+                            msg += "\n\n%s" % str(e)
+
+                            result = self.core.popupQuestion(
+                                msg,
+                                icon=QMessageBox.Warning,
+                                buttons=["Retry", "Reset File", "Cancel"],
+                                default="Cancel",
+                            )
+                            if result == "Retry":
+                                return self.readJson(
+                                    path=path, stream=stream, data=data, ignoreErrors=ignoreErrors, retry=False
+                                )
+                            elif result == "Reset File":
+                                if path == self.core.userini:
+                                    self.createUserPrefs()
+                                else:
+                                    with open(path, "w") as f:
+                                        f.write("{}")
+
+                                jsonData = self.readJson(path)
+                            elif result == "Cancel":
+                                return
+
+            if lf.isLocked():
+                jsonData = self.readJson(path=path, stream=stream, data=data, ignoreErrors=ignoreErrors)
+
+            if not jsonData:
+                logger.warning("empty config: %s" % path)
+
         else:
             if not stream:
                 if not data:
@@ -671,7 +751,7 @@ class ConfigManager(object):
                 jsonData = json.load(stream)
             except Exception as e:
                 if not ignoreErrors:
-                    msg = "Failed to read json config:\n\n%s\n\n%s" % (path, str(e))
+                    msg = "Failed to read json config from string:\n\n%s" % str(e)
                     self.core.popup(msg)
                     return
 
@@ -694,11 +774,12 @@ class ConfigManager(object):
 
             try:
                 with open(path, "w") as config:
-                    json.dump(data, config, indent=indent)
+                    json.dump(data, config, indent=indent, default=lambda o: "")
             except Exception as e:
                 if getattr(e, "errno", None) == 13:
-                    msg = "Failed to write to config because of missing permissions:\n\n%s\n\n%s" % (path, e)
-                    self.core.popup(msg)
+                    if os.getenv("PRISM_CONFIG_PERMISSION_WARNING", "1") == "1":
+                        msg = "Failed to write to config because of missing permissions:\n\n%s\n\n%s" % (path, e)
+                        self.core.popup(msg)
                 else:
                     raise
 
@@ -706,7 +787,7 @@ class ConfigManager(object):
             if not stream:
                 stream = StringIO()
 
-            json.dump(data, stream, indent=indent)
+            json.dump(data, stream, indent=indent, default=lambda o: "")
             return stream.getvalue()
 
     @err_catcher(name=__name__)

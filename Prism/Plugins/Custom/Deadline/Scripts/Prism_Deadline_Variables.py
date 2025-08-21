@@ -34,7 +34,7 @@
 
 class Prism_Deadline_Variables(object):
     def __init__(self, core, plugin):
-        self.version = "v2.0.10"
+        self.version = "v2.0.16"
         self.pluginName = "Deadline"
         self.pluginType = "Custom"
         self.canOutputLocal = True

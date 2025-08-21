@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'default_Export.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.6.2
+## Created by: Qt User Interface Compiler version 6.8.1
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -105,14 +105,14 @@ class Ui_wg_Export(object):
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.l_taskName.sizePolicy().hasHeightForWidth())
         self.l_taskName.setSizePolicy(sizePolicy)
-        self.l_taskName.setAlignment(Qt.AlignCenter)
+        self.l_taskName.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.horizontalLayout_4.addWidget(self.l_taskName)
 
         self.b_changeTask = QPushButton(self.w_taskname)
         self.b_changeTask.setObjectName(u"b_changeTask")
         self.b_changeTask.setEnabled(True)
-        self.b_changeTask.setFocusPolicy(Qt.NoFocus)
+        self.b_changeTask.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout_4.addWidget(self.b_changeTask)
 
@@ -150,7 +150,7 @@ class Ui_wg_Export(object):
         self.l_rangeEnd = QLabel(self.f_frameRange_2)
         self.l_rangeEnd.setObjectName(u"l_rangeEnd")
         self.l_rangeEnd.setMinimumSize(QSize(30, 0))
-        self.l_rangeEnd.setAlignment(Qt.AlignRight|Qt.AlignTrailing|Qt.AlignVCenter)
+        self.l_rangeEnd.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
         self.gridLayout.addWidget(self.l_rangeEnd, 1, 5, 1, 1)
 
@@ -171,7 +171,7 @@ class Ui_wg_Export(object):
         self.l_rangeStart = QLabel(self.f_frameRange_2)
         self.l_rangeStart.setObjectName(u"l_rangeStart")
         self.l_rangeStart.setMinimumSize(QSize(30, 0))
-        self.l_rangeStart.setAlignment(Qt.AlignRight|Qt.AlignTrailing|Qt.AlignVCenter)
+        self.l_rangeStart.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
         self.gridLayout.addWidget(self.l_rangeStart, 0, 5, 1, 1)
 
@@ -314,7 +314,7 @@ class Ui_wg_Export(object):
         self.horizontalLayout_2.setContentsMargins(9, 0, 9, 0)
         self.b_selectCam = QPushButton(self.w_selectCam)
         self.b_selectCam.setObjectName(u"b_selectCam")
-        self.b_selectCam.setFocusPolicy(Qt.NoFocus)
+        self.b_selectCam.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout_2.addWidget(self.b_selectCam)
 
@@ -381,10 +381,10 @@ class Ui_wg_Export(object):
         self.horizontalLayout_8.setContentsMargins(0, 0, 0, 0)
         self.lw_objects = QListWidget(self.f_objectList)
         self.lw_objects.setObjectName(u"lw_objects")
-        self.lw_objects.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.lw_objects.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.lw_objects.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.lw_objects.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.lw_objects.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.lw_objects.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.lw_objects.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.lw_objects.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
 
         self.horizontalLayout_8.addWidget(self.lw_objects)
 
@@ -395,7 +395,7 @@ class Ui_wg_Export(object):
         self.b_add.setObjectName(u"b_add")
         self.b_add.setMinimumSize(QSize(0, 0))
         self.b_add.setMaximumSize(QSize(99999, 16777215))
-        self.b_add.setFocusPolicy(Qt.NoFocus)
+        self.b_add.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.verticalLayout_3.addWidget(self.b_add)
 
@@ -472,6 +472,7 @@ class Ui_wg_Export(object):
 
         self.sp_rjFramesPerTask = QSpinBox(self.f_rjWidgetsPerTask)
         self.sp_rjFramesPerTask.setObjectName(u"sp_rjFramesPerTask")
+        self.sp_rjFramesPerTask.setMinimum(1)
         self.sp_rjFramesPerTask.setMaximum(9999)
         self.sp_rjFramesPerTask.setValue(9999)
 
@@ -566,7 +567,7 @@ class Ui_wg_Export(object):
         self.scrollArea.setWidgetResizable(True)
         self.scrollAreaWidgetContents = QWidget()
         self.scrollAreaWidgetContents.setObjectName(u"scrollAreaWidgetContents")
-        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 289, 138))
+        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 329, 262))
         self.horizontalLayout_12 = QHBoxLayout(self.scrollAreaWidgetContents)
         self.horizontalLayout_12.setObjectName(u"horizontalLayout_12")
         self.l_pathLast = QLabel(self.scrollAreaWidgetContents)
@@ -581,7 +582,7 @@ class Ui_wg_Export(object):
         self.b_pathLast = QToolButton(self.gb_previous)
         self.b_pathLast.setObjectName(u"b_pathLast")
         self.b_pathLast.setEnabled(True)
-        self.b_pathLast.setArrowType(Qt.DownArrow)
+        self.b_pathLast.setArrowType(Qt.ArrowType.DownArrow)
 
         self.horizontalLayout_13.addWidget(self.b_pathLast)
 

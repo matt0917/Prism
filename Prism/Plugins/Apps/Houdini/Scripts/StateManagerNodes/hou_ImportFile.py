@@ -109,8 +109,8 @@ class ImportFileClass(object):
             if importPaths:
                 importPath = importPaths[-1]
                 if len(importPaths) > 1:
-                    for importPath in importPaths[:-1]:
-                        stateManager.importFile(importPath)
+                    for impPath in importPaths[:-1]:
+                        stateManager.importFile(impPath)
 
         if importPath:
             self.setImportPath(importPath)
@@ -297,16 +297,10 @@ class ImportFileClass(object):
 
     @err_catcher(name=__name__)
     def browse(self):
-        import ProductBrowser
-
-        ts = ProductBrowser.ProductBrowser(core=self.core, importState=self)
-        self.core.parentWindow(ts)
-        if self.core.uiScaleFactor != 1:
-            self.core.scaleUI(self.state, sFactor=0.5)
-        ts.exec_()
-
-        if ts.productPath:
-            self.setImportPath(ts.productPath)
+        importPaths = self.requestImportPaths()
+        if importPaths:
+            importPath = importPaths[-1]
+            self.setImportPath(importPath)
             self.importObject()
             self.updateUi()
 
@@ -473,7 +467,12 @@ class ImportFileClass(object):
             self.core.appPlugin.setFrameRange(
                 tlSettings[1], tlSettings[2], tlSettings[0]
             )
-            cacheData = self.core.paths.getCachePathData(importPath)
+            if self.core.appPlugin.getUseRelativePath():
+                importPathExpanded = hou.text.expandString(importPath)
+            else:
+                importPathExpanded = importPath
+
+            cacheData = self.core.paths.getCachePathData(importPathExpanded)
             entityName = (self.core.entities.getEntityName(cacheData) or "").replace("/", "_").replace("\\", "_")
             if entityName:
                 nodeName = "IMPORT_%s_%s" % (entityName, taskName)
@@ -695,6 +694,7 @@ class ImportFileClass(object):
 
         fileName = self.core.getCurrentFileName()
         impFileName = self.getImportPath(expand=False)
+        impFileNameExpanded = self.getImportPath(expand=True)
 
         kwargs = {
             "state": self,
@@ -719,7 +719,7 @@ class ImportFileClass(object):
         if not result:
             return
 
-        cacheData = self.core.paths.getCachePathData(impFileName)
+        cacheData = self.core.paths.getCachePathData(impFileNameExpanded)
         self.setImportPath(impFileName)
 
         try:

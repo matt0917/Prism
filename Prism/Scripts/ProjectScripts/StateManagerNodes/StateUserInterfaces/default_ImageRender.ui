@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>400</width>
-    <height>1319</height>
+    <height>1253</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -72,6 +72,62 @@
       <string>General</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_2">
+      <item>
+       <widget class="QWidget" name="w_comment" native="true">
+        <layout class="QHBoxLayout" name="horizontalLayout_19">
+         <property name="spacing">
+          <number>0</number>
+         </property>
+         <property name="leftMargin">
+          <number>9</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>9</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QLabel" name="l_comment">
+           <property name="minimumSize">
+            <size>
+             <width>40</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>95</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>Comment:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_8">
+           <property name="orientation">
+            <enum>Qt::Orientation::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="e_comment"/>
+         </item>
+        </layout>
+       </widget>
+      </item>
       <item>
        <widget class="QWidget" name="w_context" native="true">
         <layout class="QHBoxLayout" name="horizontalLayout_11">
@@ -722,7 +778,7 @@
           <number>0</number>
          </property>
          <item>
-          <widget class="QLabel" name="label_5">
+          <widget class="QLabel" name="l_renderLayer">
            <property name="text">
             <string>Render layer:</string>
            </property>
@@ -1511,7 +1567,7 @@
        <number>9</number>
       </property>
       <item>
-       <widget class="QListWidget" name="lw_passes">
+       <widget class="QTreeWidget" name="tw_passes">
         <property name="maximumSize">
          <size>
           <width>16777215</width>
@@ -1524,6 +1580,14 @@
         <property name="selectionMode">
          <enum>QAbstractItemView::SelectionMode::ExtendedSelection</enum>
         </property>
+        <attribute name="headerVisible">
+         <bool>false</bool>
+        </attribute>
+        <column>
+         <property name="text">
+          <string notr="true">1</string>
+         </property>
+        </column>
        </widget>
       </item>
       <item>
@@ -1574,7 +1638,7 @@
            <x>0</x>
            <y>0</y>
            <width>349</width>
-           <height>139</height>
+           <height>54</height>
           </rect>
          </property>
          <layout class="QVBoxLayout" name="verticalLayout_3">
@@ -1639,7 +1703,7 @@
   <tabstop>sp_dlGPUpt</tabstop>
   <tabstop>le_dlGPUdevices</tabstop>
   <tabstop>gb_passes</tabstop>
-  <tabstop>lw_passes</tabstop>
+  <tabstop>tw_passes</tabstop>
   <tabstop>scrollArea</tabstop>
   <tabstop>b_pathLast</tabstop>
  </tabstops>

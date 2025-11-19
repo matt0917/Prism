@@ -71,6 +71,9 @@ class Prism_PureRef_externalAccess_Functions(object):
         if self.core.getConfig("dccoverrides", "PureRef_path"):
             return
 
+        if self.core.status == "starting":
+            return
+
         msg = "Please specify the \"PureRef\" executable to use the \"PureRef\" plugin in Prism.\nYou can change the path to the executable later in the \"DCC Apps\" tab of the Prism User Settings."
         result = self.core.popupQuestion(msg, buttons=["Browse...", "Cancel"], icon=QMessageBox.Information)
 
@@ -116,6 +119,9 @@ class Prism_PureRef_externalAccess_Functions(object):
 
     @err_catcher(name=__name__)
     def getPresetScenes(self, presetScenes):
+        if os.getenv("PRISM_SHOW_DEFAULT_SCENEFILE_PRESETS", "1") != "1":
+            return
+
         presetDir = os.path.join(self.pluginDirectory, "Presets")
         scenes = self.core.entities.getPresetScenesFromFolder(presetDir)
         presetScenes += scenes

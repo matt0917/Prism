@@ -34,18 +34,19 @@
 import os
 import sys
 import platform
+import logging
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
 from qtpy.QtWidgets import *
 
 if platform.system() == "Windows":
-    if sys.version[0] == "3":
-        import winreg as _winreg
-    else:
-        import _winreg
+    import winreg as _winreg
 
 from PrismUtils.Decorators import err_catcher_plugin as err_catcher
+
+
+logger = logging.getLogger(__name__)
 
 
 class Prism_Photoshop_Integration(object):
@@ -53,7 +54,12 @@ class Prism_Photoshop_Integration(object):
         self.core = core
         self.plugin = plugin
 
-        self.examplePath = str(self.getPhotoshopPath())
+        if platform.system() == "Windows":
+            self.examplePath = str(self.getPhotoshopPath())
+        elif platform.system() == "Darwin":
+            installPath = str(self.getPhotoshopPath())
+            # self.examplePath = os.path.expanduser("~/Library/Application Support/Adobe/%s" % os.path.basename(installPath))
+            self.examplePath = installPath
 
     @err_catcher(name=__name__)
     def getPhotoshopPath(self, single=True):
@@ -101,13 +107,8 @@ class Prism_Photoshop_Integration(object):
     def addIntegration(self, installPath):
         try:
             if not os.path.exists(installPath):
-                QMessageBox.warning(
-                    self.core.messageParent,
-                    "Prism Integration",
-                    "Invalid Photoshop path: %s.\nThe path doesn't exist."
-                    % installPath,
-                    QMessageBox.Ok,
-                )
+                msg = "Invalid Photoshop path: %s.\nThe path doesn't exist." % installPath
+                self.core.popup(msg, title="Prism Integration")
                 return False
 
             integrationBase = os.path.join(
@@ -117,16 +118,18 @@ class Prism_Photoshop_Integration(object):
 
             if platform.system() == "Windows":
                 osName = "Windows"
+                scriptdir = os.path.join(installPath, "Presets", "Scripts")
             elif platform.system() == "Darwin":
                 osName = "Mac"
+                # scriptdir = os.path.expanduser("~/Library/Application Support/Adobe/%s/Presets/Scripts" % os.path.basename(installPath))
+                scriptdir = os.path.join(installPath, "Presets", "Scripts")
 
             cmds = []
-            scriptdir = os.path.join(installPath, "Presets", "Scripts")
             if not os.path.exists(scriptdir):
                 cmd = {"type": "createFolder", "args": [scriptdir]}
                 cmds.append(cmd)
 
-            for i in [
+            for filename in [
                 "Prism - 1 Tools.jsx",
                 "Prism - 2 Save Version.jsx",
                 "Prism - 3 Save Extended.jsx",
@@ -134,8 +137,8 @@ class Prism_Photoshop_Integration(object):
                 "Prism - 5 Project Browser.jsx",
                 "Prism - 6 Settings.jsx",
             ]:
-                origFile = os.path.join(integrationBase, osName, i)
-                targetFile = os.path.join(scriptdir, i)
+                origFile = os.path.join(integrationBase, osName, filename)
+                targetFile = os.path.join(scriptdir, filename)
 
                 if os.path.exists(targetFile):
                     cmd = {
@@ -157,8 +160,36 @@ class Prism_Photoshop_Integration(object):
 
                 cmd = {"type": "writeToFile", "args": [targetFile, initStr]}
                 cmds.append(cmd)
+                import subprocess
 
-            result = self.core.runFileCommands(cmds)
+            if platform.system() == "Windows":
+                result = self.core.runFileCommands(cmds)
+            else:
+                script = ""
+                for cmd in cmds:
+                    if cmd["type"] == "writeToFile":
+                        target = cmd["args"][0]
+                        cmd["args"][0] = "/tmp/" + os.path.basename(cmd["args"][0])
+                        self.core.runFileCommand(cmd)
+                        script += '''do shell script "cp '%s' '%s'" with administrator privileges\n''' % (cmd["args"][0], target)
+
+                logger.debug("running osascript: %s" % script)
+                subprocess.run(["osascript", "-"], input=script, text=True)
+                for cmd in cmds:
+                    if not cmd.get("validate", True):
+                        continue
+
+                    result = self.core.validateFileCommand(cmd)
+                    if not result:
+                        msg = "failed to run command: %s, args: %s" % (
+                            cmd["type"],
+                            cmd["args"],
+                        )
+                        result = msg
+                        break
+                else:
+                    result = True
+
             if result is True:
                 return True
             elif result is False:
@@ -179,7 +210,7 @@ class Prism_Photoshop_Integration(object):
 
     def removeIntegration(self, installPath):
         try:
-            for i in [
+            for filename in [
                 "Prism - 1 Tools.jsx",
                 "Prism - 2 Save version.jsx",
                 "Prism - 3 Save comment.jsx",
@@ -187,7 +218,7 @@ class Prism_Photoshop_Integration(object):
                 "Prism - 5 ProjectBrowser.jsx",
                 "Prism - 6 Settings.jsx",
             ]:
-                fPath = os.path.join(installPath, "Presets", "Scripts", i)
+                fPath = os.path.join(installPath, "Presets", "Scripts", filename)
                 if os.path.exists(fPath):
                     os.remove(fPath)
 
@@ -200,7 +231,6 @@ class Prism_Photoshop_Integration(object):
                 % (str(e), exc_type, exc_tb.tb_lineno)
             )
             msgStr += "\n\nRunning this application as administrator could solve this problem eventually."
-
             self.core.popup(msgStr, title="Prism Integration")
             return False
 
@@ -220,16 +250,16 @@ class Prism_Photoshop_Integration(object):
             psItem.setExpanded(True)
 
             activeVersion = False
-            for i in reversed(psPaths):
-                name = os.path.basename(i).replace("Adobe Photoshop ", "")
+            for path in reversed(psPaths):
+                name = os.path.basename(path).replace("Adobe Photoshop ", "")
                 psVItem = QTreeWidgetItem([name])
                 psItem.addChild(psVItem)
 
-                if os.path.exists(i):
+                if os.path.exists(path):
                     psVItem.setCheckState(0, Qt.Checked)
-                    psVItem.setText(1, i)
-                    psVItem.setToolTip(0, i)
-                    psVItem.setText(1, i)
+                    psVItem.setText(1, path)
+                    psVItem.setToolTip(0, path)
+                    psVItem.setText(1, path)
                     activeVersion = True
                 else:
                     psVItem.setCheckState(0, Qt.Unchecked)
@@ -241,12 +271,8 @@ class Prism_Photoshop_Integration(object):
 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            msg = QMessageBox.warning(
-                self.core.messageParent,
-                "Prism Installation",
-                "Errors occurred during the installation.\n The installation is possibly incomplete.\n\n%s\n%s\n%s\n%s"
-                % (__file__, str(e), exc_type, exc_tb.tb_lineno),
-            )
+            msg = "Errors occurred during the installation.\n The installation is possibly incomplete.\n\n%s\n%s\n%s\n%s" % (__file__, str(e), exc_type, exc_tb.tb_lineno)
+            self.core.popup(msg, title="Prism Installation")
             return False
 
     def installerExecute(self, photoshopItem, result):
@@ -257,25 +283,21 @@ class Prism_Photoshop_Integration(object):
             if photoshopItem.checkState(0) != Qt.Checked:
                 return installLocs
 
-            for i in range(photoshopItem.childCount()):
-                item = photoshopItem.child(i)
+            for idx in range(photoshopItem.childCount()):
+                item = photoshopItem.child(idx)
                 if item.checkState(0) == Qt.Checked and os.path.exists(item.text(1)):
                     psPaths.append(item.text(1))
 
-            for i in psPaths:
+            for path in psPaths:
                 result["Photoshop integration"] = self.core.integration.addIntegration(
-                    self.plugin.pluginName, path=i, quiet=True
+                    self.plugin.pluginName, path=path, quiet=True
                 )
                 if result["Photoshop integration"]:
-                    installLocs.append(i)
+                    installLocs.append(path)
 
             return installLocs
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            msg = QMessageBox.warning(
-                self.core.messageParent,
-                "Prism Installation",
-                "Errors occurred during the installation.\n The installation is possibly incomplete.\n\n%s\n%s\n%s\n%s"
-                % (__file__, str(e), exc_type, exc_tb.tb_lineno),
-            )
+            msg = "Errors occurred during the installation.\n The installation is possibly incomplete.\n\n%s\n%s\n%s\n%s" % (__file__, str(e), exc_type, exc_tb.tb_lineno)
+            self.core.popup(msg, title="Prism Installation")
             return False

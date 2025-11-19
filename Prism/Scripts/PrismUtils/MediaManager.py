@@ -85,12 +85,14 @@ class MediaManager(object):
             ".dpx",
             ".exr",
             ".hdr",
+            ".psd",
             ".mp4",
             ".mov",
             ".avi",
             ".m4v",
+            ".mxf",
         ]
-        self.videoFormats = [".mp4", ".mov", ".avi", ".m4v"]
+        self.videoFormats = [".mp4", ".mov", ".avi", ".m4v", ".mxf"]
         self.getImageIO()
 
     @err_catcher(name=__name__)
@@ -273,7 +275,7 @@ class MediaManager(object):
                 except:
                     pass
 
-        return start, end
+        return [start, end]
 
     @err_catcher(name=__name__)
     def getVideoReader(self, filepath):
@@ -313,10 +315,10 @@ class MediaManager(object):
     @err_catcher(name=__name__)
     def getOIIO(self):
         oiio = None
+
         try:
             if platform.system() == "Windows":
-                from oiio_2_4 import OpenImageIO as oiio
-
+                import OpenImageIO as oiio
             elif platform.system() in ["Linux", "Darwin"]:
                 import OpenImageIO as oiio
         except:
@@ -341,6 +343,14 @@ class MediaManager(object):
                     imageio.config.known_plugins["FFMPEG"].legacy_args["extensions"] += " .m4v"
                     for ext in imageio.config.extension_list:
                         if ext.extension == ".m4v":
+                            ext.priority.insert(0, "FFMPEG")
+                except:
+                    pass
+
+                try:
+                    imageio.config.known_plugins["FFMPEG"].legacy_args["extensions"] += " .mxf"
+                    for ext in imageio.config.extension_list:
+                        if ext.extension == ".mxf":
                             ext.priority.insert(0, "FFMPEG")
                 except:
                     pass
@@ -413,7 +423,7 @@ class MediaManager(object):
         inputpath = inputpath.replace("\\", "/")
         inputExt = os.path.splitext(inputpath)[1].lower()
         outputExt = os.path.splitext(outputpath)[1].lower()
-        videoInput = inputExt in [".mp4", ".mov", ".m4v"]
+        videoInput = inputExt in self.videoFormats
         startNum = str(startNum) if startNum is not None else None
 
         ffmpegPath = self.getFFmpeg(validate=True)
@@ -515,6 +525,7 @@ class MediaManager(object):
         if sys.version[0] == "3":
             result = [x.decode("utf-8", "ignore") for x in result]
 
+        logger.debug("Conversion result: " + str(result))
         return result
 
     @err_catcher(name=__name__)
@@ -552,16 +563,45 @@ class MediaManager(object):
 
             exts = [".R", ".G", ".B", ".Z", ".r", ".g", ".b", ".red", ".green", ".blue", ".x", ".y", ".z"]
             for name in cnames:
+                canAdd = True
                 for ext in exts:
                     if name.endswith(ext):
-                        name = name[:-len(ext)]
-                        if name not in names:
-                            names.append(name)
+                        lname = name[:-len(ext)]
+                        canAdd = False
+                        if lname not in names:
+                            names.append(lname)
+                            break
+                else:
+                    if canAdd and name not in ["R", "G", "B", "r", "g", "b"]:
+                        names.append(name)
 
             imgNum += 1
 
         imgInput.close()
         return names
+
+    @err_catcher(name=__name__)
+    def getMetaDataFromExrFile(self, filepath):
+        base, ext = os.path.splitext(filepath)
+        if ext not in [".exr"]:
+            return []
+
+        oiio = self.getOIIO()
+        if not oiio:
+            return []
+
+        img = oiio.ImageInput.open(filepath)
+        if not img:
+            return []
+
+        spec = img.spec()
+        metaData = []
+
+        for attr in spec.extra_attribs:
+            metaData.append({attr.name: attr.value})
+
+        img.close()
+        return metaData
 
     @err_catcher(name=__name__)
     def getThumbnailPath(self, path):
@@ -572,7 +612,7 @@ class MediaManager(object):
     def getUseThumbnailForFile(self, filepath):
         _, ext = os.path.splitext(filepath)
         ext = ext.lower()
-        useThumb = ext in [".exr", ".dpx", ".hdr"] or ext in self.videoFormats
+        useThumb = ext in [".exr", ".dpx", ".hdr", ".psd"] or ext in self.videoFormats
         return useThumb        
 
     @err_catcher(name=__name__)
@@ -799,6 +839,9 @@ nuke.execute(write, %s, %s)
                                     numChannels = 1
                                 elif idx == -1 and channel in ["RGB", "RGBA"]:
                                     idx = imgInput.spec().channelindex("R")
+                                elif idx == -1:
+                                    idx = imgInput.spec().channelindex(channel)
+                                    numChannels = 1
 
                 if idx == -1:
                     subimage += 1
@@ -896,7 +939,7 @@ nuke.execute(write, %s, %s)
         ext = os.path.splitext(path)[1].lower()
         if ext in self.core.media.videoFormats:
             return self.getPixmapFromVideoPath(path)
-        elif ext in [".exr", ".dpx", ".hdr"]:
+        elif ext in [".exr", ".dpx", ".hdr", ".psd"]:
             return self.core.media.getPixmapFromExrPath(
                 path, width, height
             )
@@ -990,10 +1033,10 @@ nuke.execute(write, %s, %s)
                 pmap.save(path, "JPG")
 
     @err_catcher(name=__name__)
-    def getPixmapFromUrl(self, url):
+    def getPixmapFromUrl(self, url, headers=None):
         import requests
         logger.debug("getting image from url: %s" % url)
-        data = requests.get(url).content
+        data = requests.get(url, headers=headers).content
         image = QImage()
         image.loadFromData(data)
         pmap = QPixmap(image)
@@ -1107,7 +1150,7 @@ nuke.execute(write, %s, %s)
                 size = pm.size()
                 pwidth = size.width()
                 pheight = size.height()
-        elif ext in [".exr", ".dpx", ".hdr"]:
+        elif ext in [".exr", ".dpx", ".hdr", ".psd"]:
             oiio = self.getOIIO()
             if oiio:
                 path = str(path)  # for python 2
@@ -1115,7 +1158,14 @@ nuke.execute(write, %s, %s)
                 imgSpecs = buf.spec()
                 pwidth = imgSpecs.full_width
                 pheight = imgSpecs.full_height
-        elif ext in [".mp4", ".mov", ".avi", ".m4v"]:
+            else:
+                pm = self.getPixmapFromExrPathWithoutOIIO(path)
+                if pm:
+                    size = pm.size()
+                    pwidth = size.width()
+                    pheight = size.height()
+
+        elif ext in self.videoFormats:
             if videoReader is None:
                 videoReader = self.getVideoReader(path)
 
@@ -1173,27 +1223,72 @@ nuke.execute(write, %s, %s)
         return result
 
     @err_catcher(name=__name__)
-    def getExternalMediaPlayer(self):
-        player = {
-            "name": self.core.getConfig("globals", "mediaPlayerName") or "Media Player",
-            "path": self.core.getConfig("globals", "mediaPlayerPath"),
-            "framePattern": self.core.getConfig("globals", "mediaPlayerFramePattern") or False
-        }
-        if not player["path"]:
-            path = self.core.getConfig("globals", "rvpath")
-            if not path:
-                path = self.core.getConfig("globals", "djvpath")
+    def getExternalMediaPlayers(self):
+        playerData = self.core.getConfig("globals", "mediaPlayers") or []
+        players = []
+        if playerData:
+            for player in playerData:
+                pl = {
+                    "name": player.get("name") or "Media Player",
+                    "path": player.get("path"),
+                    "framePattern": player.get("understandsFramepattern"),
+                }
+                if not pl["path"]:
+                    path = self.core.getConfig("globals", "rvpath")
+                    if not path:
+                        path = self.core.getConfig("globals", "djvpath")
 
-            if path:
-                player["path"] = path
+                    if path:
+                        pl["path"] = path
 
-        return player
+                players.append(pl)
+        else:
+            gblData = self.core.getConfig("globals") or {}
+            name = None
+            path = None
+            understandsFramepattern = None
+            if "mediaPlayerName" in gblData:
+                name = gblData["mediaPlayerName"]
+
+            if "rvpath" in gblData:
+                path = gblData["rvpath"]
+
+            if "djvpath" in gblData:
+                path = gblData["djvpath"]
+
+            if "mediaPlayerPath" in gblData:
+                path = gblData["mediaPlayerPath"]
+
+            if "mediaPlayerFramePattern" in gblData:
+                understandsFramepattern = gblData["mediaPlayerFramePattern"]
+
+            if name is not None and path is not None and understandsFramepattern is not None:
+                data = {"name": name, "path": path, "understandsFramepattern": understandsFramepattern}
+                players.append(data)
+
+        return players
 
     @err_catcher(name=__name__)
-    def playMediaInExternalPlayer(self, path):
-        progPath = self.getExternalMediaPlayer().get("path")
+    def getExternalMediaPlayer(self, name=None):
+        players = self.getExternalMediaPlayers()
+        if not players:
+            return
+
+        if name:
+            for player in players:
+                if player["name"] == name:
+                    return player
+
+            return
+
+        return players[0]
+
+    @err_catcher(name=__name__)
+    def playMediaInExternalPlayer(self, path, name=None):
+        mediaPlayer = self.getExternalMediaPlayer(name=name)
+        progPath = mediaPlayer.get("path") if mediaPlayer else ""
         if not progPath:
-            logger.warning("no media player path defined")
+            self.core.popup("No media player path set in your user settings..")
             return
 
         if not os.path.exists(path):
@@ -1204,9 +1299,13 @@ nuke.execute(write, %s, %s)
                 logger.warning("media filepath doesn't exist: %s" % path)
                 return
 
-            path = paths[0]
+            if not mediaPlayer.get("framePattern"):
+                path = paths[0]
 
         comd = [progPath, path]
+        if platform.system() == "Darwin" and progPath.endswith(".app"):
+            comd = ["open", "-a"] + comd
+
         logger.debug("opening media: %s" % comd)
         with open(os.devnull, "w") as f:
             try:

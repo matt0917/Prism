@@ -377,10 +377,12 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         self.settingsApplied(None)
         if source == "From Preset":
             name = self.cb_preset.currentText()
-            preset = self.core.projects.getPreset(name)
             self.settingsApplied(self.core.projects.getDefaultProjectSettings())
-            self.core.configs.updateNestedDicts(self.projectSettings, preset["settings"])
-            self.projectStructure = self.core.projects.getFolderStructureFromPath(preset["path"])
+            preset = self.core.projects.getPreset(name)
+            if preset:
+                self.core.configs.updateNestedDicts(self.projectSettings, preset["settings"])
+                self.projectStructure = self.core.projects.getFolderStructureFromPath(preset["path"])
+
         elif source == "From Project":
             path = self.e_projectSettings.text()
             if path and os.path.isdir(path):
@@ -1087,9 +1089,9 @@ class SetProjectClass(QDialog):
         self.lo_main.addWidget(self.w_scrollParent)
 
         path = os.path.join(
-            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "add.png"
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "create.png"
         )
-        data = {"name": "Create New Project", "icon": path}
+        data = {"name": "Create New Project...", "icon": path}
         self.w_new = self.getProjectWidgetClass()(self, data)
         self.w_new.setMaximumHeight(100)
         self.w_new.setMinimumWidth(200)
@@ -1099,7 +1101,7 @@ class SetProjectClass(QDialog):
         path = os.path.join(
             self.core.prismRoot, "Scripts", "UserInterfacesPrism", "browse.png"
         )
-        data = {"name": "Browse Projects", "icon": path}
+        data = {"name": "Open Existing Project...", "icon": path}
         self.w_open = self.getProjectWidgetClass()(self, data)
         self.w_open.setMaximumHeight(100)
         self.w_open.setMinimumWidth(200)
@@ -2313,6 +2315,7 @@ class IngestMediaDlg(QDialog):
                 paths = "\n".join(sorted(pathList))
 
         self.l_mediaPath.setText(paths)
+        self.enableOk()
 
     @err_catcher(name=__name__)
     def mediaMouseClickEvent(self, event):
@@ -2504,7 +2507,8 @@ class IngestMediaDlg(QDialog):
 
     @err_catcher(name=__name__)
     def browseFolder(self):
-        startpath = self.l_mediaPath.text() or self.core.projectPath
+        curText = self.l_mediaPath.text()
+        startpath = curText if curText and not curText.startswith("<") else self.core.projectPath
         selectedPath = QFileDialog.getExistingDirectory(
             self, "Select media folder", startpath
         )
@@ -2514,7 +2518,8 @@ class IngestMediaDlg(QDialog):
 
     @err_catcher(name=__name__)
     def browseFile(self):
-        startpath = self.l_mediaPath.text() or self.core.projectPath
+        curText = self.l_mediaPath.text()
+        startpath = curText if curText and not curText.startswith("<") else self.core.projectPath
         selectedFile = QFileDialog.getOpenFileName(
             self, "Select media file", startpath
         )[0]

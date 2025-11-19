@@ -63,8 +63,9 @@ from qtpy.QtWidgets import *
 from bpy.app.handlers import persistent
 
 
-def prismInit():
-    pcore = PrismCore.PrismCore(app="Blender")
+def prismInit(prismArgs=None):
+    prismArgs = prismArgs or []
+    pcore = PrismCore.PrismCore(app="Blender", prismArgs=prismArgs)
     return pcore
 
 
@@ -192,22 +193,22 @@ class PrismPanel(bpy.types.Panel):
 
 
 def register():
-    if bpy.app.background:
-        return
-
     try:
         qapp = QApplication.instance()
         if qapp is None:
             qapp = QApplication(sys.argv)
 
         global pcore
-        pcore = prismInit()
-        bpy.utils.register_class(PrismSave)
-        bpy.utils.register_class(PrismSaveComment)
-        bpy.utils.register_class(PrismProjectBrowser)
-        bpy.utils.register_class(PrismStateManager)
-        bpy.utils.register_class(PrismSettings)
-        # bpy.utils.register_class(PrismPanel)
+        if bpy.app.background:
+            pcore = prismInit(["noUI"])
+        else:
+            pcore = prismInit()
+            bpy.utils.register_class(PrismSave)
+            bpy.utils.register_class(PrismSaveComment)
+            bpy.utils.register_class(PrismProjectBrowser)
+            bpy.utils.register_class(PrismStateManager)
+            bpy.utils.register_class(PrismSettings)
+            # bpy.utils.register_class(PrismPanel)
 
         bpy.app.handlers.load_pre.append(sceneUnload)
         bpy.app.handlers.save_post.append(sceneSave)

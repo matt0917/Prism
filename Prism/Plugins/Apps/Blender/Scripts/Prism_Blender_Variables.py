@@ -37,7 +37,7 @@ import os
 
 class Prism_Blender_Variables(object):
     def __init__(self, core, plugin):
-        self.version = "v2.0.16"
+        self.version = "v2.1.0"
         self.pluginName = "Blender"
         self.pluginType = "App"
         self.appShortName = "Bld"
@@ -45,7 +45,7 @@ class Prism_Blender_Variables(object):
         self.hasQtParent = False
         self.sceneFormats = [".blend"]
         self.appSpecificFormats = self.sceneFormats
-        self.outputFormats = [".abc", ".obj", ".fbx", ".blend", "ShotCam"]
+        self.outputFormats = [".abc", ".obj", ".fbx", ".glb", ".blend", "ShotCam"]
         self.appColor = [200, 180, 0]
         self.canDeleteRenderPasses = False
         self.colorButtonWithStyleSheet = True

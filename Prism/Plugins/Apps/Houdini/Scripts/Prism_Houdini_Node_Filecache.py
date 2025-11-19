@@ -146,8 +146,9 @@ class Prism_Houdini_Filecache(object):
 
         if parent3 and parent3.inputs():
             stage = parent3.inputs()[0].stage()
-            if stage:
-                frameRange = self.core.getPlugin("USD").api.getFrameRangeFromStage(stage)
+            usdPlug = self.core.getPlugin("USD")
+            if stage and usdPlug:
+                frameRange = usdPlug.api.getFrameRangeFromStage(stage)
                 if frameRange["authored"]:
                     self.plugin.setNodeParm(kwargs["node"], "f1", frameRange["start"], clear=True)
                     self.plugin.setNodeParm(kwargs["node"], "f2", frameRange["end"], clear=True)
@@ -245,8 +246,11 @@ class Prism_Houdini_Filecache(object):
         act_open.triggered.connect(lambda: self.core.openFolder(folderpath))
         menu.addAction(act_open)
 
-        act_copy = QAction("Copy", parent)
-        act_copy.triggered.connect(lambda: self.core.copyToClipboard(folderpath, file=True))
+        act_open = QAction("Load in LOPs", parent)
+        act_open.triggered.connect(lambda: self.openInLOPs(kwargs, folderpath))
+        menu.addAction(act_open)
+
+        act_copy = self.core.getCopyAction(folderpath, parent=parent)
         menu.addAction(act_copy)
 
         menu.exec_(QCursor.pos())
@@ -257,6 +261,29 @@ class Prism_Houdini_Filecache(object):
         self.core.pb.showTab("Products")
         data = self.core.paths.getCachePathData(path)
         self.core.pb.productBrowser.navigateToProduct(data["product"], entity=data)
+
+    @err_catcher(name=__name__)
+    def openInLOPs(self, kwargs, path):
+        parent = kwargs["node"].parent()
+        while parent and (not isinstance(parent, hou.LopNode) or parent.isInsideLockedHDA() or parent.isLockedHDA()):
+            parent = parent.parent()
+
+        if isinstance(parent, hou.LopNode):
+            parent3 = parent
+        else:
+            parent3 = hou.node("/stage")
+
+        if hou.nodeType(hou.lopNodeTypeCategory(), "prism::LOP_Import::1.0"):
+            lopnode = parent3.createNode("prism::LOP_Import::1.0")
+            lopnode.parm("filepath").set(path)
+            lopnode.parm("importAs").set(1)
+            lopnode.hdaModule().setPath({"node": lopnode, "script_value": path})
+        else:
+            lopnode = parent3.createNode("sublayer")
+            lopnode.parm("filepath1").set(path)
+
+        lopnode.setDisplayFlag(True)
+        self.core.appPlugin.goToNode(lopnode)
 
     @err_catcher(name=__name__)
     def refreshNodeUi(self, node, state, forceCook=False):
@@ -330,7 +357,7 @@ class Prism_Houdini_Filecache(object):
         elif node.parm("format").evalAsString() == ".fbx":
             ropName = "write_fbx"
         elif node.parm("format").evalAsString() in [".usda", ".usdc"]:
-            ropName = "write_usd"
+            ropName = "write_usd/lopnet_EXPORT/USD_OUT"
         else:
             ropName = "write_geo"
 
@@ -421,6 +448,7 @@ class Prism_Houdini_Filecache(object):
 
         state.ui.node.nodeExecuted = True
         self.executeBackground = background
+        comment = kwargs["node"].parm("comment").eval()
         sm.publish(
             executeState=True,
             useVersion=version,
@@ -430,6 +458,7 @@ class Prism_Houdini_Filecache(object):
             incrementScene=incrementScene,
             sanityChecks=sanityChecks,
             versionWarning=False,
+            comment=comment,
         )
         self.executeBackground = False
         state.ui.node.nodeExecuted = False
@@ -760,7 +789,7 @@ class Prism_Houdini_Filecache(object):
         return val
 
     @err_catcher(name=__name__)
-    def getImportPath(self, expand=True):
+    def getImportPath(self, expand=True, node=None):
         if hou.hipFile.isLoadingHipFile():
             return ""
 
@@ -768,7 +797,7 @@ class Prism_Houdini_Filecache(object):
         if not sm or self.core.getCurrentFileName() != sm.scenename:
             return ""
 
-        node = hou.pwd()
+        node = node or hou.pwd()
         state = self.getStateFromNode({"node": node})
         if not state:
             return
@@ -833,9 +862,12 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def reload(self, kwargs):
-        isAbc = kwargs["node"].parm("switch_format/input").eval()
+        isAbc = kwargs["node"].parm("switch_format/input").eval() == 1
+        isUsd = kwargs["node"].parm("switch_format/input").eval() == 2
         if isAbc:
             kwargs["node"].parm("read_alembic/reload").pressButton()
+        elif isUsd:
+            kwargs["node"].parm("read_usd/reload").pressButton()
         else:
             kwargs["node"].parm("read_geo/reload").pressButton()
 
@@ -955,6 +987,7 @@ class Farm_Submitter(QDialog):
         incrementScene = saveScene and bool(
             self.kwargs["node"].parm("incrementScene").eval()
         )
+        comment = self.kwargs["node"].parm("comment").eval()
 
         sm = self.core.getStateManager()
         result = sm.publish(
@@ -966,6 +999,7 @@ class Farm_Submitter(QDialog):
             incrementScene=incrementScene,
             sanityChecks=sanityChecks,
             versionWarning=False,
+            comment=comment,
         )
         if result:
             msg = "Job submitted successfully."

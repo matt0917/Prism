@@ -37,6 +37,7 @@ import sys
 import shutil
 import platform
 import subprocess
+import logging
 
 prismRoot = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 scriptPath = os.path.join(prismRoot, "Scripts")
@@ -66,6 +67,9 @@ from PrismUtils.Decorators import err_catcher
 from UserInterfacesPrism import PrismInstaller_ui
 
 
+logger = logging.getLogger(__name__)
+
+
 class PrismSetup(QDialog):
 
     signalShowing = Signal()
@@ -73,6 +77,7 @@ class PrismSetup(QDialog):
     def __init__(self, core):
         QDialog.__init__(self)
         self.core = core
+        self.silent = False
         self.loadLayout()
         self.connectEvents()
         self.setFocus()
@@ -125,6 +130,10 @@ class PrismSetup(QDialog):
 
     def pageChanged(self, idx):
         self.sw_main.widget(idx).entered()
+
+    def run(self, silent=False):
+        self.silent = silent
+        self.nextClicked()
 
 
 class Page_Start(QWidget):
@@ -277,6 +286,9 @@ class Page_Integrations(QWidget):
 
             self.w_integrations.buttonBox.setVisible(False)
             self.lo_main.insertWidget(0, self.w_integrations)
+            if self.parent.silent:
+                self.installClicked()
+
         except Exception as e:
             self.l_error = QLabel("Failed to load Prism:\n\n%s\n\nPlease contact the support" % e)
             self.sp_main = QSpacerItem(0, 0, QSizePolicy.Fixed, QSizePolicy.Expanding)
@@ -358,6 +370,7 @@ class Page_Finished(QWidget):
 
         msg = "Prism %s was installed successfully!" % self.parent.core.version
         self.l_success.setText(msg)
+        logger.info(msg)
 
 
 class PrismInstaller(QDialog, PrismInstaller_ui.Ui_dlg_installer):
@@ -586,22 +599,30 @@ class Uninstaller(QDialog):
 
     @err_catcher(name=__name__)
     def onUninstallClicked(self):
-        waitPopup = self.waitPopup(self, "Uninstalling. Please wait...", parent=self)
+        self.run()
+
+    @err_catcher(name=__name__)
+    def run(self, silent=False):
+        waitPopup = self.waitPopup(self, "Uninstalling. Please wait...", parent=self, hidden=silent)
         with waitPopup:
             feedback = self.le_feedback.toPlainText()
             if feedback:
-                text = "Sending feedback. Please wait..."
-                waitPopup.msg.setText(text)
-                QCoreApplication.processEvents()
+                if not silent:
+                    text = "Sending feedback. Please wait..."
+                    waitPopup.msg.setText(text)
+                    QCoreApplication.processEvents()
+
                 self.sendFeedback()
 
             postDeletePaths = []
 
             result = {}
             if self.chb_integrations.isChecked():
-                text = "Removing integrations. Please wait..."
-                waitPopup.msg.setText(text)
-                QCoreApplication.processEvents()
+                if not silent:
+                    text = "Removing integrations. Please wait..."
+                    waitPopup.msg.setText(text)
+                    QCoreApplication.processEvents()
+
                 result.update(self.removeIntegrations())
 
             if self.chb_prefs.isChecked():
@@ -616,29 +637,38 @@ class Uninstaller(QDialog):
             self.closePrismProcesses()
 
             if self.chb_plugins.isChecked():
-                text = "Removing plugins. Please wait..."
-                waitPopup.msg.setText(text)
-                QCoreApplication.processEvents()
+                if not silent:
+                    text = "Removing plugins. Please wait..."
+                    waitPopup.msg.setText(text)
+                    QCoreApplication.processEvents()
+
                 result["Local Plugins"] = self.removeLocalPlugins()
 
             if self.chb_prefs.isChecked():
-                text = "Removing preferences. Please wait..."
-                waitPopup.msg.setText(text)
-                QCoreApplication.processEvents()
+                if not silent:
+                    text = "Removing preferences. Please wait..."
+                    waitPopup.msg.setText(text)
+                    QCoreApplication.processEvents()
+
                 result["Prism Preferences"] = self.removePrismPreferences()
 
             if self.chb_prism.isChecked():
-                text = "Removing Prism. Please wait..."
-                waitPopup.msg.setText(text)
-                QCoreApplication.processEvents()
+                if not silent:
+                    text = "Removing Prism. Please wait..."
+                    waitPopup.msg.setText(text)
+                    QCoreApplication.processEvents()
+
                 result["Prism Files"] = self.removePrismFiles(postDeletePaths)
 
         if False not in result.values():
             msgStr = "Prism was uninstalled successfully."
-            if postDeletePaths:
-                msgStr += "\nThe last remaining files will be removed after closing this window."
+            logger.info(msgStr)
+            if not silent:
+                if postDeletePaths:
+                    msgStr += "\nThe last remaining files will be removed after closing this window."
 
-            QMessageBox.information(self, "Prism Uninstallation", msgStr)
+                QMessageBox.information(self, "Prism Uninstallation", msgStr)
+
             self.finalize(postDeletePaths)
         else:
             msgString = "Some parts failed to uninstall:\n\n"
@@ -651,11 +681,13 @@ class Uninstaller(QDialog):
                 .replace("Prism Files:", "Prism Files:\t")
                 .replace("Local Plugins:", "Local Plugins:\t")
             )
+            logger.warning(msgStr)
 
-            QMessageBox.warning(
-                self, "Prism Installation", msgString
-            )
-            sys.exit(0)
+            if not silent:
+                QMessageBox.warning(
+                    self, "Prism Installation", msgString
+                )
+                sys.exit(0)
 
     @err_catcher(name=__name__)
     def closeEvent(self, event):
@@ -668,7 +700,7 @@ class Uninstaller(QDialog):
             from multiprocessing.connection import Listener
             self.listener = Listener(address, authkey=b'gfjdbfs')
 
-            cmd = "import sys;sys.path.append('%s');import PrismCore;core = PrismCore.create();core.startCommunication(port=6550, key=b'gfjdbfs')" % os.path.dirname(__file__)
+            cmd = "import sys;sys.path.append('%s');import PrismCore;core = PrismCore.create();core.startCommunication(port=6550, key=b'gfjdbfs')" % os.path.dirname(__file__).replace("\\", "\\\\")
             subprocess.Popen([sys.executable, "-c", cmd])
 
             self.sconn = self.listener.accept()
@@ -1197,28 +1229,41 @@ def force_elevated():
         print(ex)
 
 
-def startInstaller_Windows():
-    if len(sys.argv) >= 2 and "uninstall" in sys.argv:
-        qApp = QApplication.instance()
-        wIcon = QIcon(
-            os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                "UserInterfacesPrism",
-                "p_tray.png",
-            )
+def startInstaller_Windows(silent=False, setupShortcuts=True, dccIntegrations=True, createUninstaller=False):
+    import PrismCore
+    pc = PrismCore.create()
+    dlg = pc.openSetup(silent=silent)
+    dlg.w_pageStart.chb_startmenu.setChecked(setupShortcuts)
+    dlg.w_pageStart.chb_startmenu.setChecked(dccIntegrations)
+    dlg.w_pageStart.chb_startmenu.setChecked(createUninstaller)
+    if silent:
+        dlg.run(silent=True)
+
+
+def startUninstaller_Windows(silent=False, removeCore=True, removePlugins=True, removeDccIntegrations=True, removePreferences=False):
+    qApp = QApplication.instance()
+    wIcon = QIcon(
+        os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "UserInterfacesPrism",
+            "p_tray.png",
         )
-        qApp.setWindowIcon(wIcon)
+    )
+    qApp.setWindowIcon(wIcon)
 
-        from UserInterfacesPrism.stylesheets import blue_moon
-        qApp.setStyleSheet(blue_moon.load_stylesheet(pyside=True))
+    from UserInterfacesPrism.stylesheets import blue_moon
+    qApp.setStyleSheet(blue_moon.load_stylesheet(pyside=True))
 
-        dlg = Uninstaller()
+    dlg = Uninstaller()
+    dlg.chb_prism.setChecked(removeCore)
+    dlg.chb_plugins.setChecked(removePlugins)
+    dlg.chb_integrations.setChecked(removeDccIntegrations)
+    dlg.chb_prefs.setChecked(removePreferences)
+    if silent:
+        dlg.run(silent=True)
+    else:
         dlg.exec_()
         sys.exit()
-    else:
-        import PrismCore
-        pc = PrismCore.create()
-        pc.openSetup()
 
 
 def startInstaller_Linux():
@@ -1245,6 +1290,23 @@ def startInstaller_Linux():
         )
 
 
+def startUninstaller_Linux():
+    try:
+        if not checkRootUser():
+            return
+
+        dlg = Uninstaller()
+        dlg.exec_()
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        QMessageBox.warning(
+            QWidget(),
+            "Prism Installation",
+            "Errors occurred during the installation.\n The installation is possibly incomplete.\n\n%s\n%s\n%s"
+            % (str(e), exc_type, exc_tb.tb_lineno),
+        )
+
+
 def startInstaller_Mac():
     try:
         if not checkRootUser():
@@ -1259,6 +1321,23 @@ def startInstaller_Mac():
         else:
             pc.openSetup()
 
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        QMessageBox.warning(
+            QWidget(),
+            "Prism Installation",
+            "Errors occurred during the installation.\n The installation is possibly incomplete.\n\n%s\n%s\n%s"
+            % (str(e), exc_type, exc_tb.tb_lineno),
+        )
+
+
+def startUninstaller_Mac():
+    try:
+        if not checkRootUser():
+            return
+
+        dlg = Uninstaller()
+        dlg.exec_()
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
         QMessageBox.warning(
@@ -1300,15 +1379,42 @@ If you continue Prism will skip these features.
     return True
 
 
+def install(silent=False, setupShortcuts=True, dccIntegrations=True, createUninstaller=False):
+    if platform.system() == "Windows":
+        startInstaller_Windows(
+            silent=silent,
+            setupShortcuts=setupShortcuts,
+            dccIntegrations=dccIntegrations,
+            createUninstaller=createUninstaller
+        )
+    elif platform.system() == "Linux":
+        startInstaller_Linux()
+    elif platform.system() == "Darwin":
+        startInstaller_Mac()
+
+
+def uninstall(silent=False, removeCore=True, removePlugins=True, removeDccIntegrations=True, removePreferences=False):
+    if platform.system() == "Windows":
+        startUninstaller_Windows(
+            silent=silent,
+            removeCore=removeCore,
+            removePlugins=removePlugins,
+            removeDccIntegrations=removeDccIntegrations,
+            removePreferences=removePreferences
+        )
+    elif platform.system() == "Linux":
+        startUninstaller_Linux()
+    elif platform.system() == "Darwin":
+        startUninstaller_Mac()
+
+
 if __name__ == "__main__":
     qApp = QApplication(sys.argv)
     try:
-        if platform.system() == "Windows":
-            startInstaller_Windows()
-        elif platform.system() == "Linux":
-            startInstaller_Linux()
-        elif platform.system() == "Darwin":
-            startInstaller_Mac()
+        if len(sys.argv) >= 2 and "uninstall" in sys.argv:
+            uninstall()
+        else:
+            install()
 
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()

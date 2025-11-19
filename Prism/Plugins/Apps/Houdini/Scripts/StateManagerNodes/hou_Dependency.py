@@ -116,6 +116,11 @@ class DependencyClass(object):
 
     @err_catcher(name=__name__)
     def managerChanged(self, text=None):
+        rfm = self.cb_manager.currentText()
+        plugin = self.core.plugins.getRenderfarmPlugin(rfm)
+        if plugin:
+            plugin.sm_dep_managerChanged(self)
+
         self.updateUi()
         self.stateManager.saveStatesToScene()
 

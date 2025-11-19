@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'default_ImageRender.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.8.1
+## Created by: Qt User Interface Compiler version 6.9.0
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -16,7 +16,7 @@ class Ui_wg_ImageRender(object):
     def setupUi(self, wg_ImageRender):
         if not wg_ImageRender.objectName():
             wg_ImageRender.setObjectName(u"wg_ImageRender")
-        wg_ImageRender.resize(400, 1319)
+        wg_ImageRender.resize(400, 1253)
         self.verticalLayout = QVBoxLayout(wg_ImageRender)
         self.verticalLayout.setObjectName(u"verticalLayout")
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
@@ -50,6 +50,31 @@ class Ui_wg_ImageRender(object):
         self.gb_imageRender.setObjectName(u"gb_imageRender")
         self.verticalLayout_2 = QVBoxLayout(self.gb_imageRender)
         self.verticalLayout_2.setObjectName(u"verticalLayout_2")
+        self.w_comment = QWidget(self.gb_imageRender)
+        self.w_comment.setObjectName(u"w_comment")
+        self.horizontalLayout_19 = QHBoxLayout(self.w_comment)
+        self.horizontalLayout_19.setSpacing(0)
+        self.horizontalLayout_19.setObjectName(u"horizontalLayout_19")
+        self.horizontalLayout_19.setContentsMargins(9, 0, 9, 0)
+        self.l_comment = QLabel(self.w_comment)
+        self.l_comment.setObjectName(u"l_comment")
+        self.l_comment.setMinimumSize(QSize(40, 0))
+        self.l_comment.setMaximumSize(QSize(95, 16777215))
+
+        self.horizontalLayout_19.addWidget(self.l_comment)
+
+        self.horizontalSpacer_8 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_19.addItem(self.horizontalSpacer_8)
+
+        self.e_comment = QLineEdit(self.w_comment)
+        self.e_comment.setObjectName(u"e_comment")
+
+        self.horizontalLayout_19.addWidget(self.e_comment)
+
+
+        self.verticalLayout_2.addWidget(self.w_comment)
+
         self.w_context = QWidget(self.gb_imageRender)
         self.w_context.setObjectName(u"w_context")
         self.horizontalLayout_11 = QHBoxLayout(self.w_context)
@@ -372,10 +397,10 @@ class Ui_wg_ImageRender(object):
         self.horizontalLayout_5 = QHBoxLayout(self.f_renderLayer)
         self.horizontalLayout_5.setObjectName(u"horizontalLayout_5")
         self.horizontalLayout_5.setContentsMargins(9, 0, 9, 0)
-        self.label_5 = QLabel(self.f_renderLayer)
-        self.label_5.setObjectName(u"label_5")
+        self.l_renderLayer = QLabel(self.f_renderLayer)
+        self.l_renderLayer.setObjectName(u"l_renderLayer")
 
-        self.horizontalLayout_5.addWidget(self.label_5)
+        self.horizontalLayout_5.addWidget(self.l_renderLayer)
 
         self.horizontalSpacer_6 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
@@ -757,13 +782,17 @@ class Ui_wg_ImageRender(object):
         self.verticalLayout_5 = QVBoxLayout(self.gb_passes)
         self.verticalLayout_5.setObjectName(u"verticalLayout_5")
         self.verticalLayout_5.setContentsMargins(9, 9, 9, 9)
-        self.lw_passes = QListWidget(self.gb_passes)
-        self.lw_passes.setObjectName(u"lw_passes")
-        self.lw_passes.setMaximumSize(QSize(16777215, 500))
-        self.lw_passes.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.lw_passes.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.tw_passes = QTreeWidget(self.gb_passes)
+        __qtreewidgetitem = QTreeWidgetItem()
+        __qtreewidgetitem.setText(0, u"1");
+        self.tw_passes.setHeaderItem(__qtreewidgetitem)
+        self.tw_passes.setObjectName(u"tw_passes")
+        self.tw_passes.setMaximumSize(QSize(16777215, 500))
+        self.tw_passes.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tw_passes.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.tw_passes.header().setVisible(False)
 
-        self.verticalLayout_5.addWidget(self.lw_passes)
+        self.verticalLayout_5.addWidget(self.tw_passes)
 
         self.b_addPasses = QPushButton(self.gb_passes)
         self.b_addPasses.setObjectName(u"b_addPasses")
@@ -786,7 +815,7 @@ class Ui_wg_ImageRender(object):
         self.scrollArea.setWidgetResizable(True)
         self.scrollAreaWidgetContents = QWidget()
         self.scrollAreaWidgetContents.setObjectName(u"scrollAreaWidgetContents")
-        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 349, 139))
+        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 349, 54))
         self.verticalLayout_3 = QVBoxLayout(self.scrollAreaWidgetContents)
         self.verticalLayout_3.setObjectName(u"verticalLayout_3")
         self.l_pathLast = QLabel(self.scrollAreaWidgetContents)
@@ -838,8 +867,8 @@ class Ui_wg_ImageRender(object):
         QWidget.setTabOrder(self.sp_dlConcurrentTasks, self.sp_dlGPUpt)
         QWidget.setTabOrder(self.sp_dlGPUpt, self.le_dlGPUdevices)
         QWidget.setTabOrder(self.le_dlGPUdevices, self.gb_passes)
-        QWidget.setTabOrder(self.gb_passes, self.lw_passes)
-        QWidget.setTabOrder(self.lw_passes, self.scrollArea)
+        QWidget.setTabOrder(self.gb_passes, self.tw_passes)
+        QWidget.setTabOrder(self.tw_passes, self.scrollArea)
         QWidget.setTabOrder(self.scrollArea, self.b_pathLast)
 
         self.retranslateUi(wg_ImageRender)
@@ -852,6 +881,7 @@ class Ui_wg_ImageRender(object):
         self.l_name.setText(QCoreApplication.translate("wg_ImageRender", u"Name:", None))
         self.l_class.setText(QCoreApplication.translate("wg_ImageRender", u"ImageRender", None))
         self.gb_imageRender.setTitle(QCoreApplication.translate("wg_ImageRender", u"General", None))
+        self.l_comment.setText(QCoreApplication.translate("wg_ImageRender", u"Comment:", None))
         self.label_7.setText(QCoreApplication.translate("wg_ImageRender", u"Context:", None))
         self.l_context.setText("")
         self.b_context.setText(QCoreApplication.translate("wg_ImageRender", u"Select", None))
@@ -872,7 +902,7 @@ class Ui_wg_ImageRender(object):
         self.chb_renderPreset.setText("")
         self.l_outPath_2.setText(QCoreApplication.translate("wg_ImageRender", u"Master Version:", None))
         self.l_outPath.setText(QCoreApplication.translate("wg_ImageRender", u"Location:", None))
-        self.label_5.setText(QCoreApplication.translate("wg_ImageRender", u"Render layer:", None))
+        self.l_renderLayer.setText(QCoreApplication.translate("wg_ImageRender", u"Render layer:", None))
         self.label_6.setText(QCoreApplication.translate("wg_ImageRender", u"Format:", None))
         self.label_8.setText(QCoreApplication.translate("wg_ImageRender", u"Version override:", None))
         self.chb_version.setText("")

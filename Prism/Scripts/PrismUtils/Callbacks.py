@@ -56,6 +56,7 @@ class Callbacks(object):
         self.registeredHooks = {}
         self.availableCallbacks = []
         self.availableCallbacks += self.getCoreCallbacks() 
+        self.triggeredCallbacks = []
         self.callbackNum = 0
         self.hookNum = 0
 
@@ -184,14 +185,19 @@ class Callbacks(object):
             for cb in list(self.registeredCallbacks[name]):
                 self.currentCallback["plugin"] = getattr(cb["plugin"], "pluginName", "")
                 res = cb["function"](*args, **kwargs)
-                result.append(res)
+                if isinstance(res, dict) and res.get("combine", False):
+                    result += res["results"]
+                else:
+                    result.append(res)
 
         if name in self.registeredHooks:
             for cb in self.registeredHooks[name]:
                 result.append(self.callHook(name, *args, **kwargs))
 
-        self.core.catchTypeErrors = False
+        if name not in self.triggeredCallbacks:
+            self.triggeredCallbacks.append(name)
 
+        self.core.catchTypeErrors = False
         return result
 
     @err_catcher(name=__name__)

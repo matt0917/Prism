@@ -302,7 +302,7 @@ class Prism_Cinema4D_Functions(object):
     @err_catcher(name=__name__)
     def getAllCamerasRecursive(self, obj, cameras):
         if obj.GetTypeName() in ["RS Camera", "Camera"]:
-            cameras.append(self.getNodeName(None, obj))
+            cameras.append(obj.GetGUID())
         
         child = obj.GetDown()
         while child:
@@ -594,14 +594,116 @@ class Prism_Cinema4D_Functions(object):
     @err_catcher(name=__name__)
     def sm_render_startup(self, origin):
         origin.gb_passes.setHidden(True)
+        if hasattr(origin, "f_renderLayer"):
+            origin.f_renderLayer.setVisible(True)
+
+        origin.l_renderLayer.setText("Take:")
+
+    @err_catcher(name=__name__)
+    def sm_render_getRenderLayer(self, origin):
+        rlayers = self.getTakesFromScene()
+        rlayerNames = ["Current"]
+        for rlayer in rlayers:
+            rlayerNames.append(rlayer.GetName())
+
+        rlayerNames += [
+            "All Checked Takes",
+            "All Checked Takes (separate identifiers)",
+            "All Takes",
+            "All Takes (separate identifiers)"
+        ]
+        return rlayerNames
+
+    @err_catcher(name=__name__)
+    def sm_render_getIdentifiers(self, origin):
+        layer = self.getSelectedTake(origin)
+        if layer == "All Checked Takes (separate identifiers)":
+            rlayers = self.getTakesFromScene() or []
+            rrlayers = []
+            for layer in rlayers:
+                if layer.IsChecked():
+                    rrlayers.append(layer)
+
+            rlayers = rrlayers
+        elif layer == "All Takes (separate identifiers)":
+            rlayers = self.getTakesFromScene() or []
+        else:
+            return
+
+        rlayers = [rlayer.GetName() for rlayer in rlayers]
+        return rlayers
+
+    @err_catcher(name=__name__)
+    def sm_render_getLayers(self, origin):
+        layer = self.getSelectedTake(origin)
+        if layer == "All Checked Takes":
+            rlayers = self.getTakesFromScene() or []
+            rrlayers = []
+            for layer in rlayers:
+                if layer.IsChecked():
+                    rrlayers.append(layer)
+
+            rlayers = rrlayers
+        elif layer == "All Takes":
+            rlayers = self.getTakesFromScene() or []
+        else:
+            return
+
+        rlayers = [rlayer.GetName() for rlayer in rlayers]
+        return rlayers
+
+    @err_catcher(name=__name__)
+    def getSelectedTake(self, origin):
+        return origin.cb_renderLayer.currentText()
+
+    @err_catcher(name=__name__)
+    def sm_render_updateUi(self, origin):
+        multipleLayers = self.getSelectedTake(origin) in ["All Checked Takes (separate identifiers)", "All Takes (separate identifiers)"]
+        origin.f_taskname.setEnabled(not multipleLayers)
+        if multipleLayers:
+            origin.setTaskWarn(False)
+        else:
+            origin.setTaskWarn(not bool(origin.getTaskname()))
+
+    @err_catcher(name=__name__)
+    def getAdditionalRenderContext(self, origin, context=None, identifier=None, layer=None):
+        selRenderLayer = origin.cb_renderLayer.currentText()
+        if selRenderLayer in ["All Checked Takes (separate identifiers)", "All Takes (separate identifiers)"]:
+            selRenderLayer = identifier
+        elif selRenderLayer in ["All Checked Takes", "All Takes"]:
+            selRenderLayer = layer
+
+        if selRenderLayer == "Main":
+            return
+
+        return {"layer": selRenderLayer}
 
     @err_catcher(name=__name__)
     def sm_render_preSubmit(self, origin, rSettings):
+        renderTake = self.getSelectedTake(origin)
+        if renderTake in ["All Checked Takes (separate identifiers)", "All Takes (separate identifiers)"]:
+            renderTake = rSettings["identifier"]
+        elif renderTake in ["All Checked Takes", "All Takes"]:
+            renderTake = rSettings["layer"]
+
+        for take in self.getTakesFromScene():
+            if take.GetName() == renderTake:
+                doc = c4d.documents.GetActiveDocument()
+                takeData = doc.GetTakeData()
+                takeData.SetCurrentTake(take)
+
         doc = c4d.documents.GetActiveDocument()
         rd = doc.GetActiveRenderData()
         bc = rd.GetDataInstance()
 
-        if rd.GetName() == "Arnold Renderer":
+        rendererId = c4d.documents.GetActiveDocument().GetActiveRenderData()[c4d.RDATA_RENDERENGINE]
+        renderer = c4d.plugins.FindPlugin(rendererId, c4d.PLUGINTYPE_ANY)
+        if renderer:
+            rendererName = renderer.GetName()
+        else:
+            rendererName = ""
+
+        if rendererName == "Arnold Renderer":
             prism_path = rSettings["outputName"]
             beauty_path = prism_path.rsplit(".", 1)[0] + ".."
             crypto_path = prism_path.replace("beauty", "crypto").rsplit(".", 1)[0] + ".."
@@ -610,6 +712,44 @@ class Prism_Cinema4D_Functions(object):
             rSettings["outputName"] = beauty_path + rSettings["outputName"].rsplit(".", 1)[1]
             original_format = bc.GetInt32(c4d.RDATA_FORMAT)
             bc.SetInt32(c4d.RDATA_FORMAT, original_format)
+        elif rendererName == "V-Ray":
+            
+            bc.SetFilename(c4d.RDATA_PATH, rSettings["outputName"])
+            bc.SetBool(c4d.RDATA_GLOBALSAVE, True)
+            bc.SetBool(c4d.RDATA_SAVEIMAGE, True)
+            base, ext = os.path.splitext(rSettings["outputName"].lower())
+            if ext == ".exr":
+                bc.SetInt32(c4d.RDATA_FORMAT, c4d.FILTER_EXR)
+            elif ext == ".png":
+                bc.SetInt32(c4d.RDATA_FORMAT, c4d.FILTER_PNG)
+            elif ext == ".jpg":
+                bc.SetInt32(c4d.RDATA_FORMAT, c4d.FILTER_JPG)
+
+            ID_VRAY_VIDEOPOST = 1053272
+            VRAY_VP_OUTPUT_SETTINGS_FILENAME = 1000403
+            if not doc:
+                raise Exception("No active document found.")
+            if not rd:
+                raise Exception("No render settings found.")
+
+            vp = rd.GetFirstVideoPost()
+            while vp:
+                if vp.GetType() == ID_VRAY_VIDEOPOST:
+                    break
+
+                vp = vp.GetNext()
+
+            if not vp:
+                raise Exception("V-Ray VideoPost not found.")
+
+            doc.StartUndo()
+            doc.AddUndo(c4d.UNDOTYPE_CHANGE, vp)
+            vray_path = rSettings["outputName"].replace("beauty", "mp")
+            vray_path = vray_path.replace("..", ".$frame.")
+            vp[VRAY_VP_OUTPUT_SETTINGS_FILENAME] = vray_path
+            doc.EndUndo()
+            c4d.EventAdd()
+
         else:
             bc.SetFilename(c4d.RDATA_PATH, rSettings["outputName"])
             bc.SetBool(c4d.RDATA_GLOBALSAVE, True)
@@ -649,7 +789,7 @@ class Prism_Cinema4D_Functions(object):
 
         doc = c4d.documents.GetActiveDocument()
         rd = doc.GetActiveRenderData()
-        if origin.curCam != "Current View":
+        if origin.curCam and origin.curCam != "Current View":
             bd = doc.GetActiveBaseDraw()
             bd.SetSceneCamera(self.getObject(origin.curCam))
 
@@ -676,7 +816,19 @@ class Prism_Cinema4D_Functions(object):
                 bmp.AddChannel(True, True)
                 result = c4d.documents.RenderDocument(doc, bc, bmp, c4d.RENDERFLAGS_EXTERNAL | c4d.RENDERFLAGS_CREATE_PICTUREVIEWER  | c4d.RENDERFLAGS_OPEN_PICTUREVIEWER)
                 if result != c4d.RENDERRESULT_OK:
-                    return "error: %s" % result
+# doc = c4d.documents.GetActiveDocument()
+# rd = doc.GetActiveRenderData()
+# bc = rd.GetDataInstance()
+# bc.SetInt32(c4d.RDATA_FRAMESEQUENCE, c4d.RDATA_FRAMESEQUENCE_CURRENTFRAME)
+# bc.SetTime(c4d.RDATA_FRAMEFROM, c4d.BaseTime(1001, doc.GetFps()))
+# bc.SetTime(c4d.RDATA_FRAMETO, c4d.BaseTime(1001, doc.GetFps()))
+# bc.SetInt32(c4d.RDATA_FRAMERATE, doc.GetFps())
+# rd.SetData(bc)
+# bmp = c4d.bitmaps.MultipassBitmap(int(rd[c4d.RDATA_XRES]), int(rd[c4d.RDATA_YRES]), c4d.COLORMODE_RGB)
+# bmp.AddChannel(True, True)
+# result = c4d.documents.RenderDocument(doc, bc, bmp, c4d.RENDERFLAGS_EXTERNAL | c4d.RENDERFLAGS_CREATE_PICTUREVIEWER  | c4d.RENDERFLAGS_OPEN_PICTUREVIEWER)
+# print(result)
+                    return "Execute Canceled: render command returned error: %s" % result  # make sure Maxon app is started
 
             if len(os.listdir(os.path.dirname(outputName))) > 0:
                 return "Result=Success"
@@ -723,6 +875,23 @@ class Prism_Cinema4D_Functions(object):
         rendererId = rd.GetDataInstance().GetInt32(c4d.RDATA_RENDERENGINE)
         rendererName = RENDERER_NAMES.get(rendererId, "Unknown Renderer")
         return rendererName
+
+    def getTakesFromScene(self):
+        takes = []
+        doc = c4d.documents.GetActiveDocument()
+        takeData = doc.GetTakeData()
+        if takeData is None:
+            return []
+
+        mainTake = takeData.GetMainTake()
+        takes.append(mainTake)
+        take = mainTake.GetDown()
+
+        while take is not None:
+            takes.append((take))
+            take = take.GetNext()
+
+        return takes
 
     @err_catcher(name=__name__)
     def getCurrentSceneFiles(self, origin):
@@ -863,7 +1032,7 @@ class Prism_Cinema4D_Functions(object):
                 origin.sp_resHeight.value(),
             )
 
-        if origin.curCam != "Don't override":
+        if origin.curCam and origin.curCam != "Don't override":
             bd = doc.GetActiveBaseDraw()
             bd.SetSceneCamera(self.getObject(origin.curCam))
 

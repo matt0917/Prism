@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'hou_ImageRender.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.8.1
+## Created by: Qt User Interface Compiler version 6.9.0
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -16,7 +16,7 @@ class Ui_wg_ImageRender(object):
     def setupUi(self, wg_ImageRender):
         if not wg_ImageRender.objectName():
             wg_ImageRender.setObjectName(u"wg_ImageRender")
-        wg_ImageRender.resize(389, 1494)
+        wg_ImageRender.resize(389, 1521)
         self.verticalLayout = QVBoxLayout(wg_ImageRender)
         self.verticalLayout.setObjectName(u"verticalLayout")
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
@@ -50,6 +50,31 @@ class Ui_wg_ImageRender(object):
         self.gb_imageRender.setObjectName(u"gb_imageRender")
         self.verticalLayout_2 = QVBoxLayout(self.gb_imageRender)
         self.verticalLayout_2.setObjectName(u"verticalLayout_2")
+        self.w_comment = QWidget(self.gb_imageRender)
+        self.w_comment.setObjectName(u"w_comment")
+        self.horizontalLayout_40 = QHBoxLayout(self.w_comment)
+        self.horizontalLayout_40.setSpacing(0)
+        self.horizontalLayout_40.setObjectName(u"horizontalLayout_40")
+        self.horizontalLayout_40.setContentsMargins(9, 0, 9, 0)
+        self.l_comment = QLabel(self.w_comment)
+        self.l_comment.setObjectName(u"l_comment")
+        self.l_comment.setMinimumSize(QSize(40, 0))
+        self.l_comment.setMaximumSize(QSize(95, 16777215))
+
+        self.horizontalLayout_40.addWidget(self.l_comment)
+
+        self.horizontalSpacer_10 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_40.addItem(self.horizontalSpacer_10)
+
+        self.e_comment = QLineEdit(self.w_comment)
+        self.e_comment.setObjectName(u"e_comment")
+
+        self.horizontalLayout_40.addWidget(self.e_comment)
+
+
+        self.verticalLayout_2.addWidget(self.w_comment)
+
         self.w_context = QWidget(self.gb_imageRender)
         self.w_context.setObjectName(u"w_context")
         self.horizontalLayout_19 = QHBoxLayout(self.w_context)
@@ -1075,6 +1100,7 @@ class Ui_wg_ImageRender(object):
         self.l_name.setText(QCoreApplication.translate("wg_ImageRender", u"Name:", None))
         self.l_class.setText(QCoreApplication.translate("wg_ImageRender", u"ImageRender", None))
         self.gb_imageRender.setTitle(QCoreApplication.translate("wg_ImageRender", u"General", None))
+        self.l_comment.setText(QCoreApplication.translate("wg_ImageRender", u"Comment:", None))
         self.label_9.setText(QCoreApplication.translate("wg_ImageRender", u"Context:", None))
         self.l_context.setText("")
         self.b_context.setText(QCoreApplication.translate("wg_ImageRender", u"Select", None))

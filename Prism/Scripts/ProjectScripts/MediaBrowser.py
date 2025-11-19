@@ -39,6 +39,7 @@ import logging
 import traceback
 from collections import OrderedDict
 import shutil
+import platform
 
 prismRoot = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
@@ -593,9 +594,15 @@ class MediaBrowser(QWidget, MediaBrowser_ui.Ui_w_mediaBrowser):
     def getSelectedContexts(self):
         contexts = []
         if len(self.tw_identifier.selectedItems()) > 1:
-            contexts = self.tw_identifier.selectedItems()
+            items = self.tw_identifier.selectedItems()
+            for item in items:
+                contexts.append(item.data(Qt.UserRole))
+
         elif len(self.lw_version.selectedItems()) > 1:
-            contexts = self.lw_version.selectedItems()
+            items = self.lw_version.selectedItems()
+            for item in items:
+                contexts.append(item.data(Qt.UserRole))
+
         else:
             data = self.getCurrentFilelayer()
             if not data:
@@ -1031,13 +1038,7 @@ class MediaBrowser(QWidget, MediaBrowser_ui.Ui_w_mediaBrowser):
             opAct.triggered.connect(lambda: self.core.openFolder(path))
             rcmenu.addAction(opAct)
 
-            copAct = QAction("Copy", self)
-            iconPath = os.path.join(
-                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "copy.png"
-            )
-            icon = self.core.media.getColoredIcon(iconPath)
-            copAct.setIcon(icon)
-            copAct.triggered.connect(lambda: self.core.copyToClipboard(path, file=True))
+            copAct = self.core.getCopyAction(path, parent=self)
             rcmenu.addAction(copAct)
 
         if lw == self.lw_version:
@@ -1437,12 +1438,12 @@ class MediaBrowser(QWidget, MediaBrowser_ui.Ui_w_mediaBrowser):
                 if text:
                     self.ep.cb_identifierType.setCurrentText(text)
 
-        version = self.getCurrentVersion()
-        if version:
-            location = self.core.mediaProducts.getLocationFromPath(version["path"])
-            intVersion = self.core.products.getIntVersionFromVersionName(version["version"])
-            if intVersion is not None:
-                self.ep.sp_version.setValue(intVersion + 1)
+            version = self.core.mediaProducts.getLatestVersionFromIdentifier(idf, includeMaster=False)
+            if version:
+                location = self.core.mediaProducts.getLocationFromPath(version["path"])
+                intVersion = self.core.products.getIntVersionFromVersionName(version["version"])
+                if intVersion is not None:
+                    self.ep.sp_version.setValue(intVersion + 1)
 
         if location:
             self.ep.cb_location.setCurrentText(location)
@@ -1929,13 +1930,7 @@ class MediaVersionPlayer(QWidget):
             opAct.triggered.connect(lambda: self.core.openFolder(path))
             rcmenu.addAction(opAct)
 
-            copAct = QAction("Copy", self)
-            iconPath = os.path.join(
-                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "copy.png"
-            )
-            icon = self.core.media.getColoredIcon(iconPath)
-            copAct.setIcon(icon)
-            copAct.triggered.connect(lambda: self.core.copyToClipboard(path, file=True))
+            copAct = self.core.getCopyAction(path, parent=self)
             rcmenu.addAction(copAct)
 
         if rcmenu.isEmpty():
@@ -1991,6 +1986,7 @@ class MediaPlayer(QWidget):
         self.origin = self.mediaVersionPlayer.origin
         self.core = self.origin.core
 
+        self.externalMediaPlayers = None
         self.renderResX = 300
         self.renderResY = 169
         self.videoReaders = {}
@@ -1998,6 +1994,7 @@ class MediaPlayer(QWidget):
         self.mediaThreads = []
         self.timeline = None
         self.tlPaused = False
+        self.prvIsSequence = False
         self.seq = []
         self.pduration = 0
         self.pwidth = 0
@@ -2307,13 +2304,13 @@ class MediaPlayer(QWidget):
                         and os.path.splitext(imgPath)[1].lower() in self.core.media.videoFormats
                     ):
                         self.vidPrw = "loading"
-                        self.updatePrvInfo(
+                        self.updatePrvInfo_threaded(
                             imgPath,
                             vidReader="loading",
                             frame=prevFrame,
                         )
                     else:
-                        self.updatePrvInfo(imgPath, frame=prevFrame)
+                        self.updatePrvInfo_threaded(imgPath, frame=prevFrame)
 
                     if self.tlPaused:
                         self.changeImage_threaded(regenerateThumb=regenerateThumb)
@@ -2322,7 +2319,7 @@ class MediaPlayer(QWidget):
 
                     return True
 
-            self.updatePrvInfo()
+            self.updatePrvInfo_threaded()
 
         pmap = self.core.media.scalePixmap(self.emptypmap, self.getThumbnailWidth(), self.getThumbnailHeight())
         self.currentMediaPreview = pmap
@@ -2355,29 +2352,58 @@ class MediaPlayer(QWidget):
         return validFiles
 
     @err_catcher(name=__name__)
-    def updatePrvInfo(self, prvFile="", vidReader=None, seq=None, frame=None):
-        if seq is not None:
-            if self.seq != seq:
-                logger.debug("exit preview info update")
-                return
+    def updatePrvInfo_threaded(self, prvFile="", vidReader=None, seq=None, frame=None):
+        self.l_info.setText("\nLoading...\n")
+        self.l_info.setToolTip("")
+        self.l_preview.setToolTip("")
 
-        if not os.path.exists(prvFile):
-            self.l_info.setText("\nNo image found\n")
-            self.l_info.setToolTip("")
-            self.l_preview.setToolTip("")
-            return
-
-        if self.state == "disabled" or os.getenv("PRISM_DISPLAY_MEDIA_RESOLUTION") == "0":
-            self.pwidth = "?"
-            self.pheight = "?"
+        thread = self.core.worker(self.core)
+        thread.function = lambda x=list(self.seq): self.getMediainfo(
+            thread, prvFile, vidReader, seq, frame
+        )
+        thread.errored.connect(self.core.writeErrorLog)
+        thread.finished.connect(self.onMediainfoThreadFinished)
+        thread.warningSent.connect(self.core.popup)
+        thread.dataSent.connect(self.onGetMediainfoDataSent)
+        if not getattr(self, "curMediainfoThread", None):
+            self.curMediainfoThread = thread
+            thread.start()
         else:
-            if vidReader == "loading":
-                self.pwidth = "loading..."
-                self.pheight = ""
+            self.nextMediainfoThread = thread
+
+    @err_catcher(name=__name__)
+    def onGetMediainfoDataSent(self, data):
+        getattr(self, data["function"])(*data["args"], **data["kwargs"])
+
+    @err_catcher(name=__name__)
+    def onMediainfoThreadFinished(self):
+        if getattr(self, "nextMediainfoThread", None):
+            self.curMediainfoThread = self.nextMediainfoThread
+            self.nextMediainfoThread = None
+            self.curMediainfoThread.start()
+        else:
+            self.curMediainfoThread = None
+
+    @err_catcher(name=__name__)
+    def getMediainfo(self, thread, prvFile, vidReader, seq, frame):
+        info = {
+            "exists": os.path.exists(prvFile)
+        }
+        if info["exists"]:
+            if self.state == "disabled" or os.getenv("PRISM_DISPLAY_MEDIA_RESOLUTION") == "0":
+                width = "?"
+                height = "?"
             else:
-                resolution = self.core.media.getMediaResolution(prvFile, videoReader=vidReader)
-                self.pwidth = resolution["width"]
-                self.pheight = resolution["height"]
+                if vidReader == "loading":
+                    width = "loading..."
+                    height = ""
+                else:
+                    resolution = self.core.media.getMediaResolution(prvFile, videoReader=vidReader)
+                    width = resolution["width"]
+                    height = resolution["height"]
+
+            info["width"] = width
+            info["height"] = height
 
         ext = os.path.splitext(prvFile)[1].lower()
         if ext in self.core.media.videoFormats:
@@ -2389,8 +2415,38 @@ class MediaPlayer(QWidget):
                     if not duration:
                         duration = 1
 
-                self.pduration = duration
+                info["duration"] = duration
 
+        if thread:
+            kwargs = {"vidReader": vidReader, "seq": seq, "frame": frame, "mediaInfo": info}
+            data = {"function": "updatePrvInfo", "args": [prvFile], "kwargs": kwargs}
+            thread.dataSent.emit(data)
+        else:
+            return info
+
+    @err_catcher(name=__name__)
+    def updatePrvInfo(self, prvFile="", vidReader=None, seq=None, frame=None, mediaInfo=None):
+        if seq is not None:
+            if self.seq != seq:
+                logger.debug("exit preview info update")
+                return
+
+        if not mediaInfo:
+            mediaInfo = self.getMediainfo(None, prvFile, vidReader, seq, frame)
+
+        if not mediaInfo["exists"]:
+            self.l_info.setText("\nNo image found\n")
+            self.l_info.setToolTip("")
+            self.l_preview.setToolTip("")
+            return
+
+        self.pwidth = mediaInfo["width"]
+        self.pheight = mediaInfo["height"]
+
+        if "duration" in mediaInfo:
+            self.pduration = mediaInfo["duration"]
+
+        ext = os.path.splitext(prvFile)[1].lower()
         self.pformat = "*" + ext
 
         pdate = self.core.getFileModificationDate(prvFile)
@@ -2623,7 +2679,7 @@ class MediaPlayer(QWidget):
     @err_catcher(name=__name__)
     def getCurrentFrame(self):
         if not self.timeline:
-            return
+            return 0
 
         return int(self.timeline.currentTime() / self.timeline.updateInterval())
 
@@ -2641,12 +2697,12 @@ class MediaPlayer(QWidget):
             return
 
         curFrame = self.getCurrentFrame()
+        if curFrame is None:
+            return
+
         pmsmall = QPixmap()
-        if (
-            len(self.seq) == 1
-            and os.path.splitext(self.seq[0])[1].lower()
-            in self.core.media.videoFormats
-        ):
+        isVideo = os.path.splitext(self.seq[0])[1].lower() in self.core.media.videoFormats
+        if len(self.seq) == 1 and isVideo:
             fileName = self.seq[0]
         else:
             fileName = self.seq[curFrame]
@@ -2693,7 +2749,7 @@ class MediaPlayer(QWidget):
                         pmsmall = self.core.media.scalePixmap(
                             pmsmall, self.getThumbnailWidth(), self.getThumbnailHeight()
                         )
-                elif ext in [".exr", ".dpx", ".hdr"]:
+                elif ext in [".exr", ".dpx", ".hdr", ".psd"]:
                     channel = (self.getSelectedContexts() or [{}])[0].get("channel")
                     try:
                         pmsmall = self.core.media.getPixmapFromExrPath(
@@ -2737,17 +2793,17 @@ class MediaPlayer(QWidget):
                                     self.videoReaders[fileName] = vidFile
 
                                 if thread:
-                                    data = {"function": "updatePrvInfo", "args": [fileName], "kwargs": {"vidReader": vidFile, "seq": seq}}
+                                    data = {"function": "updatePrvInfo_threaded", "args": [fileName], "kwargs": {"vidReader": vidFile, "seq": seq}}
                                     thread.dataSent.emit(data)
                                 else:
-                                    self.updatePrvInfo(fileName, vidReader=vidFile, seq=seq)
+                                    self.updatePrvInfo_threaded(fileName, vidReader=vidFile, seq=seq)
 
                         pm = self.core.media.getPixmapFromVideoPath(
-                                fileName,
-                                videoReader=vidFile,
-                                imgNum=imgNum,
-                                regenerateThumb=regenerateThumb
-                            )
+                            fileName,
+                            videoReader=vidFile,
+                            imgNum=imgNum,
+                            regenerateThumb=regenerateThumb
+                        )
                         pmsmall = self.core.media.scalePixmap(
                             pm, self.getThumbnailWidth(), self.getThumbnailHeight()
                         ) or QPixmap()
@@ -2775,9 +2831,9 @@ class MediaPlayer(QWidget):
         if not self.prvIsSequence and len(self.seq) > 1:
             fileName = self.seq[curFrame]
             if thread:
-                thread.dataSent.emit({"function": "updatePrvInfo", "args": [fileName], "kwargs": {"seq": seq}})
+                thread.dataSent.emit({"function": "updatePrvInfo_threaded", "args": [fileName], "kwargs": {"seq": seq}})
             else:
-                self.updatePrvInfo(fileName, seq=seq)
+                self.updatePrvInfo_threaded(fileName, seq=seq)
 
         if thread:
             thread.dataSent.emit({"function": "completeChangeImg", "args": [pmsmall, curFrame, ext], "kwargs": {}})
@@ -2786,6 +2842,7 @@ class MediaPlayer(QWidget):
 
     @err_catcher(name=__name__)
     def completeChangeImg(self, pmsmall, curFrame, ext):
+        pmsmall = pmsmall or QPixmap()
         self.currentMediaPreview = pmsmall
         self.l_preview.setPixmap(pmsmall)
         if self.pduration > 1:
@@ -2886,10 +2943,11 @@ class MediaPlayer(QWidget):
             icon = self.core.media.getColoredIcon(iconPath)
             playMenu.setIcon(icon)
 
-            if self.mediaPlayerPath is not None:
-                pAct = QAction(self.mediaPlayerName, self)
-                pAct.triggered.connect(self.compare)
-                playMenu.addAction(pAct)
+            if self.externalMediaPlayers is not None:
+                for player in self.externalMediaPlayers:
+                    pAct = QAction(player.get("name", ""), self)
+                    pAct.triggered.connect(lambda x=None, name=player.get("name", ""): self.compare(name))
+                    playMenu.addAction(pAct)
 
             pAct = QAction("Default", self)
             pAct.triggered.connect(
@@ -2993,13 +3051,7 @@ class MediaPlayer(QWidget):
         exp.triggered.connect(lambda: self.core.openFolder(path))
         rcmenu.addAction(exp)
 
-        copAct = QAction("Copy", self)
-        iconPath = os.path.join(
-            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "copy.png"
-        )
-        icon = self.core.media.getColoredIcon(iconPath)
-        copAct.setIcon(icon)
-        copAct.triggered.connect(lambda: self.core.copyToClipboard(path, file=True))
+        copAct = self.core.getCopyAction(path, parent=self)
         rcmenu.addAction(copAct)
 
         return rcmenu
@@ -3141,7 +3193,19 @@ class MediaPlayer(QWidget):
         if prog == "default":
             progPath = ""
         else:
-            progPath = self.mediaPlayerPath or ""
+            mediaPlayer = None
+            if prog and self.externalMediaPlayers:
+                matchingPlayers = [player for player in self.externalMediaPlayers if player.get("name") == prog]
+                if matchingPlayers:
+                    mediaPlayer = matchingPlayers[0]
+                else:
+                    self.core.popup("Can't find media player: %s" % prog)
+                    return
+
+            if not mediaPlayer:
+                mediaPlayer = self.externalMediaPlayers[0] if self.externalMediaPlayers else None
+
+            progPath = (mediaPlayer.get("path") or "") if mediaPlayer else ""
 
         comd = []
         filePath = ""
@@ -3157,7 +3221,7 @@ class MediaPlayer(QWidget):
                         subprocess.call(cmd, shell=True)
                         return
                     else:
-                        if self.mediaPlayerPattern:
+                        if mediaPlayer and mediaPlayer.get("framePattern"):
                             filePath = self.core.media.getSequenceFromFilename(filePath)
 
                         comd = [progPath, filePath]
@@ -3173,6 +3237,9 @@ class MediaPlayer(QWidget):
                 mpEnv[envVar["key"]] = envVar["value"]
 
             comd[0] = os.path.expandvars(comd[0])
+            if platform.system() == "Darwin" and progPath.endswith(".app"):
+                comd = ["open", "-a"] + comd
+
             self.core.callback(name="preLaunchApp", args=[comd, mpEnv])
             with open(os.devnull, "w") as f:
                 logger.debug("launching: %s" % comd)
@@ -3223,10 +3290,7 @@ class MediaPlayer(QWidget):
 
     @err_catcher(name=__name__)
     def updateExternalMediaPlayer(self):
-        player = self.core.media.getExternalMediaPlayer()
-        self.mediaPlayerPath = player.get("path", None)
-        self.mediaPlayerName = player.get("name", None)
-        self.mediaPlayerPattern = player.get("framePattern", None)
+        self.externalMediaPlayers = self.core.media.getExternalMediaPlayers()
 
     @err_catcher(name=__name__)
     def getRVdLUT(self):
@@ -3320,7 +3384,11 @@ class MediaPlayer(QWidget):
         self.origin.updateVersions(restoreSelection=True)
 
         if os.path.exists(outputpath) and os.stat(outputpath).st_size > 0:
-            self.core.copyToClipboard(outputpath, file=True)
+            if os.getenv("PRISM_COPY_FILE_CONTENT", "0") == "1":
+                self.core.copyToClipboard(outputpath, file=True)
+            else:
+                self.core.copyToClipboard(outputpath, file=False)
+
             msg = "The images were converted successfully. (path is in clipboard)"
             self.core.popup(msg, severity="info")
         else:

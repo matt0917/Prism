@@ -316,10 +316,12 @@ class EditShot(QDialog, EditShot_ui.Ui_dlg_EditShot):
         data = {
             "type": "shot",
             "sequence": self.e_sequence.text(),
-            "shot": self.e_shotName.text(),
+            "shot": self.e_shotName.text() or "_sequence",
         }
         if self.useEpisodes:
             data["episode"] = self.e_episode.text()
+            if not data["sequence"]:
+                data["sequence"] = "_episode"
 
         return data
 

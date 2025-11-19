@@ -92,10 +92,10 @@ class Prism_Maya_externalAccess_Functions(object):
         spacer = QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Expanding)
         tab.lo_settings.addItem(spacer, 0, 0)
 
-        origin.l_sceneType = QLabel("Save scene as:")
-        origin.cb_sceneType = QComboBox()
-        tab.lo_settings.addWidget(origin.l_sceneType, 1, 1)
-        tab.lo_settings.addWidget(origin.cb_sceneType, 1, 2)
+        origin.l_mayaSceneType = QLabel("Save scene as:")
+        origin.cb_mayaSceneType = QComboBox()
+        tab.lo_settings.addWidget(origin.l_mayaSceneType, 1, 1)
+        tab.lo_settings.addWidget(origin.cb_mayaSceneType, 1, 2)
 
         self.saveSceneTypes = [
             ".ma",
@@ -104,7 +104,7 @@ class Prism_Maya_externalAccess_Functions(object):
             ".mb (prefer current scene type)",
         ]
 
-        origin.cb_sceneType.addItems(self.saveSceneTypes)
+        origin.cb_mayaSceneType.addItems(self.saveSceneTypes)
 
         origin.l_mayaProject = QLabel("Set Maya project to Prism project: ")
         origin.chb_mayaProject = QCheckBox("")
@@ -125,7 +125,7 @@ class Prism_Maya_externalAccess_Functions(object):
         if "maya" not in settings:
             settings["maya"] = {}
 
-        settings["maya"]["saveSceneType"] = origin.cb_sceneType.currentText()
+        settings["maya"]["saveSceneType"] = origin.cb_mayaSceneType.currentText()
         settings["maya"]["setMayaProject"] = origin.chb_mayaProject.isChecked()
         settings["maya"]["addProjectPluginPaths"] = origin.chb_mayaPluginPaths.isChecked()
         if self.core.appPlugin.pluginName == "Maya":
@@ -145,9 +145,9 @@ class Prism_Maya_externalAccess_Functions(object):
         if "maya" in settings:
             if "saveSceneType" in settings["maya"]:
                 saveType = settings["maya"]["saveSceneType"]
-                idx = origin.cb_sceneType.findText(saveType)
+                idx = origin.cb_mayaSceneType.findText(saveType)
                 if idx != -1:
-                    origin.cb_sceneType.setCurrentIndex(idx)
+                    origin.cb_mayaSceneType.setCurrentIndex(idx)
 
             if "setMayaProject" in settings["maya"]:
                 mayaProject = settings["maya"]["setMayaProject"]
@@ -205,6 +205,9 @@ class Prism_Maya_externalAccess_Functions(object):
 
     @err_catcher(name=__name__)
     def getPresetScenes(self, presetScenes):
+        if os.getenv("PRISM_SHOW_DEFAULT_SCENEFILE_PRESETS", "1") != "1":
+            return
+
         presetDir = os.path.join(self.pluginDirectory, "Presets")
         scenes = self.core.entities.getPresetScenesFromFolder(presetDir)
         presetScenes += scenes

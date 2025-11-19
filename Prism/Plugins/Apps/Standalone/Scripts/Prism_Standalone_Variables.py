@@ -34,7 +34,7 @@
 
 class Prism_Standalone_Variables(object):
     def __init__(self, core, plugin):
-        self.version = "v2.0.0"
+        self.version = "v2.1.0"
         self.pluginName = "Standalone"
         self.pluginType = "App"
         self.appShortName = "So"

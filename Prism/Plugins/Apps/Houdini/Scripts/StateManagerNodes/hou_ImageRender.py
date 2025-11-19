@@ -456,11 +456,18 @@ class ImageRenderClass(object):
                 "label": "Open in Explorer...",
                 "callback": lambda: self.core.openFolder(path)
             },
-            {
+        ]
+        if os.getenv("PRISM_COPY_FILE_CONTENT", "0") == "1":
+            options.append({
                 "label": "Copy",
                 "callback": lambda: self.core.copyToClipboard(path, file=True)
-            },
-        ]
+            })
+        else:
+            options.append({
+                "label": "Copy Path",
+                "callback": lambda: self.core.copyToClipboard(path, file=False)
+            })
+
         return options
 
     @err_catcher(name=__name__)
@@ -949,6 +956,7 @@ class ImageRenderClass(object):
         self.updateRange()
         self.managerChanged()
         self.refreshPasses()
+        self.w_comment.setHidden(not self.stateManager.useStateComments())
 
         self.w_camera.setVisible(getattr(self.curRenderer, "hasCamera", True))
         self.w_resolution.setVisible(getattr(self.curRenderer, "hasResolution", True))
@@ -1030,7 +1038,7 @@ class ImageRenderClass(object):
             entity = self.getOutputEntity()
             if entity.get("type") == "shot" and "sequence" in entity:
                 frange = self.core.entities.getShotRange(entity)
-                if frange:
+                if frange and frange[0] is not None and frange[1] is not None:
                     startFrame, endFrame = frange
                     startFrame -= 1
                     endFrame += 1
@@ -1413,7 +1421,7 @@ class ImageRenderClass(object):
             task=identifier,
             extension=extension,
             framePadding=framePadding,
-            comment=self.stateManager.publishComment,
+            comment=self.getComment(),
             version=useVersion if useVersion != "next" else None,
             location=location,
             returnDetails=True,
@@ -1426,6 +1434,15 @@ class ImageRenderClass(object):
         hVersion = outputPathData["version"]
 
         return outputPath, outputFolder, hVersion
+
+    @err_catcher(name=__name__)
+    def getComment(self):
+        if self.stateManager.useStateComments():
+            comment = self.e_comment.text() or self.stateManager.publishComment
+        else:
+            comment = self.stateManager.publishComment
+
+        return comment
 
     @err_catcher(name=__name__)
     def executeState(self, parent, useVersion="next"):
@@ -1499,7 +1516,7 @@ class ImageRenderClass(object):
         details["version"] = hVersion
         details["sourceScene"] = fileName
         details["identifier"] = self.getIdentifier(expanded=True)
-        details["comment"] = self.stateManager.publishComment
+        details["comment"] = self.getComment()
         details["startframe"] = startFrame
         details["endframe"] = endFrame
 

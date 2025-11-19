@@ -326,8 +326,10 @@ class Prism_Houdini_Functions(object):
         job = getattr(self.core, "projectPath", "").replace("\\", "/")
         if job.endswith("/"):
             job = job[:-1]
-        hou.hscript("setenv PRISMJOB=" + job)
-        hou.hscript("varchange PRISMJOB")
+        hou.hscript("setenv PRISMJOB=" + job)  # deprecated
+        hou.hscript("varchange PRISMJOB")  # deprecated
+        hou.hscript("setenv PRISM_JOB=" + job)
+        hou.hscript("varchange PRISM_JOB")
 
         if self.core.useLocalFiles:
             ljob = self.core.localProjectPath.replace("\\", "/")
@@ -336,8 +338,10 @@ class Prism_Houdini_Functions(object):
         else:
             ljob = ""
 
-        hou.hscript("setenv PRISMJOBLOCAL=" + ljob)
-        hou.hscript("varchange PRISMJOBLOCAL")
+        hou.hscript("setenv PRISMJOBLOCAL=" + ljob)  # deprecated
+        hou.hscript("varchange PRISMJOBLOCAL")  # deprecated
+        hou.hscript("setenv PRISM_JOB_LOCAL=" + ljob)
+        hou.hscript("varchange PRISM_JOB_LOCAL")
 
     @err_catcher(name=__name__)
     def expandEnvVar(self, var):
@@ -778,8 +782,7 @@ class Prism_Houdini_Functions(object):
 
     @err_catcher(name=__name__)
     def setFrameRange(self, origin, startFrame, endFrame, currentFrame=None):
-        setGobalFrangeExpr = "tset `(%d-1)/$FPS` `%d/$FPS`" % (int(startFrame), int(endFrame))
-        hou.hscript(setGobalFrangeExpr)
+        hou.playbar.setFrameRange(int(startFrame), int(endFrame))
         hou.playbar.setPlaybackRange(int(startFrame), int(endFrame))
         currentFrame = currentFrame or int(startFrame)
         hou.setFrame(currentFrame)

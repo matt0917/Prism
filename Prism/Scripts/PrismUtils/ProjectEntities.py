@@ -55,8 +55,15 @@ class ProjectEntities(object):
         self.core = core
         self.entityFolders = {"asset": ["Textures"], "shot": []}
         self.entityActions = {}
+        self.depIcons = {}
         self.entityDlg = EntityDlg
         self.refreshOmittedEntities()
+        self.addEntityAction(
+            key="importConnectedAssets",
+            types=["shot"],
+            function=lambda entities=None, parent=None: self.core.products.importConnectedAssetsForEntities(entities),
+            label="Import Connected Assets..."
+        )
 
     @err_catcher(name=__name__)
     def refreshOmittedEntities(self):
@@ -358,7 +365,8 @@ class ProjectEntities(object):
                 continue
 
             if (
-                searchFilter.lower() not in data["sequence"].lower()
+                ("episode" not in data or searchFilter.lower() not in data["episode"].lower())
+                and searchFilter.lower() not in data["sequence"].lower()
                 and searchFilter.lower() not in data["shot"].lower()
             ):
                 metaData = self.getMetaData(data)
@@ -377,6 +385,7 @@ class ProjectEntities(object):
                 if (
                     shotDict["sequence"] == shot["sequence"]
                     and shotDict["shot"] == shot["shot"]
+                    and ("episode" not in shotDict or shotDict.get("episode") == shot.get("episode"))
                 ):
                     data = {"location": shotDict["location"], "path": shotDict["path"]}
                     shot["paths"].append(data)
@@ -991,6 +1000,16 @@ class ProjectEntities(object):
             return abbrvs[0]
 
     @err_catcher(name=__name__)
+    def getDepartmentIcon(self, department):
+        if department in self.depIcons:
+            return self.depIcons[department]
+
+        path = os.path.join(self.core.projects.getPipelineFolder(), "Icons", department + ".png")
+        icon = QIcon(path)
+        self.depIcons[department] = icon
+        return icon
+
+    @err_catcher(name=__name__)
     def getDefaultTasksForDepartment(self, entity, department):
         if entity == "asset":
             existingDeps = self.core.projects.getAssetDepartments()
@@ -1307,31 +1326,47 @@ class ProjectEntities(object):
         return metadata
 
     @err_catcher(name=__name__)
-    def setMetaData(self, entity, metaData):
-        if entity["type"] == "asset":
-            data = self.core.getConfig(config="assetinfo", allowCache=False) or {}
-            if "assets" not in data:
-                data["assets"] = {}
+    def setMetaData(self, entity=None, metaData=None, entities=None, metaDatas=None):
+        if entity and not entities:
+            entities = [entity]
+            metaDatas = [metaData]
 
-            entityName = self.core.entities.getAssetNameFromPath(entity["asset_path"])
-            if entityName not in data["assets"]:
-                data["assets"][entityName] = {}
+        assetConfig = None
+        shotConfig = None
+        for idx, entity in enumerate(entities):
+            metaData = metaDatas[idx]
+            if entity["type"] == "asset":
+                if assetConfig is None:
+                    assetConfig = self.core.getConfig(config="assetinfo", allowCache=False) or {}
 
-            data["assets"][entityName]["metadata"] = metaData
-            self.core.setConfig(data=data, config="assetinfo", updateNestedData=False)
-        elif entity["type"] == "shot":
-            data = self.core.getConfig(config="shotinfo", allowCache=False) or {}
-            if "shots" not in data:
-                data["shots"] = {}
+                if "assets" not in assetConfig:
+                    assetConfig["assets"] = {}
 
-            if entity["sequence"] not in data["shots"]:
-                data["shots"][entity["sequence"]] = {}
+                entityName = self.core.entities.getAssetNameFromPath(entity["asset_path"])
+                if entityName not in assetConfig["assets"]:
+                    assetConfig["assets"][entityName] = {}
 
-            if entity["shot"] not in data["shots"][entity["sequence"]]:
-                data["shots"][entity["sequence"]][entity["shot"]] = {}
+                assetConfig["assets"][entityName]["metadata"] = metaData
+            elif entity["type"] == "shot":
+                if shotConfig is None:
+                    shotConfig = self.core.getConfig(config="shotinfo", allowCache=False) or {}
 
-            data["shots"][entity["sequence"]][entity["shot"]]["metadata"] = metaData
-            self.core.setConfig(data=data, config="shotinfo", updateNestedData=False)
+                if "shots" not in shotConfig:
+                    shotConfig["shots"] = {}
+
+                if entity["sequence"] not in shotConfig["shots"]:
+                    shotConfig["shots"][entity["sequence"]] = {}
+
+                if entity["shot"] not in shotConfig["shots"][entity["sequence"]]:
+                    shotConfig["shots"][entity["sequence"]][entity["shot"]] = {}
+
+                shotConfig["shots"][entity["sequence"]][entity["shot"]]["metadata"] = metaData
+        
+        if assetConfig is not None:
+            self.core.setConfig(data=assetConfig, config="assetinfo", updateNestedData=False)
+
+        if shotConfig is not None:
+            self.core.setConfig(data=shotConfig, config="shotinfo", updateNestedData=False)
 
     @err_catcher(name=__name__)
     def deleteShot(self, shotName):
@@ -1575,18 +1610,9 @@ class ProjectEntities(object):
 
             except Exception as e:
                 logger.debug(e)
-                msg = QMessageBox(
-                    QMessageBox.Warning,
-                    "Warning",
-                    'Permission denied.\nAnother programm uses files in the shotfolder.\n\nThe shot "%s" could not be renamed to "%s" completly.\n\n%s'
-                    % (self.getShotName(curShotData), self.getShotName(newShotData), str(e)),
-                    QMessageBox.Cancel,
-                )
-                msg.addButton("Retry", QMessageBox.YesRole)
-                self.core.parentWindow(msg)
-                action = msg.exec_()
-
-                if action != 0:
+                msg = 'Permission denied.\nAnother programm uses files in the shotfolder.\n\nThe shot "%s" could not be renamed to "%s" completly.\n\n%s' % (self.getShotName(curShotData), self.getShotName(newShotData), str(e))
+                result = self.core.popupQuestion(msg, buttons=["Retry", "Cancel"], icon=QMessageBox.Warning)
+                if result != "Retry":
                     self.core.popup("Renaming shot canceled.")
                     return
 
@@ -2174,7 +2200,7 @@ class ProjectEntities(object):
             kwargs.update(data)
 
         createdFiles = []
-        for file in files:
+        for idx, file in enumerate(files):
             kwargs["extension"] = os.path.splitext(file)[1]
             targetPath = self.core.paths.generateScenePath(**kwargs)
             if self.core.useLocalFiles:
@@ -2192,7 +2218,8 @@ class ProjectEntities(object):
 
             targetPath = targetPath.replace("\\", "/")
 
-            self.core.copyWithProgress(file, targetPath, finishCallback=finishCallback)
+            thread = self.core.copyWithProgress(file, targetPath, finishCallback=finishCallback)
+            thread.wait(999999999)
             details = entity.copy()
             details["department"] = department
             details["task"] = task
@@ -2628,7 +2655,6 @@ class ProjectEntities(object):
             else:
                 centities += [self.getCleanEntity(e) for e in connectedEntities]
 
-            centities = self.getUniqueEntities(centities)
             if not remove:
                 centityNames = [self.getEntityName(e) for e in centities]
                 removed = []
@@ -2787,7 +2813,9 @@ class ConnectEntitiesDlg(QDialog):
 
         import EntityWidget
         self.w_entities = EntityWidget.EntityWidget(core=self.core, refresh=True)
-        self.w_connectedEnities = EntityWidget.EntityWidget(core=self.core, refresh=True)
+        self.w_connectedEnities = EntityWidget.EntityWidget(core=self.core, refresh=False)
+        self.w_connectedEnities.getPage("Assets").useCounter = True
+        self.w_connectedEnities.refreshEntities()
         self.w_connectedEnities.tb_entities.setVisible(False)
         self.w_entities.tabChanged.connect(self.tabChanged)
 
@@ -2839,14 +2867,25 @@ class ConnectEntitiesDlg(QDialog):
     @err_catcher(name=__name__)
     def onAccepted(self):
         entities = self.w_entities.getCurrentData(returnOne=False)
-        entities = [e for e in entities if e["type"] in ["asset", "shot"]]
+        entities = [e for e in entities if e["type"] in ["asset", "shot"] and ("asset_path" in e or "shot" in e)]
         if not entities:
             msg = "No valid entity selected."
             self.core.popup(msg)
             return
 
-        connectedEntities = self.w_connectedEnities.getCurrentData(returnOne=False)
-        connectedEntities = [e for e in connectedEntities if (e["type"] in ["asset", "shot"] and (e.get("asset_path") or e.get("shot")))]
+        page = self.w_connectedEnities.getCurrentPage()
+        if page.useCounter:
+            connectedEntities = []
+            items = page.tw_tree.selectedItems()
+            for item in items:
+                entity = page.getDataFromItem(item)
+                if entity["type"] in ["asset", "shot"] and (entity.get("asset_path") or entity.get("shot")):
+                    for idx in range(page.getCount(item)):
+                        connectedEntities.append(entity)
+        else:
+            connectedEntities = self.w_connectedEnities.getCurrentData(returnOne=False)
+            connectedEntities = [e for e in connectedEntities if (e["type"] in ["asset", "shot"] and (e.get("asset_path") or e.get("shot")))]
+
         result = self.core.entities.setConnectedEntities(entities, connectedEntities)
         if not result:
             return
@@ -2876,8 +2915,7 @@ class ConnectEntitiesDlg(QDialog):
         for entity in entities:
             connected += self.core.entities.getConnectedEntities(entity)
 
-        uentities = self.core.entities.getUniqueEntities(connected)
-        self.w_connectedEnities.navigate(uentities, clear=True)
+        self.w_connectedEnities.navigate(connected, clear=True)
 
     @err_catcher(name=__name__)
     def refreshEntities(self):
@@ -2886,14 +2924,25 @@ class ConnectEntitiesDlg(QDialog):
 
     @err_catcher(name=__name__)
     def refreshEntityInfo(self, items=None):
+        page = self.w_entities.getCurrentPage()
         if items is None:
-            items = self.w_entities.getCurrentPage().tw_tree.selectedItems()
+            items = page.tw_tree.selectedItems()
         elif not isinstance(items, list):
             items = [items]
 
-        entities = [self.w_entities.getCurrentPage().getDataFromItem(item) for item in items]
-        entities = [entity for entity in entities if entity["type"] in ["asset", "shot"]]
-        if self.w_entities.getCurrentPage().entityType == "asset":
+        if page.useCounter:
+            entities = []
+            for item in items:
+                entity = page.getDataFromItem(item)
+                if entity["type"] in ["asset", "shot"]:
+                    for idx in range(page.getCount(item)):
+                        entities.append(entity)
+
+        else:
+            entities = [page.getDataFromItem(item) for item in items]
+            entities = [entity for entity in entities if entity["type"] in ["asset", "shot"]]
+
+        if page.entityType == "asset":
             if len(entities) == 1:
                 text = "%s Asset selected" % len(entities)
             else:
@@ -2908,14 +2957,25 @@ class ConnectEntitiesDlg(QDialog):
 
     @err_catcher(name=__name__)
     def refreshConnectedEntityInfo(self, items=None):
+        page = self.w_connectedEnities.getCurrentPage()
         if items is None:
-            items = self.w_connectedEnities.getCurrentPage().tw_tree.selectedItems()
+            items = page.tw_tree.selectedItems()
         elif not isinstance(items, list):
             items = [items]
 
-        entities = [self.w_connectedEnities.getCurrentPage().getDataFromItem(item) for item in items]
-        entities = [entity for entity in entities if entity["type"] in ["asset", "shot"]]
-        if self.w_connectedEnities.getCurrentPage().entityType == "asset":
+        if page.useCounter:
+            entities = []
+            for item in items:
+                entity = page.getDataFromItem(item)
+                if entity["type"] in ["asset", "shot"]:
+                    for idx in range(page.getCount(item)):
+                        entities.append(entity)
+
+        else:
+            entities = [page.getDataFromItem(item) for item in items]
+            entities = [entity for entity in entities if entity["type"] in ["asset", "shot"]]
+
+        if page.entityType == "asset":
             if len(entities) == 1:
                 text = "%s Asset selected" % len(entities)
             else:

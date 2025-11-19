@@ -81,6 +81,10 @@ class ExportClass(object):
         self.w_cam.setVisible(False)
         self.w_sCamShot.setVisible(False)
         self.w_selectCam.setVisible(False)
+        self.additionalSettings = []
+        self.b_additionalSettings = QPushButton("Additional Settings...")
+        self.b_additionalSettings.clicked.connect(self.showAdditionalSettings)
+        self.lo_export.insertWidget(self.lo_export.indexOf(self.gb_objects), self.b_additionalSettings)
 
         self.nodes = []
 
@@ -108,14 +112,15 @@ class ExportClass(object):
         self.cb_outPath.addItems(list(self.export_paths.keys()))
         if len(self.export_paths) < 2:
             self.w_outPath.setVisible(False)
-        getattr(self.core.appPlugin, "sm_export_startup", lambda x: None)(self)
-        self.nameChanged(state.text(0))
-        self.connectEvents()
 
         if hasattr(self, "gb_submit"):
             self.gb_submit.setVisible(False)
             self.cb_manager.addItems([p.pluginName for p in self.core.plugins.getRenderfarmPlugins()])
-        
+
+        getattr(self.core.appPlugin, "sm_export_startup", lambda x: None)(self)
+        self.nameChanged(state.text(0))
+        self.connectEvents()
+
         self.core.callback("onStateStartup", self)
         self.f_rjWidgetsPerTask.setVisible(False)
         self.managerChanged(True)
@@ -210,6 +215,11 @@ class ExportClass(object):
                 self.state.setCheckState(
                     0, Qt.CheckState(data["stateenabled"]),
                 )
+        if "additionalSettings" in data:
+            for setting in data["additionalSettings"]:
+                for asetting in self.additionalSettings:
+                    if asetting["name"] == setting:
+                        asetting["value"] = data["additionalSettings"][setting]
 
         getattr(self.core.appPlugin, "sm_export_loadData", lambda x, y: None)(
             self, data
@@ -300,12 +310,24 @@ class ExportClass(object):
                 "label": "Open in Explorer...",
                 "callback": lambda: self.core.openFolder(path)
             },
-            {
+        ]
+        if os.getenv("PRISM_COPY_FILE_CONTENT", "0") == "1":
+            options.append({
                 "label": "Copy",
                 "callback": lambda: self.core.copyToClipboard(path, file=True)
-            },
-        ]
+            })
+        else:
+            options.append({
+                "label": "Copy Path",
+                "callback": lambda: self.core.copyToClipboard(path, file=False)
+            })
+
         return options
+
+    @err_catcher(name=__name__)
+    def showAdditionalSettings(self):
+        self.dlg_additionalSettings = AdditionalSettingsDialog(self)
+        self.dlg_additionalSettings.show()
 
     @err_catcher(name=__name__)
     def openInProductBrowser(self, path):
@@ -577,7 +599,7 @@ class ExportClass(object):
     def updateUi(self):
         self.cb_cam.clear()
         self.camlist = camNames = []
-        if not self.stateManager.standalone:
+        if not self.stateManager.standalone and hasattr(self.core.appPlugin, "getCamNodes"):
             self.camlist = self.core.appPlugin.getCamNodes(self)
             camNames = [self.core.appPlugin.getCamName(self, i) for i in self.camlist]
 
@@ -596,6 +618,7 @@ class ExportClass(object):
             self.w_master.setVisible(False)
 
         self.w_context.setHidden(not self.allowCustomContext)
+        self.w_comment.setHidden(not self.stateManager.useStateComments())
         self.refreshContext()
         self.updateRange()
         if self.getOutputType() == "ShotCam":
@@ -607,6 +630,8 @@ class ExportClass(object):
             self.b_changeTask.setPalette(self.oldPalette)
 
         self.refreshSubmitUi()
+        showSettings = any([setting.get("visible", lambda dlg, state: True)(None, self) for setting in self.additionalSettings])
+        self.b_additionalSettings.setHidden(not showSettings)
         self.nameChanged(self.e_name.text())
         self.core.callback("sm_export_updateUi", self)
 
@@ -746,7 +771,7 @@ class ExportClass(object):
             context = self.getCurrentContext()
             if context.get("type") == "shot" and "sequence" in context:
                 frange = self.core.entities.getShotRange(context)
-                if frange:
+                if frange and frange[0] is not None and frange[1] is not None:
                     startFrame, endFrame = frange
                     startFrame -= 1
                     endFrame += 1
@@ -814,6 +839,14 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def managerChanged(self, text=None):
+        if getattr(self.cb_manager, "prevManager", None):
+            self.cb_manager.prevManager.unsetManager(self)
+
+        plugin = self.core.plugins.getRenderfarmPlugin(self.cb_manager.currentText())
+        if plugin:
+            plugin.sm_export_managerChanged(self)
+
+        self.cb_manager.prevManager = plugin
         self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
@@ -899,7 +932,7 @@ class ExportClass(object):
             task=product,
             extension=extension,
             framePadding=framePadding,
-            comment=self.stateManager.publishComment,
+            comment=self.getComment(),
             version=version,
             location=location,
             returnDetails=True,
@@ -924,6 +957,15 @@ class ExportClass(object):
             return
 
         self.core.products.updateMasterVersion(outputName)
+
+    @err_catcher(name=__name__)
+    def getComment(self):
+        if self.stateManager.useStateComments():
+            comment = self.e_comment.text() or self.stateManager.publishComment
+        else:
+            comment = self.stateManager.publishComment
+
+        return comment
 
     @err_catcher(name=__name__)
     def executeState(self, parent, useVersion="next"):
@@ -998,7 +1040,7 @@ class ExportClass(object):
             details["sourceScene"] = fileName
             details["product"] = self.getProductname()
             details["resolution"] = self.core.appPlugin.getResolution()
-            details["comment"] = self.stateManager.publishComment
+            details["comment"] = self.getComment()
 
             details.update(self.cb_sCamShot.currentData())
             details["entityType"] = "shot"
@@ -1119,7 +1161,7 @@ class ExportClass(object):
             details["version"] = hVersion
             details["sourceScene"] = fileName
             details["product"] = self.getProductname()
-            details["comment"] = self.stateManager.publishComment
+            details["comment"] = self.getComment()
 
             if startFrame != endFrame:
                 details["fps"] = self.core.getFPS()
@@ -1128,6 +1170,11 @@ class ExportClass(object):
                 outputName
             )
             self.core.saveVersionInfo(filepath=infoPath, details=details)
+            if self.core.products.getUseProductPreviews():
+                preview = self.core.products.generateProductPreview()
+                if preview:
+                    self.core.products.setProductPreview(os.path.dirname(outputName), preview)
+
             updateMaster = True
             try:
                 submitResult = None
@@ -1232,6 +1279,7 @@ class ExportClass(object):
                 "dlconcurrent": self.sp_dlConcurrentTasks.value(),
                 "lastexportpath": self.l_pathLast.text().replace("\\", "/"),
                 "stateenabled": self.core.getCheckStateValue(self.state.checkState(0)),
+                "additionalSettings": {s["name"]: s["value"] for s in self.additionalSettings}
             }
         )
         getattr(self.core.appPlugin, "sm_export_getStateProps", lambda x, y: None)(
@@ -1239,3 +1287,90 @@ class ExportClass(object):
         )
         self.core.callback("onStateGetSettings", self, stateProps)
         return stateProps
+
+
+class AdditionalSettingsDialog(QDialog):
+    def __init__(self, state):
+        super(AdditionalSettingsDialog, self).__init__()
+        self.state = state
+        self.core = self.state.core
+        self.core.parentWindow(self, parent=self.state)
+        self.widgets = []
+        self.loadLayout()
+
+    @err_catcher(name=__name__)
+    def loadLayout(self):
+        self.setWindowTitle("Additional Settings")
+        self.lo_main = QVBoxLayout(self)
+
+        for setting in self.state.additionalSettings:
+            widgets = {}
+            w = QWidget()
+            lo = QHBoxLayout(w)
+            lo.setContentsMargins(9, 0, 9, 0)
+            l = QLabel(setting["label"] + ":")
+            lo.addWidget(l)
+            lo.addStretch()
+            setattr(self, "l_" + setting["name"], l)
+            setattr(self, "w_" + setting["name"], w)
+            setattr(self, "lo_" + setting["name"], lo)
+            self.lo_main.addWidget(w)
+            widgets = {"widget": w, "label": l, "type": setting["type"]}
+
+            if setting["type"] == "checkbox":
+                chb = QCheckBox()
+                lo.addWidget(chb)
+                setattr(self, "chb_" + setting["name"], chb)
+                widgets["checkbox"] = chb
+                chb.setChecked(setting["value"])
+                chb.toggled.connect(lambda x: self.refreshVisibility())
+            elif setting["type"] == "combobox":
+                cb = QComboBox()
+                lo.addWidget(cb)
+                setattr(self, "cb_" + setting["name"], cb)
+                widgets["combobox"] = cb
+                cb.addItems(setting["items"])
+                cb.setCurrentText(setting["value"])
+                cb.currentIndexChanged.connect(lambda x: self.refreshVisibility())
+            elif setting["type"] == "float":
+                sp = QDoubleSpinBox()
+                lo.addWidget(sp)
+                setattr(self, "sp_" + setting["name"], sp)
+                widgets["spinbox"] = sp
+                sp.setValue(setting["value"])
+
+            if not setting.get("visible", lambda dlg, state: True)(self, self.state):
+                w.setHidden(True)
+
+            self.widgets.append(widgets)
+
+        self.lo_main.addStretch()
+        self.bb_main = QDialogButtonBox()
+        self.bb_main.addButton("Accept", QDialogButtonBox.AcceptRole)
+        self.bb_main.addButton("Cancel", QDialogButtonBox.RejectRole)
+        self.bb_main.accepted.connect(self.onAccept)
+        self.bb_main.rejected.connect(self.reject)
+        self.lo_main.addWidget(self.bb_main)
+
+    @err_catcher(name=__name__)
+    def refreshVisibility(self):
+        for idx, setting in enumerate(self.state.additionalSettings):
+            self.widgets[idx]["widget"].setHidden(not setting.get("visible", lambda dlg, state: True)(self, self.state))
+
+    @err_catcher(name=__name__)
+    def onAccept(self):
+        for idx, setting in enumerate(self.state.additionalSettings):
+            val = self.getValueFromWidget(self.widgets[idx])
+            setting["value"] = val
+
+        self.state.stateManager.saveStatesToScene()
+        self.accept()
+
+    @err_catcher(name=__name__)
+    def getValueFromWidget(self, widget):
+        if widget["type"] == "checkbox":
+            return widget["checkbox"].isChecked()
+        elif widget["type"] == "combobox":
+            return widget["combobox"].currentText()
+        elif widget["type"] == "float":
+            return widget["spinbox"].value()

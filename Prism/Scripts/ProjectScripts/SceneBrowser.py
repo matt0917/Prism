@@ -41,6 +41,7 @@ import traceback
 import re
 import time
 import uuid
+import platform
 
 prismRoot = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
@@ -81,10 +82,9 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         self.scenefileData = []
         self.scenefileQueue = []
         self.sceneItemWidgets = []
-        self.depIcons = {}
         self.initialized = False
         self.lastProcess = -1
-        self.processEventsOnShow = True
+        self.processEventsOnShow = True if os.getenv("PRISM_SCENEBROWSER_SKIP_PROCESS_EVENTS", "1") == "0" else False
 
         self.shotPrvXres = 250
         self.shotPrvYres = 141
@@ -913,8 +913,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
             openex = QAction(self.core.tr("Open in explorer"), self)
             openex.triggered.connect(lambda: self.core.openFolder(dirPath))
             rcmenu.addAction(openex)
-            copAct = QAction(self.core.tr("Copy"), self)
-            copAct.triggered.connect(lambda: self.core.copyToClipboard(dirPath, file=True))
+            copAct = self.core.getCopyAction(dirPath, parent=self)
             rcmenu.addAction(copAct)
             for i in prjMngMenus:
                 if i:
@@ -924,8 +923,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
             openex = QAction(self.core.tr("Open in explorer"), self)
             openex.triggered.connect(lambda: self.core.openFolder(path))
             rcmenu.addAction(openex)
-            copAct = QAction(self.core.tr("Copy"), self)
-            copAct.triggered.connect(lambda: self.core.copyToClipboard(path, file=True))
+            copAct = self.core.getCopyAction(path, parent=self)
             rcmenu.addAction(copAct)
 
         if callbackName:
@@ -1032,10 +1030,10 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
 
         if isScenefile:
             globalAct = QAction(self.core.tr("Copy to global"), self)
-            if self.core.useLocalFiles and filepath.startswith(
+            if self.core.useLocalFiles and os.path.normpath(filepath).startswith(
                 self.core.localProjectPath
             ):
-                globalAct.triggered.connect(lambda: self.copyToGlobal(filepath))
+                globalAct.triggered.connect(lambda: self.copyToGlobal(os.path.normpath(filepath)))
             else:
                 globalAct.setEnabled(False)
             rcmenu.addAction(globalAct)
@@ -1076,8 +1074,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
                 openex.triggered.connect(lambda x=None, f=fpath: self.core.openFolder(f))
                 m_loc.addAction(openex)
 
-                copAct = QAction(self.core.tr("Copy"), self)
-                copAct.triggered.connect(lambda x=None, f=fpath: self.core.copyToClipboard(f, file=True))
+                copAct = self.core.getCopyAction(fpath, parent=self)
                 m_loc.addAction(copAct)
 
                 copAct = QAction(self.core.tr("Copy path for next version"), self)
@@ -1094,8 +1091,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
             openex.triggered.connect(lambda: self.core.openFolder(filepath))
             rcmenu.addAction(openex)
 
-            copAct = QAction(self.core.tr("Copy"), self)
-            copAct.triggered.connect(lambda: self.core.copyToClipboard(filepath, file=True))
+            copAct = self.core.getCopyAction(filepath, parent=self)
             rcmenu.addAction(copAct)
 
             copAct = QAction(self.core.tr("Copy path for next version"), self)
@@ -1267,6 +1263,9 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
                     args=[self, filePath],
                 )
                 self.exeFile(filepath=filePath)
+                if not self.projectBrowser.actionCloseAfterLoad.isChecked():
+                    self.refreshScenefilesThreaded()
+
                 self.core.callback(
                     name="postLoadPresetScene",
                     args=[self, filePath],
@@ -1357,7 +1356,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
             longName = self.core.entities.getLongDepartmentName(curEntities[0]["type"], s) or s
             sItem = QListWidgetItem(longName)
             sItem.setData(Qt.UserRole, s)
-            icon = self.getDepartmentIcon(longName)
+            icon = self.core.entities.getDepartmentIcon(longName)
             if icon:
                 sItem.setIcon(icon)
 
@@ -1372,16 +1371,6 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
         if not wasBlocked:
             self.lw_departments.blockSignals(False)
             self.refreshTasks(restoreSelection=True)
-
-    @err_catcher(name=__name__)
-    def getDepartmentIcon(self, department):
-        if department in self.depIcons:
-            return self.depIcons[department]
-
-        path = os.path.join(self.core.projects.getPipelineFolder(), "Icons", department + ".png")
-        icon = QIcon(path)
-        self.depIcons[department] = icon
-        return icon
 
     @err_catcher(name=__name__)
     def refreshTasks(self, restoreSelection=False):
@@ -1816,7 +1805,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
             if not comment and not version:
                 comment = os.path.basename(data.get("filename", ""))
 
-            item = QStandardItem(comment)
+            item = QStandardItem(str(comment))
             item.setTextAlignment(Qt.Alignment(Qt.AlignCenter))
             row.append(item)
 
@@ -1985,13 +1974,16 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
 
                         handleRange = self.core.entities.getShotRange(curEntity, handles=True)
                         if handleRange != shotRange:
+                            handleStartFrame = None
                             if handleRange[0] is not None:
                                 handleStartFrame = handleRange[0]
 
+                            handleEndFrame = None
                             if handleRange[1] is not None:
                                 handleEndFrame = handleRange[1]
 
-                            suffix = " (%s - %s)" % (handleStartFrame, handleEndFrame)
+                            if handleStartFrame is not None and handleEndFrame is not None:
+                                suffix = " (%s - %s)" % (handleStartFrame, handleEndFrame)
 
                     rangeStr = "%s - %s%s" % (startFrame, endFrame, suffix)
                     l_range1 = QLabel(self.core.tr("Framerange") + ":    ")
@@ -2724,7 +2716,7 @@ class ScenefileItem(QWidget):
         self.refreshPreview()
         self.l_version.setText(version)
         self.setIcon(icon)
-        self.l_comment.setText(comment)
+        self.l_comment.setText(str(comment))
         self.l_description.setText(descr)
         self.l_date.setText(date)
         self.l_user.setText(user)

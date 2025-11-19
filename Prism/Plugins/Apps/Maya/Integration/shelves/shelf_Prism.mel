@@ -108,6 +108,8 @@ global proc shelf_Prism () {
         -flat 1
         -mi "Import Connected Assets..." ( "pcore.getPlugin(\"Maya\").onShelfClickedImportConnectedAssets()" )
         -mip 0
+        -mi "Import Connected Assets (quiet)" ( "pcore.getPlugin(\"Maya\").onShelfClickedImportConnectedAssets(quiet=True)" )
+        -mip 1
     ;
     shelfButton
         -enableCommandRepeat 1

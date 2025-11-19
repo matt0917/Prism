@@ -166,6 +166,9 @@ class Prism_Houdini_externalAccess_Functions(object):
 
     @err_catcher(name=__name__)
     def getPresetScenes(self, presetScenes):
+        if os.getenv("PRISM_SHOW_DEFAULT_SCENEFILE_PRESETS", "1") != "1":
+            return
+
         presetDir = os.path.join(self.pluginDirectory, "Presets")
         scenes = self.core.entities.getPresetScenesFromFolder(presetDir)
         presetScenes += scenes

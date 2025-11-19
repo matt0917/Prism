@@ -37,7 +37,7 @@ import os
 
 class Prism_Maya_Variables(object):
     def __init__(self, core, plugin):
-        self.version = "v2.0.17"
+        self.version = "v2.1.0"
         self.pluginName = "Maya"
         self.pluginType = "App"
         self.appShortName = "Maya"
@@ -45,7 +45,7 @@ class Prism_Maya_Variables(object):
         self.hasQtParent = True
         self.sceneFormats = [".ma", ".mb"]
         self.appSpecificFormats = self.sceneFormats
-        self.outputFormats = [".abc", ".obj", ".fbx", ".ma", ".mb", "ShotCam"]
+        self.outputFormats = [".abc", ".obj", ".fbx", ".ma", ".mb", ".atom", "ShotCam"]
         self.appColor = [44, 121, 207]
         self.renderPasses = {
             "maya_vray": {

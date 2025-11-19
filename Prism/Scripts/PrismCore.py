@@ -48,12 +48,16 @@ import tempfile
 import glob
 import importlib
 import atexit
+import code
+import io
 from datetime import datetime
 from multiprocessing.connection import Listener, Client
 
 startEnv = os.environ.copy()
 
-if sys.version_info.minor == 11:
+if sys.version_info.minor == 13:
+    pyLibs = "Python313"
+elif sys.version_info.minor == 11:
     pyLibs = "Python311"
 elif sys.version_info.minor == 10:
     pyLibs = "Python310"
@@ -175,7 +179,7 @@ class PrismCore:
 
         try:
             # set some general variables
-            self.version = "v2.0.17"
+            self.version = "v2.1.0"
             self.requiredLibraries = "v2.0.0"
             self.core = self
             self.preferredExtension = os.getenv("PRISM_CONFIG_EXTENSION", ".json")
@@ -184,7 +188,7 @@ class PrismCore:
 
             self.prismRoot = prismRoot.replace("\\", "/")
             self.prismLibs = prismLibs.replace("\\", "/")
-            self.pythonVersion = "Python" + os.getenv("PRISM_PYTHON_VERSION", "3.11").replace(".", "")
+            self.pythonVersion = "Python" + os.getenv("PRISM_PYTHON_VERSION", "3.13").replace(".", "")
 
             self.userini = self.getUserPrefConfigPath()
             prjScriptPath = os.path.abspath(
@@ -208,6 +212,7 @@ class PrismCore:
             self.stateData = []
             self.prjHDAs = []
             self.uiScaleFactor = 1
+            self.protocolHandlers = {}
 
             self.smCallbacksRegistered = False
             self.sceneOpenChecksEnabled = True
@@ -242,6 +247,7 @@ class PrismCore:
             self.registeredStyleSheets = []
             self.activeStyleSheet = None
             self.useTranslation = False
+            self.pythonHighlighter = PythonHighlighter
 
             if API_NAME == "PySide6":
                 import PySide6
@@ -289,6 +295,7 @@ class PrismCore:
 
             oldSheet = os.path.join(self.prismRoot, "Scripts", "UserInterfacesPrism", "stylesheets", "qdarkstyle")
             self.registerStyleSheet(oldSheet)
+            self.initializeLanguage()
 
             self.pluginPathApp = os.path.abspath(
                 os.path.join(__file__, os.pardir, os.pardir, "Plugins", "Apps")
@@ -342,7 +349,7 @@ class PrismCore:
             return os.getenv("PRISM_USER_PREFS")
 
         if platform.system() == "Windows":
-            path = self.getWindowsDocumentsPath()
+            path = self.getWindowsDocumentsPath() or (self.getPrismDataDir() + "/userprefs")
         elif platform.system() == "Linux":
             path = os.path.join(os.environ["HOME"])
         elif platform.system() == "Darwin":
@@ -382,6 +389,27 @@ class PrismCore:
             path = os.path.join(os.environ["HOME"], "Documents", "Prism2")
 
         return path
+
+    @err_catcher(name=__name__)
+    def grantRwToAllUsers(self, path):
+        try:
+            subprocess.run(
+                ["icacls", path, "/grant", "Users:(OI)(CI)M", "/T"],
+                check=True,
+                shell=True
+            )
+        except subprocess.CalledProcessError as e:
+            logger.debug("Failed to update permissions: %s" % (str(e)))
+
+    @err_catcher(name=__name__)
+    def initializeLanguage(self):
+        if os.getenv("PRISM_LANGUAGE") == "CN":
+            qapp = QApplication.instance()
+            translator = QTranslator(qapp)
+            path = os.path.join(os.path.dirname(__file__), "UserInterfacesPrism/translations/cn.qm")
+            translator.load(path)
+            qapp.installTranslator(translator)
+            self.useTranslation = True
 
     @err_catcher(name=__name__)
     def initializePlugins(self, appPlugin):
@@ -463,8 +491,13 @@ class PrismCore:
             curPrj = os.environ["prism_project"]
         else:
             curPrj = self.getConfig("globals", "current project")
+            if not curPrj and os.getenv("PRISM_PROJECT_FALLBACK") and os.path.exists(os.getenv("PRISM_PROJECT_FALLBACK")):
+                curPrj = os.getenv("PRISM_PROJECT_FALLBACK")
 
         if curPrj:
+            if self.splashScreen:
+                self.splashScreen.setStatus("loading project...")
+
             self.changeProject(curPrj)
 
         if (
@@ -590,6 +623,18 @@ class PrismCore:
                 return
 
         self.startAutosaveTimer()
+
+    @err_catcher(name=__name__)
+    def getWorker(self, function=None):
+        worker = Worker()
+        if function:
+            worker.function = function
+
+        worker.errored.connect(self.threadErrored)
+        return worker
+
+    def threadErrored(self, msg):
+        self.core.writeErrorLog(msg)
 
     @err_catcher(name=__name__)
     def setDebugMode(self, enabled):
@@ -935,13 +980,16 @@ License: GNU LGPL-3.0-or-later<br>
         self.popup(astr, title="About", severity="info")
 
     @err_catcher(name=__name__)
-    def sendFeedbackDlg(self, state=None):
+    def sendFeedbackDlg(self, state=None, startText=None, parent=None):
         fbDlg = PrismWidgets.EnterText()
         fbDlg.setModal(True)
-        self.parentWindow(fbDlg)
+        self.parentWindow(fbDlg, parent=parent)
         fbDlg.setWindowTitle("Send Message")
         fbDlg.l_info.setText("Message:\n")
         fbDlg.te_text.setMinimumHeight(200 * self.uiScaleFactor)
+        if startText:
+            fbDlg.te_text.setPlainText(startText)
+
         fbDlg.l_description = QLabel(
             "Please provide also contact information (e.g. e-mail) for further discussions and to receive answers to your questions."
         )
@@ -1280,7 +1328,7 @@ License: GNU LGPL-3.0-or-later<br>
         pinst.show()
 
     @err_catcher(name=__name__)
-    def openSetup(self):
+    def openSetup(self, silent=False):
         if getattr(self, "psetup", None) and self.psetup.isVisible():
             self.psetup.close()
 
@@ -1293,15 +1341,34 @@ License: GNU LGPL-3.0-or-later<br>
         import PrismInstaller
 
         self.psetup = PrismInstaller.PrismSetup(core=self)
-        self.psetup.show()
+        if not silent:
+            self.psetup.show()
+
+        return self.psetup
 
     @err_catcher(name=__name__)
-    def openConsole(self):
-        executable = self.getPythonPath(executable="python")
-        code = "\"import sys;sys.path.append(\\\"%s/Scripts\\\");import PrismCore;pcore=PrismCore.create(prismArgs=[\\\"noUI\\\", \\\"loadProject\\\"])" % (self.prismRoot.replace("\\", "/"))
-        cmd = "start \"\" \"%s\" -i -c %s" % (executable, code)
-        logger.debug("opening console: %s" % cmd)
-        subprocess.Popen(cmd, shell=True, env=self.startEnv)
+    def openConsole(self, parent=None):
+        mods = QApplication.keyboardModifiers()
+        if mods == Qt.ControlModifier:
+            executable = self.getPythonPath(executable="python")
+            code = "\"import sys;sys.path.append(\\\"%s/Scripts\\\");import PrismCore;pcore=PrismCore.create(prismArgs=[\\\"noUI\\\", \\\"loadProject\\\"])" % (self.prismRoot.replace("\\", "/"))
+            cmd = "start \"\" \"%s\" -i -c %s" % (executable, code)
+            logger.debug("opening console: %s" % cmd)
+            subprocess.Popen(cmd, shell=True, env=self.startEnv)
+        else:
+            self.openConsoleInProcess(parent)
+
+    @err_catcher(name=__name__)
+    def openConsoleInProcess(self, parent=None):
+        if getattr(self, "dlg_console", None) and self.dlg_console.isVisible():
+            self.dlg_console.close()
+
+        local_ns = {
+            "pcore": self,
+            "print": print  # allow print to be explicitly available
+        }
+        self.dlg_console = PythonConsole(self, local_ns, parent=parent)
+        self.dlg_console.show()
 
     @err_catcher(name=__name__)
     def startTray(self):
@@ -1569,10 +1636,11 @@ License: GNU LGPL-3.0-or-later<br>
     def fileInPipeline(self, filepath=None, validateFilename=True):
         if filepath is None:
             filepath = self.getCurrentFileName()
+            if not filepath:
+                return False
 
         filepath = self.fixPath(filepath)
-        if filepath and filepath[0].islower():
-            filepath = filepath[0].upper() + filepath[1:]
+        filepath = filepath.lower()
 
         validName = False
         if validateFilename:
@@ -1595,14 +1663,14 @@ License: GNU LGPL-3.0-or-later<br>
 
         if (
             (
-                self.fixPath(self.assetPath) in filepath
-                or self.fixPath(shotPath) in filepath
+                self.fixPath(self.assetPath).lower() in filepath
+                or self.fixPath(shotPath).lower() in filepath
             )
             or (
                 self.useLocalFiles
                 and (
-                    self.fixPath(self.core.getAssetPath(location="local")) in filepath
-                    or self.fixPath(self.core.getSequencePath(location="local")) in filepath
+                    self.fixPath(self.core.getAssetPath(location="local")).lower() in filepath
+                    or self.fixPath(self.core.convertPath(shotPath, "local")).lower() in filepath
                 )
             )
         ) and (validName or not validateFilename):
@@ -1821,7 +1889,8 @@ License: GNU LGPL-3.0-or-later<br>
     def showFileNotInProjectWarning(self, title=None, msg=None):
         title = title or "Could not save the file"
         msg = msg or "The current scenefile is not saved in the current Prism project.\nUse the Project Browser to save your scene in the project."
-        result = self.popupQuestion(msg, buttons=["Open Project Browser", "Close"], title=title, icon=QMessageBox.Warning)
+        buttons = ["Open Project Browser", "Close"]
+        result = self.popupQuestion(msg, buttons=buttons, title=title, icon=QMessageBox.Warning)
         if result == "Open Project Browser":
             if self.pb and self.pb.isVisible():
                 self.pb.activateWindow()
@@ -1834,6 +1903,13 @@ License: GNU LGPL-3.0-or-later<br>
 
             if self.pb:
                 self.pb.showTab("Scenefiles")
+
+        mods = QApplication.keyboardModifiers()
+        if mods == Qt.ControlModifier:
+            curFile = self.getCurrentFileName()
+            localProjectPath = self.localProjectPath if self.useLocalFiles else ""
+            msg = "Project Path: %s\nScenefile Path: %s\nLocal Project Enabled: %s\nLocal Project Path: %s\nFile in Project: %s\nPrism Version: %s" % (self.core.projectPath, curFile, self.useLocalFiles, localProjectPath, self.fileInPipeline(curFile), self.version)
+            self.core.popup(msg)
 
     @err_catcher(name=__name__)
     def saveScene(
@@ -1855,6 +1931,18 @@ License: GNU LGPL-3.0-or-later<br>
                 self.showFileNotInProjectWarning()
                 return False
         else:
+            if not os.path.exists(os.path.dirname(filepath)):
+                try:
+                    os.makedirs(os.path.dirname(filepath))
+                except Exception as e:
+                    title = "Could not save the file"
+                    msg = "Could not create this folder:\n\n%s\n\n%s" % (
+                        os.path.dirname(filepath),
+                        str(e),
+                    )
+                    self.popup(msg, title=title)
+                    return False
+
             versionUp = False
             curfile = None
 
@@ -2390,6 +2478,23 @@ License: GNU LGPL-3.0-or-later<br>
                     os.rename(filePath, newFilePath)
 
     @err_catcher(name=__name__)
+    def getCopyAction(self, path, parent=None, allowFile=True):
+        parent = parent or self.messageParent
+        if os.getenv("PRISM_COPY_FILE_CONTENT", "0") == "1" and allowFile:
+            copAct = QAction(self.tr("Copy"), parent)
+            copAct.triggered.connect(lambda: self.copyToClipboard(path, file=True))
+        else:
+            copAct = QAction(self.tr("Copy Path"), parent)
+            copAct.triggered.connect(lambda: self.copyToClipboard(path, file=False))
+
+        iconPath = os.path.join(
+            self.prismRoot, "Scripts", "UserInterfacesPrism", "copy.png"
+        )
+        icon = self.media.getColoredIcon(iconPath)
+        copAct.setIcon(icon)
+        return copAct
+
+    @err_catcher(name=__name__)
     def copyToClipboard(self, text, fixSlashes=True, file=False):
         if fixSlashes:
             if isinstance(text, list):
@@ -2416,7 +2521,7 @@ License: GNU LGPL-3.0-or-later<br>
             cb.setMimeData(data)
         else:
             cb = QApplication.clipboard()
-            cb.setText(text)
+            cb.setText(str(text))
 
     @err_catcher(name=__name__)
     def getClipboard(self):
@@ -2449,7 +2554,7 @@ License: GNU LGPL-3.0-or-later<br>
         folderinfo = self.getFolderSize(src)
         self.copiedFileCount = 0
         self.copiedFileBytes = 0
-        shutil.copytree(src, dst, copy_function=lambda s, d: self.copyfile(s, d, thread=thread, size=folderinfo["size"], filecount=folderinfo["filecount"]))
+        shutil.copytree(src, dst, copy_function=lambda s, d: self.copyfile(s, d, thread=thread, size=folderinfo["size"], filecount=folderinfo["filecount"]), dirs_exist_ok=True)
         if thread and thread.canceled:
             try:
                 shutil.rmtree(dst)
@@ -2876,7 +2981,7 @@ License: GNU LGPL-3.0-or-later<br>
 
             filepath = os.path.join(path, filename)
         else:
-            path += "/"
+            path += "\\"
             if filenamebase:
                 path += filenamebase + "_"
 
@@ -3297,7 +3402,7 @@ License: GNU LGPL-3.0-or-later<br>
 
             pythonPath = os.path.join(root, self.pythonVersion, "pythonw.exe")
             if not os.path.exists(pythonPath):
-                pythonPath = os.path.join(root, "Python311", "pythonw.exe")
+                pythonPath = os.path.join(root, "Python313", "pythonw.exe")
                 if not os.path.exists(pythonPath):
                     pythonPath = os.path.join(root, "*", "pythonw.exe")
                     paths = glob.glob(pythonPath)
@@ -3313,9 +3418,9 @@ License: GNU LGPL-3.0-or-later<br>
                             pythonPath = "python"
 
         elif platform.system() == "Linux":
-            pythonPath = os.path.dirname(os.path.dirname(__file__)) + "/Python311/bin/python"
+            pythonPath = os.path.dirname(os.path.dirname(__file__)) + "/Python313/bin/python"
         else:
-            pythonPath = "python3"
+            pythonPath = os.path.dirname(os.path.dirname(__file__)) + "/Python313/bin/python"
 
         if pythonPath.startswith("//"):
             pythonPath = "\\\\" + pythonPath[2:]
@@ -3764,6 +3869,11 @@ If this plugin is an official Prism plugin, please submit this error to the supp
             logger.warning(msg)
 
     def showErrorDetailPopup(self, text, sendReport=True, data=None):
+        qapp = QApplication.instance()
+        isGuiThread = qapp and qapp.thread() == QThread.currentThread()
+        if "silent" in self.prismArgs or not self.uiAvailable or not isGuiThread:
+            return
+
         dlg_error = ErrorDetailsDialog(self, text)
         dlg_error.exec_()
         button = dlg_error.clickedButton
@@ -3878,7 +3988,11 @@ If this plugin is an official Prism plugin, please submit this error to the supp
     @err_catcher(name=__name__)
     def copyFolder(self, source, destination, adminFallback=True):
         try:
-            shutil.copytree(source, destination)
+            if sys.version_info.minor >= 8:
+                shutil.copytree(source, destination, dirs_exist_ok=True)
+            else:
+                shutil.copytree(source, destination)
+
             return True
         except Exception:
             if adminFallback and platform.system() == "Windows":
@@ -4266,6 +4380,144 @@ If this plugin is an official Prism plugin, please submit this error to the supp
 
         conn.send(data)
 
+    @err_catcher(name=__name__)
+    def registerProtocolHandler(self, name, func):
+        self.protocolHandlers[name] = func
+
+    @err_catcher(name=__name__)
+    def registerPrismProtocolHandler(self):
+        try:
+            import winreg
+        except Exception as e:
+            logger.warning("failed to load winreg: %s" % e)
+            return
+
+        key_path = "Software\\Classes\\prism"
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as k:
+            winreg.SetValueEx(k, None, 0, winreg.REG_SZ, "URL:Prism Protocol")
+            winreg.SetValueEx(k, "URL Protocol", 0, winreg.REG_SZ, "")
+
+            iconPath = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "UserInterfacesPrism",
+                "p_tray.png",
+            )
+            with winreg.CreateKey(k, "DefaultIcon") as ik:
+                winreg.SetValueEx(ik, None, 0, winreg.REG_SZ, iconPath)
+
+            pythonExe = os.path.normpath(self.getPythonPath())
+            scriptPath = os.path.abspath(__file__)
+            cmd = '"%s" "%s" "%%1"' % (pythonExe.replace("\\", "\\\\"), scriptPath.replace("\\", "\\\\"))
+            with winreg.CreateKey(k, "shell\\open\\command") as ck:
+                winreg.SetValueEx(ck, None, 0, winreg.REG_SZ, cmd)
+
+        return True
+
+    @err_catcher(name=__name__)
+    def protocolHandler(self, url=None):
+        try:
+            import urllib.parse
+            raw = url or sys.argv[1]
+            url = raw.strip('"\'')
+            parsed = urllib.parse.urlparse(url)
+            qs = urllib.parse.parse_qs(parsed.query)
+
+            if parsed.netloc in self.protocolHandlers:
+                logger.debug("handling url: %s" % raw)
+                path = parsed.path
+                qs = urllib.parse.parse_qs(parsed.query)
+                self.protocolHandlers[parsed.netloc](path=path, qs=qs)
+
+            else:
+                logger.warning("No handler available for:", parsed.netloc)
+        except Exception as e:
+            print(e)
+
+
+class PythonConsole(QDialog):
+    def __init__(self, core, local_ns, parent=None):
+        super(PythonConsole, self).__init__()
+        self.setWindowTitle("Python Console")
+        layout = QVBoxLayout(self)
+        self.core = core
+        self.core.parentWindow(self, parent=parent)
+ 
+        self.output = QPlainTextEdit(self)
+        self.output.setReadOnly(True)
+        self.output.setStyleSheet("background: #111; color: rgb(255, 255, 255); font-family: monospace;")
+        layout.addWidget(self.output)
+
+        self.input = QLineEdit(self)
+        self.input.returnPressed.connect(self.execute_input)
+        self.input.installEventFilter(self)
+        layout.addWidget(self.input)
+
+        self.console = code.InteractiveConsole(locals=local_ns or {})
+        self.command_buffer = []
+        self.history = []
+        self.history_index = -1
+        self.write("Welcome to the Prism Python Console.\nAccess the PrismCore instance using the \"pcore\" variable.")
+
+    def sizeHint(self):
+        return QSize(600, 300)
+
+    def write(self, text):
+        self.output.appendPlainText(text)
+
+    def execute_input(self):
+        command = self.input.text()
+        self.output.appendPlainText(f">>> {command}")
+        self.command_buffer.append(command)
+        self.history.append(command)
+        self.history_index = len(self.history)
+
+        self.input.clear()
+
+        # Redirect stdout/stderr
+        stdout_backup = sys.stdout
+        stderr_backup = sys.stderr
+        sys.stdout = io.StringIO()
+        sys.stderr = io.StringIO()
+
+        try:
+            more = self.console.push(command)
+            stdout_output = sys.stdout.getvalue()
+            stderr_output = sys.stderr.getvalue()
+
+            if stdout_output:
+                self.output.appendPlainText(stdout_output.rstrip())
+            if stderr_output:
+                self.output.appendPlainText(stderr_output.rstrip())
+
+            if more:
+                self.output.appendPlainText("...")  # Multiline placeholder
+        except Exception:
+            self.output.appendPlainText(traceback.format_exc())
+        finally:
+            sys.stdout = stdout_backup
+            sys.stderr = stderr_backup
+
+        self.output.verticalScrollBar().setValue(
+            self.output.verticalScrollBar().maximum()
+        )
+
+    def eventFilter(self, obj, event):
+        if obj is self.input and event.type() == QEvent.KeyPress:
+            if event.key() == Qt.Key_Up:
+                if self.history and self.history_index > 0:
+                    self.history_index -= 1
+                    self.input.setText(self.history[self.history_index])
+                return True
+            elif event.key() == Qt.Key_Down:
+                if self.history and self.history_index < len(self.history) - 1:
+                    self.history_index += 1
+                    self.input.setText(self.history[self.history_index])
+                else:
+                    self.history_index = len(self.history)
+                    self.input.clear()
+                return True
+        return super().eventFilter(obj, event)
+
 
 class Worker(QThread):
     warningSent = Signal(object)
@@ -4345,6 +4597,194 @@ class ErrorDetailsDialog(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
 
+class PythonHighlighter (QSyntaxHighlighter):
+    """Syntax highlighter for the Python language.
+    """
+    # Python keywords
+    keywords = [
+        'and', 'assert', 'break', 'class', 'continue', 'def',
+        'del', 'elif', 'else', 'except', 'exec', 'finally',
+        'for', 'from', 'global', 'if', 'import', 'in',
+        'is', 'lambda', 'not', 'or', 'pass', 'print',
+        'raise', 'return', 'try', 'while', 'yield',
+        'None', 'True', 'False',
+    ]
+
+    # Python operators
+    operators = [
+        '=',
+        # Comparison
+        '==', '!=', '<', '<=', '>', '>=',
+        # Arithmetic
+        r'\+', '-', r'\*', '/', '//', r'\%', r'\*\*',
+        # In-place
+        r'\+=', '-=', r'\*=', '/=', r'\%=',
+        # Bitwise
+        r'\^', r'\|', r'\&', r'\~', '>>', '<<',
+    ]
+
+    # Python braces
+    braces = [
+        r'\{', r'\}', r'\(', r'\)', r'\[', r'\]',
+    ]
+
+    def format(color, style=''):
+        """Return a QTextCharFormat with the given attributes.
+        """
+        if API_NAME == "PySide2":
+            _color = QColor()
+            _color.setNamedColor(color)
+        else:
+            _color = QColor.fromString(color)
+
+        _format = QTextCharFormat()
+        _format.setForeground(_color)
+        if 'bold' in style:
+            _format.setFontWeight(QFont.Bold)
+        if 'italic' in style:
+            _format.setFontItalic(True)
+
+        return _format
+
+    # Syntax styles that can be shared by all languages
+    STYLES = {
+        'keyword': (format('#66d9ef')),
+        'operator': (format('#ff4689')),
+        'brace': (format('darkGray')),
+        'defclass': (format('#a6e22e', 'bold')),
+        'string': (format('#e6db74')),
+        'string2': (format('#e6db74')),
+        'comment': (format('#959077', 'italic')),
+        'self': (format('#66d9ef', 'italic')),
+        'numbers': (format('#ae81ff')),
+    }
+
+    def __init__(self, parent: QTextDocument) -> None:
+        super().__init__(parent)
+
+        # Multi-line strings (expression, flag, style)
+        self.tri_single = (QRegularExpression("'''"), 1, self.STYLES['string2'])
+        self.tri_double = (QRegularExpression('"""'), 2, self.STYLES['string2'])
+
+        rules = []
+
+        # Keyword, operator, and brace rules
+        rules += [(r'\b%s\b' % w, 0, self.STYLES['keyword'])
+            for w in PythonHighlighter.keywords]
+        rules += [(r'%s' % o, 0, self.STYLES['operator'])
+            for o in PythonHighlighter.operators]
+        rules += [(r'%s' % b, 0, self.STYLES['brace'])
+            for b in PythonHighlighter.braces]
+
+        # All other rules
+        rules += [
+            # 'self'
+            (r'\bself\b', 0, self.STYLES['self']),
+
+            # 'def' followed by an identifier
+            (r'\bdef\b\s*(\w+)', 1, self.STYLES['defclass']),
+            # 'class' followed by an identifier
+            (r'\bclass\b\s*(\w+)', 1, self.STYLES['defclass']),
+
+            # Numeric literals
+            (r'\b[+-]?[0-9]+[lL]?\b', 0, self.STYLES['numbers']),
+            (r'\b[+-]?0[xX][0-9A-Fa-f]+[lL]?\b', 0, self.STYLES['numbers']),
+            (r'\b[+-]?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\b', 0, self.STYLES['numbers']),
+
+            # Double-quoted string, possibly containing escape sequences
+            (r'"[^"\\]*(\\.[^"\\]*)*"', 0, self.STYLES['string']),
+            # Single-quoted string, possibly containing escape sequences
+            (r"'[^'\\]*(\\.[^'\\]*)*'", 0, self.STYLES['string']),
+
+            # From '#' until a newline
+            (r'#[^\n]*', 0, self.STYLES['comment']),
+        ]
+
+        # Build a QRegExp for each pattern
+        self.rules = [(QRegularExpression(pat), index, fmt)
+            for (pat, index, fmt) in rules]
+
+    def highlightBlock(self, text):
+        """Apply syntax highlighting to the given block of text.
+        """
+        self.tripleQuoutesWithinStrings = []
+        # Do other syntax formatting
+        for expression, nth, format in self.rules:
+            match_iter = index = expression.globalMatch(text)
+            while match_iter.hasNext():
+                match = match_iter.next()
+                index = match.capturedStart(nth)
+                length = match.capturedLength(nth)
+
+                # if there is a string we check
+                # if there are some triple quotes within the string
+                # they will be ignored if they are matched again
+                if expression.pattern() in [r'"[^"\\]*(\\.[^"\\]*)*"', r"'[^'\\]*(\\.[^'\\]*)*'"]:
+                    innerIndex = self.tri_single[0].match(text, index + 1).capturedStart()
+                    if innerIndex == -1:
+                        innerIndex = self.tri_double[0].match(text, index + 1).capturedStart()
+
+                    if innerIndex != -1:
+                        tripleQuoteIndexes = range(innerIndex, innerIndex + 3)
+                        self.tripleQuoutesWithinStrings.extend(tripleQuoteIndexes)
+
+                # skipping triple quotes within strings
+                if index in self.tripleQuoutesWithinStrings:
+                    continue
+
+                self.setFormat(index, length, format)
+
+        self.setCurrentBlockState(0)
+
+        # Do multi-line strings
+        in_multiline = self.match_multiline(text, *self.tri_single)
+        if not in_multiline:
+            in_multiline = self.match_multiline(text, *self.tri_double)
+
+    def match_multiline(self, text, delimiter, in_state, style):
+        """Do highlighting of multi-line strings. ``delimiter`` should be a
+        ``QRegExp`` for triple-single-quotes or triple-double-quotes, and
+        ``in_state`` should be a unique integer to represent the corresponding
+        state changes when inside those strings. Returns True if we're still
+        inside a multi-line string when this function is finished.
+        """
+        # If inside triple-single quotes, start at 0
+        if self.previousBlockState() == in_state:
+            start = 0
+            add = 0
+        # Otherwise, look for the delimiter on this line
+        else:
+            start = delimiter.match(text).capturedStart()
+            # skipping triple quotes within strings
+            if start in self.tripleQuoutesWithinStrings:
+                return False
+            # Move past this match
+            add = delimiter.match(text).capturedLength()
+
+        # As long as there's a delimiter match on this line...
+        while start >= 0:
+            # Look for the ending delimiter
+            end = delimiter.match(text, start + add).capturedStart()
+            # Ending delimiter on this line?
+            if end >= add:
+                length = end - start + add + delimiter.match(text).capturedLength()
+                self.setCurrentBlockState(0)
+            # No; multi-line string
+            else:
+                self.setCurrentBlockState(in_state)
+                length = len(text) - start + add
+            # Apply formatting
+            self.setFormat(start, length, style)
+            # Look for the next match
+            start = delimiter.match(text, start + length).capturedStart()
+
+        # Return True if still inside a multi-line string, False otherwise
+        if self.currentBlockState() == in_state:
+            return True
+        else:
+            return False
+
+
 def create(app="Standalone", prismArgs=None):
     prismArgs = prismArgs or []
     global qapp  # required for PyQt
@@ -4352,11 +4792,6 @@ def create(app="Standalone", prismArgs=None):
     if not qapp:
         QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
         qapp = QApplication(sys.argv)
-
-        # translator = QTranslator(qapp)
-        # path = os.path.join(os.path.dirname(__file__), "UserInterfacesPrism/translations/cn.qm")
-        # translator.load(path)
-        # qapp.installTranslator(translator)
 
     iconPath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
@@ -4445,4 +4880,24 @@ class SplashScreen(QWidget):
 
 
 if __name__ == "__main__":
-    show(prismArgs=["loadProject"])
+    if len(sys.argv) > 1 and sys.argv[1].startswith("prism://"):
+        import PrismTray
+        if PrismTray.isAlreadyRunning():
+            qApp = QApplication.instance()
+            if not qApp:
+                qApp = QApplication(sys.argv)
+
+            result = PrismTray.sendCommandToPrismProcess("protocolHandler:" + sys.argv[1])
+
+            if result:
+                sys.exit()
+            else:
+                pcore = create("Standalone", prismArgs=["loadProject"])
+                pcore.protocolHandler()
+
+        else:
+            pcore = create("Standalone", prismArgs=["loadProject"])
+            pcore.protocolHandler()
+
+    else:
+        show(prismArgs=["loadProject"])

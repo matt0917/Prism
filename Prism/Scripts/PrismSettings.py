@@ -51,6 +51,7 @@ from qtpy.QtWidgets import *
 
 from PrismUtils.Decorators import err_catcher
 from UserInterfacesPrism import UserSettings_ui
+from PrismUtils import PrismWidgets
 
 
 logger = logging.getLogger(__name__)
@@ -362,6 +363,9 @@ class UserSettings(QDialog, UserSettings_ui.Ui_dlg_UserSettings):
             self.lo_installHub.addStretch()
             self.getTabByName("General").layout().insertWidget(1, self.gb_installHub)
 
+        self.gb_mediaPlayers = PrismWidgets.MediaPlayersWidget(self)
+        self.lo_miscellaneousTab.insertWidget(self.lo_miscellaneousTab.count() - 1, self.gb_mediaPlayers)
+
         self.refreshIcons()
         self.refreshCategories()
         policy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
@@ -595,10 +599,7 @@ class UserSettings(QDialog, UserSettings_ui.Ui_dlg_UserSettings):
 
         self.b_startTray.clicked.connect(self.startTray)
         self.chb_trayStartup.toggled.connect(self.onTrayChanged)
-        self.b_browseMediaPlayer.clicked.connect(lambda: self.browse("mediaPlayer", getFile=True))
-        self.b_browseMediaPlayer.customContextMenuRequested.connect(
-            lambda: self.core.openFolder(self.e_mediaPlayerPath.text())
-        )
+        self.b_protocolHandler.clicked.connect(self.onProtocolHandlerClicked)
         self.tw_plugins.customContextMenuRequested.connect(self.rclPluginList)
         self.b_managePlugins.clicked.connect(self.managePluginsDlg)
         self.b_loadPlugin.clicked.connect(self.loadExternalPlugin)
@@ -840,14 +841,12 @@ class UserSettings(QDialog, UserSettings_ui.Ui_dlg_UserSettings):
             ][0]
             cData["useLocalFiles"][self.core.projectName] = useLocal
 
-        mpPath = self.core.fixPath(self.e_mediaPlayerPath.text())
-        cData["globals"]["mediaPlayerName"] = self.e_mediaPlayerName.text()
-        cData["globals"]["mediaPlayerPath"] = mpPath
-        cData["globals"]["mediaPlayerFramePattern"] = self.chb_mediaPlayerPattern.isChecked()
+        cData["globals"]["mediaPlayers"] = self.gb_mediaPlayers.getPlayerData()
         cData["globals"]["showonstartup"] = self.chb_browserStartup.isChecked()
         cData["globals"]["useMediaThumbnails"] = self.chb_mediaThumbnails.isChecked()
         cData["globals"]["autosave"] = self.chb_autosave.isChecked()
         cData["globals"]["capture_viewport"] = self.chb_captureViewport.isChecked()
+        cData["globals"]["capture_viewport_products"] = self.chb_captureViewportProduct.isChecked()
         cData["globals"]["send_error_reports"] = self.chb_errorReports.isChecked()
         cData["globals"]["debug_mode"] = self.chb_debug.isChecked()
         cData["globals"]["standalone_stylesheet"] = self.cb_styleSheet.currentData().get("name", "")
@@ -987,26 +986,41 @@ class UserSettings(QDialog, UserSettings_ui.Ui_dlg_UserSettings):
             if "capture_viewport" in gblData:
                 self.chb_captureViewport.setChecked(gblData["capture_viewport"])
 
+            if "capture_viewport_products" in gblData:
+                self.chb_captureViewportProduct.setChecked(gblData["capture_viewport_products"])
+
             if "send_error_reports" in gblData:
                 self.chb_errorReports.setChecked(gblData["send_error_reports"])
 
             if "debug_mode" in gblData:
                 self.chb_debug.setChecked(gblData["debug_mode"])
 
-            if "mediaPlayerName" in gblData:
-                self.e_mediaPlayerName.setText(gblData["mediaPlayerName"])
+            if "mediaPlayers" in gblData:
+                val = gblData["mediaPlayers"]
+                if val:
+                    self.gb_mediaPlayers.loadPlayerData(val)
+            else:
+                name = None
+                path = None
+                understandsFramepattern = None
+                if "mediaPlayerName" in gblData:
+                    name = gblData["mediaPlayerName"]
 
-            if "rvpath" in gblData:
-                self.e_mediaPlayerPath.setText(gblData["rvpath"])
+                if "rvpath" in gblData:
+                    path = gblData["rvpath"]
 
-            if "djvpath" in gblData:
-                self.e_mediaPlayerPath.setText(gblData["djvpath"])
+                if "djvpath" in gblData:
+                    path = gblData["djvpath"]
 
-            if "mediaPlayerPath" in gblData:
-                self.e_mediaPlayerPath.setText(gblData["mediaPlayerPath"])
+                if "mediaPlayerPath" in gblData:
+                    path = gblData["mediaPlayerPath"]
 
-            if "mediaPlayerFramePattern" in gblData:
-                self.chb_mediaPlayerPattern.setChecked(gblData["mediaPlayerFramePattern"])
+                if "mediaPlayerFramePattern" in gblData:
+                    understandsFramepattern = gblData["mediaPlayerFramePattern"]
+
+                if name is not None and path is not None and understandsFramepattern is not None:
+                    data = [{"name": name, "path": path, "understandsFramepattern": understandsFramepattern}]
+                    self.gb_mediaPlayers.loadPlayerData(data)
 
             dccData = configData.get("dccoverrides", {})
             for i in self.exOverridePlugins:
@@ -1452,6 +1466,14 @@ class UserSettings(QDialog, UserSettings_ui.Ui_dlg_UserSettings):
             command = "bash %s/Tools/PrismTray.sh" % self.core.prismLibs
 
         subprocess.Popen(command, shell=True)
+
+    @err_catcher(name=__name__)
+    def onProtocolHandlerClicked(self):
+        result = self.core.registerPrismProtocolHandler()
+        if result:
+            self.core.popup("Installed Protocol Handler successfully.", severity="info")
+        else:
+            self.core.popup("Failed to install Protocol Handler.")
 
     @err_catcher(name=__name__)
     def onImportSettingsClicked(self):

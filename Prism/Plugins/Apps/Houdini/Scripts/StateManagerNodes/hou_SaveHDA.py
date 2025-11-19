@@ -168,11 +168,18 @@ class SaveHDAClass(hou_Export.ExportClass):
                 "label": "Open in Explorer...",
                 "callback": lambda: self.core.openFolder(path)
             },
-            {
+        ]
+        if os.getenv("PRISM_COPY_FILE_CONTENT", "0") == "1":
+            options.append({
                 "label": "Copy",
                 "callback": lambda: self.core.copyToClipboard(path, file=True)
-            },
-        ]
+            })
+        else:
+            options.append({
+                "label": "Copy Path",
+                "callback": lambda: self.core.copyToClipboard(path, file=False)
+            })
+
         return options
 
     @err_catcher(name=__name__)
@@ -274,6 +281,7 @@ class SaveHDAClass(hou_Export.ExportClass):
         )
 
         self.nameChanged(self.e_name.text())
+        self.w_comment.setHidden(not self.stateManager.useStateComments())
 
     @classmethod
     @err_catcher(name=__name__)
@@ -373,7 +381,7 @@ class SaveHDAClass(hou_Export.ExportClass):
     def getOutputName(self, useVersion="next"):
         version = useVersion if useVersion != "next" else None
         user = None
-        comment = self.stateManager.publishComment
+        comment = self.getComment()
 
         result = self.core.appPlugin.getHDAOutputpath(
             node=self.node,
@@ -411,7 +419,7 @@ class SaveHDAClass(hou_Export.ExportClass):
         details["version"] = hVersion
         details["sourceScene"] = fileName
         details["product"] = self.getProductname()
-        details["comment"] = self.stateManager.publishComment
+        details["comment"] = self.getComment()
 
         self.core.saveVersionInfo(
             filepath=os.path.dirname(outputName),

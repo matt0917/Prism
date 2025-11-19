@@ -59,7 +59,7 @@ def err_handler(func, name="", plugin=False):
                 core = args[0].core
             else:
                 core = None
-                logger.warning("class has no core")
+                logger.warning("object %s has no core" % args[0])
 
             data = {}
             versionStr = ""
@@ -74,7 +74,7 @@ def err_handler(func, name="", plugin=False):
                     data["appPlugin"],
                     data["appPluginVersion"],
                 )
-            if hasattr(args[0], "plugin"):
+            if getattr(args[0], "plugin", None):
                 data["plugin"] = args[0].plugin.pluginName
                 data["pluginVersion"] = args[0].plugin.version
                 versionStr += "\nPlugin: %s %s" % (

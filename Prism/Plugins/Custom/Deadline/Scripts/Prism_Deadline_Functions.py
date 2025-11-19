@@ -105,7 +105,7 @@ if context.get("type") == "asset":
 else:
     base = "@sequence@-@shot@"
 
-template = base + "_@product@@identifier@_@version@@_(comment)@"]"""
+template = base + "_@product@@identifier@_@version@@_(layer)@@_(comment)@"]"""
 
         data = {"label": "Deadline Job Name", "key": "@deadline_job_name@", "value": dft, "requires": []}
         self.core.projects.addProjectStructureItem("deadlineJobName", data)
@@ -267,6 +267,19 @@ template = base + "_@product@@identifier@_@version@@_(comment)@"]"""
         settings.gb_dlPoolPresets.refresh()
 
     @err_catcher(name=__name__)
+    def getDeadlineUsername(self):
+        name = self.CallDeadlineCommand(["-GetCurrentUserName"], silent=True)
+        return name
+
+    @err_catcher(name=__name__)
+    def onSubmitPythonJobClicked(self, settings):
+        if hasattr(self, "dlg_pythonJob") and self.dlg_pythonJob.isVisible():
+            self.dlg_pythonJob.close()
+
+        self.dlg_pythonJob = SubmitPythonJobDlg(self, parent=settings)
+        self.dlg_pythonJob.show()
+
+    @err_catcher(name=__name__)
     def projectSettings_loadUI(self, origin):
         self.addUiToProjectSettings(origin)
 
@@ -300,6 +313,20 @@ template = base + "_@product@@identifier@_@version@@_(comment)@"]"""
         projectSettings.lo_refreshPools.addWidget(projectSettings.b_refreshPools)
         lo_deadline.addWidget(projectSettings.w_refreshPools)
 
+        projectSettings.w_submitPythonJob = QWidget()
+        projectSettings.lo_submitPythonJob = QHBoxLayout(projectSettings.w_submitPythonJob)
+        projectSettings.lo_submitPythonJob.addStretch()
+        projectSettings.b_submitPythonJob = QPushButton("Submit Python Job...")
+        projectSettings.b_submitPythonJob.clicked.connect(lambda: self.onSubmitPythonJobClicked(projectSettings))
+        projectSettings.lo_submitPythonJob.addWidget(projectSettings.b_submitPythonJob)
+        lo_deadline.addWidget(projectSettings.w_submitPythonJob)
+
+        projectSettings.tw_dlenvs = EnvironmentTable(self)
+        projectSettings.tw_dlenvs.setMaximumHeight(160)
+        projectSettings.tw_dlenvs.w_footer.setHidden(True)
+        projectSettings.tw_dlenvs.tw_environment.horizontalHeader().setVisible(False)
+        lo_deadline.addWidget(projectSettings.tw_dlenvs)
+
         sp_stretch = QSpacerItem(0, 0, QSizePolicy.Fixed, QSizePolicy.Expanding)
         lo_deadline.addItem(sp_stretch)
         projectSettings.addTab(projectSettings.w_deadline, "Deadline")
@@ -327,6 +354,11 @@ template = base + "_@product@@identifier@_@version@@_(comment)@"]"""
                 if val:
                     origin.gb_dlPoolPresets.loadPresetData(val)
 
+            if "jobEnvVars" in settings["deadline"]:
+                val = settings["deadline"]["jobEnvVars"]
+                if val:
+                    origin.tw_dlenvs.loadEnvironmant(val)
+
     @err_catcher(name=__name__)
     def preProjectSettingsSave(self, origin, settings):
         if "deadline" not in settings:
@@ -335,11 +367,18 @@ template = base + "_@product@@identifier@_@version@@_(comment)@"]"""
             settings["deadline"]["useScriptDependencies"] = origin.chb_scriptDeps.isChecked()
             settings["deadline"]["usePoolPresets"] = origin.gb_dlPoolPresets.isChecked()
             settings["deadline"]["poolPresets"] = origin.gb_dlPoolPresets.getPresetData()
+            settings["deadline"]["jobEnvVars"] = origin.tw_dlenvs.getEnvironmentVariables()
 
     @err_catcher(name=__name__)
     def useScriptDependencies(self):
         return self.core.getConfig(
             "deadline", "useScriptDependencies", dft=False, config="project"
+        )
+
+    @err_catcher(name=__name__)
+    def getJobEnvVars(self):
+        return self.core.getConfig(
+            "deadline", "jobEnvVars", dft=False, config="project"
         )
 
     @err_catcher(name=__name__)
@@ -349,8 +388,9 @@ template = base + "_@product@@identifier@_@version@@_(comment)@"]"""
 
     @err_catcher(name=__name__)
     def postPublish(self, origin, pubType, result):
-        origin.submittedDlJobs = {}
-        origin.submittedDlJobData = {}
+        pass
+        # origin.submittedDlJobs = {}
+        # origin.submittedDlJobData = {}
 
     @err_catcher(name=__name__)
     def sm_updateDlDeps(self, origin, item, column):
@@ -985,6 +1025,10 @@ template = base + "_@product@@identifier@_@version@@_(comment)@"]"""
         return warnings
 
     @err_catcher(name=__name__)
+    def sm_dep_managerChanged(self, origin):
+        self.reloadStateUi(origin)
+
+    @err_catcher(name=__name__)
     def sm_houRender_updateUI(self, origin):
         showGPUsettings = (
             origin.node is not None and origin.node.type().name() == "Redshift_ROP"
@@ -1065,6 +1109,14 @@ template = base + "_@product@@identifier@_@version@@_(comment)@"]"""
         origin.refreshSubmitUi()
 
     @err_catcher(name=__name__)
+    def sm_export_managerChanged(self, origin):
+        self.reloadStateUi(origin)
+        getattr(self.core.appPlugin, "sm_export_managerChanged", lambda x, y: None)(
+            origin, False
+        )
+        origin.refreshSubmitUi()
+
+    @err_catcher(name=__name__)
     def sm_render_preExecute(self, origin):
         warnings = []
 
@@ -1073,11 +1125,14 @@ template = base + "_@product@@identifier@_@version@@_(comment)@"]"""
     @err_catcher(name=__name__)
     def getCurrentSceneFiles(self, origin):
         curFileName = self.core.getCurrentFileName()
+        if not curFileName:
+            return []
+
         scenefiles = [curFileName]
         return scenefiles
 
     @err_catcher(name=__name__)
-    def getJobName(self, details=None, origin=None):
+    def getJobName(self, details=None, origin=None, quiet=False):
         scenefileName = os.path.splitext(self.core.getCurrentFileName(path=False))[0]
         details = details or {}
         context = details.copy()
@@ -1088,7 +1143,11 @@ template = base + "_@product@@identifier@_@version@@_(comment)@"]"""
             except:
                 pass
 
-        jobName = self.core.projects.getResolvedProjectStructurePath("deadlineJobName", context=context, fallback="")
+        jobName = self.core.projects.getResolvedProjectStructurePath("deadlineJobName", context=context, fallback="") or ""
+        if not jobName and not quiet:
+            logger.warning("invalid Deadline jobname: %s" % context)
+            self.core.popup("Empty Deadline jobname.\nCheck your Deadline jobname template in the Project Settings.")
+
         return jobName
 
     @err_catcher(name=__name__)
@@ -1592,7 +1651,9 @@ path = r\"%s\"
         if self.useScriptDependencies():
             dep = [{"offset": 0, "filepath": jobOutputFile, "type": "file"}]
         else:
-            dep = [{"jobids": [jobId], "type": "job"}]
+            dep = []
+            if jobId:
+                dep.append({"jobids": [jobId], "type": "job"})
 
         args = [jobOutputFile, jobOutputFileOrig]
         if self.core.getConfig(
@@ -1648,7 +1709,9 @@ path = r\"%s\"
         if self.useScriptDependencies():
             nsiDep = [{"offset": 0, "filepath": jobOutputFile, "type": "file"}]
         else:
-            nsiDep = [{"jobids": [jobId], "type": "job"}]
+            nsiDep = []
+            if jobId:
+                nsiDep.append({"jobids": [jobId], "type": "job"})
 
         dlpath = os.getenv("DELIGHT")
         environment = [["DELIGHT", dlpath]]
@@ -1730,7 +1793,9 @@ path = r\"%s\"
         if self.useScriptDependencies():
             rsDep = [{"offset": 0, "filepath": jobOutputFile, "type": "file"}]
         else:
-            rsDep = [{"jobids": [jobId], "type": "job"}]
+            rsDep = []
+            if jobId:
+                rsDep.append({"jobids": [jobId], "type": "job"})
 
         args = [jobOutputFile, jobOutputFileOrig]
         gpusPerTask = origin.sp_dlGPUpt.value()
@@ -1788,7 +1853,9 @@ path = r\"%s\"
         if self.useScriptDependencies():
             rsDep = [{"offset": 0, "filepath": jobOutputFile, "type": "file"}]
         else:
-            rsDep = [{"jobids": [jobId], "type": "job"}]
+            rsDep = []
+            if jobId:
+                rsDep.append({"jobids": [jobId], "type": "job"})
 
         args = [jobOutputFile, jobOutputFileOrig]
         if self.core.getConfig(
@@ -1842,7 +1909,9 @@ path = r\"%s\"
         if self.useScriptDependencies():
             rsDep = [{"offset": 0, "filepath": jobOutputFile, "type": "file"}]
         else:
-            rsDep = [{"jobids": [jobId], "type": "job"}]
+            rsDep = []
+            if jobId:
+                rsDep.append({"jobids": [jobId], "type": "job"})
 
         args = [jobOutputFile, jobOutputFileOrig]
         if self.core.getConfig(
@@ -1933,7 +2002,7 @@ path = r\"%s\"
     def submitPythonJob(
         self,
         code="",
-        version="3.11",
+        version="3.13",
         jobName=None,
         jobOutput=None,
         jobPool="None",
@@ -1954,6 +2023,8 @@ path = r\"%s\"
         args=None,
         state=None,
         extraFiles=None,
+        submitScenefile=False,
+        userName=None,
     ):
         homeDir = (
             self.CallDeadlineCommand(["-GetCurrentUserHomeDirectory"])
@@ -1970,7 +2041,7 @@ path = r\"%s\"
             ].strip("_")
 
         scriptFile = os.path.join(
-            homeDir, "temp", "%s_%s.py" % (jobName, int(time.time()))
+            homeDir, "temp", "%s_%s.py" % (jobName.replace(":", "_").split("/")[-1].split("\\")[-1], int(time.time()))
         )
         with open(scriptFile, "w") as f:
             f.write(code)
@@ -1991,6 +2062,9 @@ path = r\"%s\"
         jobInfos["MachineLimit"] = jobMachineLimit
         jobInfos["Frames"] = frames
         jobInfos["ChunkSize"] = jobFramesPerTask
+        if userName:
+            jobInfos["UserName"] = userName
+
         for idx, env in enumerate(environment):
             self.addEnvironmentItem(jobInfos, env[0], env[1])
 
@@ -2067,8 +2141,9 @@ path = r\"%s\"
         arguments.append(dlParams["jobInfoFile"])
         arguments.append(dlParams["pluginInfoFile"])
         arguments.append(scriptFile)
-        for i in getattr(self.core.appPlugin, "getCurrentSceneFiles", self.getCurrentSceneFiles)(self):
-            arguments.append(i)
+        if submitScenefile:
+            for i in getattr(self.core.appPlugin, "getCurrentSceneFiles", self.getCurrentSceneFiles)(self):
+                arguments.append(i)
 
         if "dependencyFile" in locals():
             arguments.append(dependencyFile)
@@ -3149,7 +3224,349 @@ path = r\"%s\"
         return result
 
     @err_catcher(name=__name__)
+    def submitMayaJob(
+        self,
+        jobName=None,
+        jobOutput=None,
+        jobPool="None",
+        jobSndPool="None",
+        jobGroup="None",
+        jobPrio=50,
+        jobTimeOut=180,
+        jobMachineLimit=0,
+        jobFramesPerTask=1,
+        jobConcurrentTasks=None,
+        jobComment=None,
+        jobBatchName=None,
+        frames="1",
+        suspended=False,
+        dependencies=None,
+        jobDependencies=None,
+        environment=None,
+        args=None,
+        state=None,
+        version=None,
+        script=None,
+        extraFiles=None,
+    ):
+        homeDir = (
+            self.CallDeadlineCommand(["-GetCurrentUserHomeDirectory"])
+        )
+
+        if homeDir is False:
+            return "Execute Canceled: Deadline is not installed"
+
+        homeDir = homeDir.replace("\r", "").replace("\n", "")
+
+        if not jobName:
+            jobName = os.path.splitext(self.core.getCurrentFileName(path=False))[
+                0
+            ].strip("_")
+
+        environment = environment or []
+        environment.insert(0, ["prism_project", self.core.prismIni.replace("\\", "/")])
+
+        # Create submission info file
+
+        jobInfos = {}
+        pluginInfos = {}
+
+        jobInfos["Name"] = jobName
+        jobInfos["Pool"] = jobPool
+        jobInfos["SecondaryPool"] = jobSndPool
+        jobInfos["Group"] = jobGroup
+        jobInfos["Priority"] = jobPrio
+        jobInfos["TaskTimeoutMinutes"] = jobTimeOut
+        jobInfos["MachineLimit"] = jobMachineLimit
+        jobInfos["Frames"] = frames
+        jobInfos["ChunkSize"] = jobFramesPerTask
+        for idx, env in enumerate(environment):
+            self.addEnvironmentItem(jobInfos, env[0], env[1])
+
+        if os.getenv("PRISM_LAUNCH_ENV"):
+            envData = self.core.configs.readJson(data=os.getenv("PRISM_LAUNCH_ENV"))
+            for item in envData.items():
+                self.addEnvironmentItem(jobInfos, item[0], item[1])
+
+        jobInfos["Plugin"] = "MayaBatch"
+        jobInfos["Comment"] = jobComment or "Prism-Submission-Maya"
+
+        if jobOutput:
+            jobInfos["OutputFilename0"] = jobOutput
+            pluginInfos["OutputFilePath"] = os.path.split(
+                jobInfos["OutputFilename0"]
+            )[0]
+            pluginInfos["OutputFilePrefix"] = os.path.splitext(
+                os.path.basename(jobInfos["OutputFilename0"])
+            )[0].strip("#.")
+
+            import maya.app.renderSetup.model.renderSetup as renderSetup
+
+            render_setup = renderSetup.instance()
+            rlayers = render_setup.getRenderLayers()
+
+            if rlayers:
+                prefixBase = os.path.splitext(
+                    os.path.basename(jobInfos["OutputFilename0"])
+                )[0].strip("#.")
+                passName = prefixBase.split("_")[-1]
+                pluginInfos["OutputFilePrefix"] = os.path.join(
+                    "..", "..", passName, prefixBase
+                )
+
+        if suspended:
+            jobInfos["InitialStatus"] = "Suspended"
+
+        if jobConcurrentTasks:
+            jobInfos["ConcurrentTasks"] = jobConcurrentTasks
+
+        if jobBatchName:
+            jobInfos["BatchName"] = jobBatchName
+
+        if dependencies:
+            depType = dependencies[0]["type"]
+            jobInfos["IsFrameDependent"] = "false" if depType == "job" else "true"
+            if depType in ["job", "frame"]:
+                jobids = []
+                for dep in dependencies:
+                    jobids += dep["jobids"]
+
+                jobInfos["JobDependencies"] = ",".join(jobids)
+            elif depType == "file":
+                jobInfos["ScriptDependencies"] = os.path.abspath(
+                    os.path.join(os.path.dirname(__file__), "DeadlineDependency.py")
+                )
+
+        if jobDependencies:
+            jobInfos["JobDependencies"] = ",".join(jobDependencies)
+
+        # Create plugin info file
+    
+        pluginInfos["IgnoreInputs"] = "False"
+        if not version and self.core.appPlugin.pluginName == "Maya":
+            version = self.core.appPlugin.getProgramVersion()
+
+        if version:
+            pluginInfos["Version"] = str(version)
+    
+        pluginInfos["Arguments"] = "<STARTFRAME> <ENDFRAME>"
+        if args:
+            pluginInfos["Arguments"] += " " + " ".join(args)
+
+        dlParams = {
+            "jobInfos": jobInfos,
+            "pluginInfos": pluginInfos,
+            "jobInfoFile": os.path.join(homeDir, "temp", "maya_job_info.job"),
+            "pluginInfoFile": os.path.join(homeDir, "temp", "maya_plugin_info.job"),
+        }
+
+        if dependencies and dependencies[0]["type"] == "file":
+            dependencyFile = os.path.join(homeDir, "temp", "dependencies.txt")
+            fileHandle = open(dependencyFile, "w")
+
+            for dependency in dependencies:
+                fileHandle.write(str(dependency["offset"]) + "\n")
+                fileHandle.write(str(dependency["filepath"]) + "\n")
+
+            fileHandle.close()
+
+        arguments = []
+        arguments.append(dlParams["jobInfoFile"])
+        arguments.append(dlParams["pluginInfoFile"])
+        for i in getattr(self.core.appPlugin, "getCurrentSceneFiles", self.getCurrentSceneFiles)(self):
+            arguments.append(i)
+
+        if script:
+            pluginInfos["ScriptJob"] = True
+            scriptPath = os.path.join(homeDir, "temp", "mayaScriptJob.py")
+            with open(scriptPath, "w") as f:
+                f.write(script)
+
+            pluginInfos["SceneFile"] = arguments[-1]
+            arguments.append(scriptPath)
+            pluginInfos["ScriptFilename"] = "mayaScriptJob.py"
+
+        if "dependencyFile" in locals():
+            arguments.append(dependencyFile)
+
+        if extraFiles:
+            arguments += extraFiles
+
+        result = self.deadlineSubmitJob(jobInfos, pluginInfos, arguments)
+        if state:
+            self.registerSubmittedJob(state, result, dlParams)
+
+        return result
+
+    @err_catcher(name=__name__)
+    def submitKarmaJob(
+        self,
+        jobName=None,
+        jobOutput=None,
+        jobPool="None",
+        jobSndPool="None",
+        jobGroup="None",
+        jobPrio=50,
+        jobTimeOut=180,
+        jobMachineLimit=0,
+        jobFramesPerTask=1,
+        jobConcurrentTasks=None,
+        jobComment=None,
+        jobBatchName=None,
+        frames="1",
+        suspended=False,
+        dependencies=None,
+        archivefile=None,
+        environment=None,
+        args=None,
+        cleanupScript=None,
+        state=None,
+        jobInfos=None,
+        pluginInfos=None,
+    ):
+        homeDir = (
+            self.CallDeadlineCommand(["-GetCurrentUserHomeDirectory"])
+        )
+
+        if homeDir is False:
+            return "Execute Canceled: Deadline is not installed"
+
+        homeDir = homeDir.replace("\r", "").replace("\n", "")
+
+        if not jobName:
+            jobName = os.path.splitext(self.core.getCurrentFileName(path=False))[
+                0
+            ].strip("_")
+
+        environment = environment or []
+        environment.insert(0, ["prism_project", self.core.prismIni.replace("\\", "/")])
+
+        # Create submission info file
+
+        jobInfos = jobInfos or {}
+
+        jobInfos["Name"] = jobName
+        jobInfos["Pool"] = jobPool
+        jobInfos["SecondaryPool"] = jobSndPool
+        jobInfos["Group"] = jobGroup
+        jobInfos["Priority"] = jobPrio
+        jobInfos["TaskTimeoutMinutes"] = jobTimeOut
+        jobInfos["MachineLimit"] = jobMachineLimit
+        jobInfos["Frames"] = frames
+        jobInfos["ChunkSize"] = jobFramesPerTask
+        for idx, env in enumerate(environment):
+            self.addEnvironmentItem(jobInfos, env[0], env[1])
+
+        if os.getenv("PRISM_LAUNCH_ENV"):
+            envData = self.core.configs.readJson(data=os.getenv("PRISM_LAUNCH_ENV"))
+            for item in envData.items():
+                self.addEnvironmentItem(jobInfos, item[0], item[1])
+
+        jobInfos["Plugin"] = "Karma"
+        jobInfos["Comment"] = jobComment or "Prism-Submission-Karma"
+
+        if jobOutput:
+            jobInfos["OutputFilename0"] = jobOutput
+
+        if suspended:
+            jobInfos["InitialStatus"] = "Suspended"
+
+        if jobConcurrentTasks:
+            jobInfos["ConcurrentTasks"] = jobConcurrentTasks
+
+        if jobBatchName:
+            jobInfos["BatchName"] = jobBatchName
+
+        if dependencies:
+            depType = dependencies[0]["type"]
+            jobInfos["IsFrameDependent"] = "false" if depType == "job" else "true"
+            if depType in ["job", "frame"]:
+                jobids = []
+                for dep in dependencies:
+                    jobids += dep["jobids"]
+
+                jobInfos["JobDependencies"] = ",".join(jobids)
+            elif depType == "file":
+                jobInfos["ScriptDependencies"] = os.path.abspath(
+                    os.path.join(os.path.dirname(__file__), "DeadlineDependency.py")
+                )
+
+        # Create plugin info file
+
+        pluginInfos = pluginInfos or {}
+
+        startFrame = frames.split("-")[0].split(",")[0]
+        paddedStartFrame = str(startFrame).zfill(self.core.framePadding)
+        pluginInfos["SceneFile"] = archivefile.replace(
+            "#" * self.core.framePadding, paddedStartFrame
+        )
+        if jobOutput:
+            pluginInfos["OutputFile"] = jobOutput
+
+        dlParams = {
+            "jobInfos": jobInfos,
+            "pluginInfos": pluginInfos,
+            "jobInfoFile": os.path.join(homeDir, "temp", "karma_plugin_info.job"),
+            "pluginInfoFile": os.path.join(homeDir, "temp", "karma_job_info.job"),
+        }
+
+        if dependencies and dependencies[0]["type"] == "file":
+            dependencyFile = os.path.join(homeDir, "temp", "dependencies.txt")
+            fileHandle = open(dependencyFile, "w")
+
+            for dependency in dependencies:
+                fileHandle.write(str(dependency["offset"]) + "\n")
+                fileHandle.write(str(dependency["filepath"]) + "\n")
+
+            fileHandle.close()
+
+        arguments = []
+        arguments.append(dlParams["jobInfoFile"])
+        arguments.append(dlParams["pluginInfoFile"])
+
+        if "dependencyFile" in locals():
+            arguments.append(dependencyFile)
+
+        result = self.deadlineSubmitJob(jobInfos, pluginInfos, arguments)
+        if state:
+            self.registerSubmittedJob(state, result, dlParams)
+
+        if cleanupScript:
+            jobName = jobName.rsplit("_", 1)[0]
+            arguments = [args[0]]
+            depId = self.getJobIdFromSubmitResult(result)
+            if depId:
+                cleanupDep = [depId]
+            else:
+                cleanupDep = None
+
+            result = self.submitCleanupScript(
+                jobName=jobName,
+                jobPool=jobPool,
+                jobSndPool=jobSndPool,
+                jobGroup=jobGroup,
+                jobPrio=jobPrio,
+                jobTimeOut=jobTimeOut,
+                jobMachineLimit=jobMachineLimit,
+                jobComment=jobComment,
+                jobBatchName=jobBatchName,
+                suspended=suspended,
+                jobDependencies=cleanupDep,
+                environment=environment,
+                cleanupScript=cleanupScript,
+                arguments=arguments,
+                state=state,
+            )
+
+        return result
+
+    @err_catcher(name=__name__)
     def deadlineSubmitJob(self, jobInfos, pluginInfos, arguments):
+        envVars = self.getJobEnvVars()
+        if envVars:
+            for key in envVars:
+                self.addEnvironmentItem(jobInfos, key, envVars[key])
+
         self.core.callback(
             name="preSubmit_Deadline",
             args=[self, jobInfos, pluginInfos, arguments],
@@ -3177,7 +3594,7 @@ path = r\"%s\"
             logger.warning(jobResult)
 
         self.core.callback(name="postSubmit_Deadline", args=[self, jobResult, jobInfos, pluginInfos, arguments],)
-
+        logger.debug("submitted job: %s - %s - %s - %s" % (jobInfos, pluginInfos, arguments, jobResult))
         return jobResult
 
     @err_catcher(name=__name__)
@@ -3413,3 +3830,234 @@ class PresetItem(QWidget):
         idx = self.cb_group.findText(group)
         if idx != -1:
             self.cb_group.setCurrentIndex(idx)
+
+
+class SubmitPythonJobDlg(QDialog):
+    def __init__(self, origin, parent=None):
+        super(SubmitPythonJobDlg, self).__init__()
+        self.plugin = origin
+        self.core = self.plugin.core
+        self.core.parentWindow(self, parent=parent)
+        self.setupUi()
+
+    def sizeHint(self):
+        return QSize(1000, 800)
+
+    @err_catcher(name=__name__)
+    def setupUi(self):
+        self.lo_main = QVBoxLayout(self)
+        self.te_text = QTextEdit()
+        dft = """import sys
+sys.path.append(r"%s/Scripts")
+import PrismCore
+pcore = PrismCore.create(prismArgs=["noUI", "loadProject"])
+print(pcore)
+""" % self.core.prismRoot.replace("\\", "/")
+
+        self.te_text.setText(dft)
+        self.lo_main.addWidget(self.te_text)
+        self.core.pythonHighlighter(self.te_text.document())
+
+        self.bb_main = QDialogButtonBox()
+        self.b_submit = self.bb_main.addButton("Submit", QDialogButtonBox.AcceptRole)
+        if os.getenv("PRISM_CODE_EDITOR"):
+            self.b_openExternal = self.bb_main.addButton("Open in External Editor...", QDialogButtonBox.AcceptRole)
+            self.b_openExternal.clicked.connect(self.openInExternalEditor)
+
+        self.bb_main.addButton("Close", QDialogButtonBox.RejectRole)
+        self.b_submit.clicked.connect(lambda: self.onAccepted("submit"))
+        self.bb_main.rejected.connect(self.reject)
+        self.lo_main.addWidget(self.bb_main)
+
+        self.setWindowTitle("Submit Python Script")
+
+    @err_catcher(name=__name__)
+    def openInExternalEditor(self):
+        exe = os.getenv("PRISM_CODE_EDITOR")
+        if not exe:
+            self.core.popup("Invalid code editor executable.")
+            return
+
+        text = self.layer.ExportToString()
+        import tempfile, subprocess
+        file = tempfile.NamedTemporaryFile(prefix="prism_", suffix=".py")
+        tmpPath = file.name
+        file.close()
+        with open(tmpPath, "w") as f:
+            f.write(text)
+
+        args = [exe, tmpPath]
+        logger.debug("opening external editor: %s" % args)
+        subprocess.call(args)
+
+        with open(tmpPath, "r") as f:
+            newText = f.read()
+
+        try:
+            os.remove(tmpPath)
+        except:
+            pass
+
+        self.te_text.setText(newText)
+
+    @err_catcher(name=__name__)
+    def onAccepted(self, mode):
+        pythonCode = self.te_text.toPlainText()
+        if mode == "submit":
+            with self.core.waitPopup(self.core, "Submitting Job. Please wait..."):
+                result = self.plugin.submitPythonJob(pythonCode)
+
+            if "Result=Success" in result:
+                self.core.popup("Submitted Publish Successfully.", severity="info")
+            else:
+                self.core.popup("Failed to Submit Publish:\n\n%s" % result)
+
+
+class EnvironmentTable(QWidget):
+    def __init__(self, parent):
+        super(EnvironmentTable, self).__init__()
+        self.plugin = parent.plugin
+        self.core = self.plugin.core
+        self.setupUI()
+
+    @err_catcher(name=__name__)
+    def setupUI(self):
+        self.lo_main = QVBoxLayout()
+        self.lo_main.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(self.lo_main)
+
+        self.tw_environment = QTableWidget()
+        self.l_header = QLabel("Job Environment Variables:")
+        self.lo_main.addWidget(self.l_header)
+        self.lo_main.addWidget(self.tw_environment)
+        self.w_footer = QWidget()
+        self.lo_footer = QHBoxLayout()
+        self.w_footer.setLayout(self.lo_footer)
+        self.lo_main.addWidget(self.w_footer)
+        self.lo_footer.addStretch()
+        self.b_showEnvironment = QPushButton("Show current environment")
+        self.lo_footer.addWidget(self.b_showEnvironment)
+        self.tw_environment.setColumnCount(2)
+        self.tw_environment.horizontalHeader().setStretchLastSection(True)
+        self.tw_environment.horizontalHeader().setHighlightSections(False)
+        self.tw_environment.verticalHeader().setVisible(False)
+        self.tw_environment.setHorizontalHeaderLabels(["Variable", "Value"])
+        self.tw_environment.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.tw_environment.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.tw_environment.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tw_environment.customContextMenuRequested.connect(self.rclEnvironment)
+        self.addEnvironmentRow()
+        self.tw_environment.resizeColumnsToContents()
+        self.b_showEnvironment.clicked.connect(self.showEnvironment)
+
+    @err_catcher(name=__name__)
+    def rclEnvironment(self, pos):
+        rcmenu = QMenu(self)
+
+        exp = QAction("Add row", self)
+        exp.triggered.connect(self.addEnvironmentRow)
+        rcmenu.addAction(exp)
+
+        item = self.tw_environment.itemFromIndex(self.tw_environment.indexAt(pos))
+        if item:
+            exp = QAction("Remove", self)
+            exp.triggered.connect(lambda: self.removeEnvironmentRow(item.row()))
+            rcmenu.addAction(exp)
+
+        rcmenu.exec_(QCursor.pos())
+
+    @err_catcher(name=__name__)
+    def addEnvironmentRow(self, variable=None, value=None):
+        count = self.tw_environment.rowCount()
+        self.tw_environment.insertRow(count)
+        if variable is None:
+            variable = "< doubleclick to edit >"
+
+        if value is None:
+            value = "< doubleclick to edit >"
+
+        item = QTableWidgetItem(variable)
+        self.tw_environment.setItem(count, 0, item)
+        item = QTableWidgetItem(value)
+        self.tw_environment.setItem(count, 1, item)
+
+    @err_catcher(name=__name__)
+    def removeEnvironmentRow(self, idx):
+        self.tw_environment.removeRow(idx)
+
+    @err_catcher(name=__name__)
+    def addEnvs(self, envs):
+        for key in envs:
+            self.addEnvironmentRow(variable=key, value=envs[key])
+
+        self.tw_environment.resizeColumnsToContents()
+
+    @err_catcher(name=__name__)
+    def showEnvironment(self):
+        self.w_env = EnvironmentWidget(self)
+        self.w_env.show()
+
+    @err_catcher(name=__name__)
+    def getEnvironmentVariables(self):
+        variables = {}
+        dft = "< doubleclick to edit >"
+        for idx in range(self.tw_environment.rowCount()):
+            key = self.tw_environment.item(idx, 0).text()
+            if not key or key == dft:
+                continue
+
+            value = self.tw_environment.item(idx, 1).text()
+            if value == dft:
+                continue
+
+            variables[key] = value
+
+        return variables
+
+    @err_catcher(name=__name__)
+    def loadEnvironmant(self, variables):
+        self.tw_environment.setRowCount(0)
+        for idx, key in enumerate(sorted(variables)):
+            self.tw_environment.insertRow(idx)
+            item = QTableWidgetItem(key)
+            self.tw_environment.setItem(idx, 0, item)
+            item = QTableWidgetItem(variables[key])
+            self.tw_environment.setItem(idx, 1, item)
+
+
+class EnvironmentWidget(QDialog):
+    def __init__(self, parent):
+        super(EnvironmentWidget, self).__init__()
+        self.parent = parent
+        self.core = self.parent.core
+        self.core.parentWindow(self, parent=self.parent)
+        self.setupUi()
+        self.refreshEnvironment()
+
+    def sizeHint(self):
+        return QSize(1000, 700)
+
+    def setupUi(self):
+        self.setWindowTitle("Current Environment")
+        self.lo_main = QVBoxLayout()
+        self.setLayout(self.lo_main)
+        self.tw_environment = QTableWidget()
+        self.tw_environment.setColumnCount(2)
+        self.tw_environment.setHorizontalHeaderLabels(["Variable", "Value"])
+        self.tw_environment.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.tw_environment.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.tw_environment.horizontalHeader().setStretchLastSection(True)
+        self.tw_environment.verticalHeader().setVisible(False)
+        self.tw_environment.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.lo_main.addWidget(self.tw_environment)
+
+    def refreshEnvironment(self):
+        self.tw_environment.setRowCount(0)
+        for idx, key in enumerate(sorted(os.environ)):
+            self.tw_environment.insertRow(idx)
+            item = QTableWidgetItem(key)
+            self.tw_environment.setItem(idx, 0, item)
+            item = QTableWidgetItem(os.environ[key])
+            self.tw_environment.setItem(idx, 1, item)
+
+        self.tw_environment.resizeColumnsToContents()

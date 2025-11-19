@@ -392,7 +392,10 @@ class SanityChecks(object):
         w_info = QWidget()
         w_info.setLayout(lay_info)
 
-        msg = self.core.popupQuestion(
+        if hasattr(self, "dlg_res") and self.core.isObjectValid(self.dlg_res) and self.dlg_res.isVisible():
+            self.dlg_res.close()
+
+        self.dlg_res = self.core.popupQuestion(
             msgString,
             title="Resolution mismatch",
             buttons=["Set %s resolution in current scene" % resDef, "Skip"],
@@ -401,9 +404,9 @@ class SanityChecks(object):
             default="Skip",
             doExec=False,
         )
-        if not self.core.isStr(msg):
-            msg.buttonClicked.connect(lambda x: self.onCheckResolutionClicked(x, [resX, resY]))
-            msg.show()
+        if not self.core.isStr(self.dlg_res):
+            self.dlg_res.buttonClicked.connect(lambda x: self.onCheckResolutionClicked(x, [resX, resY]))
+            self.dlg_res.show()
 
     @err_catcher(name=__name__)
     def onCheckResolutionClicked(self, button, projectResolution):

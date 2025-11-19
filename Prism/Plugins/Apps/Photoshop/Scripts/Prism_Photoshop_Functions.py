@@ -79,7 +79,7 @@ class Prism_Photoshop_Functions(object):
                 self.core.prismRoot, "Scripts", "UserInterfacesPrism", "p_tray.png"
             )
         )
-        qApp.setWindowIcon(appIcon)
+        QApplication.instance().setWindowIcon(appIcon)
 
         if self.win:
             excludes = []
@@ -113,7 +113,7 @@ class Prism_Photoshop_Functions(object):
                 logger.debug("using %s" % dname)
                 break
         else:
-            self.psAppName = "Adobe Photoshop CC 2019"
+            self.psAppName = "Adobe Photoshop CC 2025"
             for foldercont in os.walk("/Applications"):
                 for folder in reversed(sorted(foldercont[1])):
                     if folder.startswith("Adobe Photoshop"):
@@ -129,7 +129,7 @@ class Prism_Photoshop_Functions(object):
             """
                 % self.psAppName
             )
-            self.executeAppleScript(scpt)
+            self.executeAppleScript(scpt, getResponse=False)
 
     @err_catcher(name=__name__)
     def getPhotoshopDispatchName(self, excludes=None):
@@ -193,18 +193,23 @@ class Prism_Photoshop_Functions(object):
         pass
 
     @err_catcher(name=__name__)
-    def executeAppleScript(self, script):
-        p = subprocess.Popen(
-            ["osascript"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        stdout, stderr = p.communicate(script)
-        if p.returncode != 0:
-            return None
+    def executeAppleScript(self, script, getResponse=True):
+        logger.debug("running applescript: %s" % script)
+        if getResponse:
+            p = subprocess.Popen(
+                ["osascript"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            stdout, stderr = p.communicate(script)
+            if p.returncode != 0:
+                return None
 
-        return stdout
+            return stdout
+        else:
+            subprocess.Popen(["osascript", "-e", script])
 
     @err_catcher(name=__name__)
     def getCurrentFileName(self, origin, path=True):
@@ -223,7 +228,6 @@ class Prism_Photoshop_Functions(object):
                     % self.psAppName
                 )
                 currentFileName = self.executeAppleScript(scpt)
-
                 if currentFileName is None:
                     raise
 
@@ -567,7 +571,7 @@ class Prism_Photoshop_Functions(object):
         l_ext = QLabel("Format:")
         l_ext.setMinimumWidth(110)
         self.cb_formats = QComboBox()
-        self.cb_formats.addItems([".jpg", ".png", ".tif", ".exr"])
+        self.cb_formats.addItems([".jpg", ".png", ".tif", ".exr", ".psd"])
         self.w_location = QWidget()
         self.lo_location = QHBoxLayout()
         self.lo_location.setContentsMargins(0, 0, 0, 0)
@@ -802,7 +806,7 @@ class Prism_Photoshop_Functions(object):
                 self.dlg_export,
                 "Enter output filename",
                 startLocation,
-                "JPEG (*.jpg *.jpeg);;PNG (*.png);;TIFF (*.tif *.tiff);;OpenEXR (*.exr)",
+                "JPEG (*.jpg *.jpeg);;PNG (*.png);;TIFF (*.tif *.tiff);;OpenEXR (*.exr);;Photoshop (*.psd)",
             )[0]
 
             if outputPath == "":
@@ -811,7 +815,11 @@ class Prism_Photoshop_Functions(object):
         self.exportImageToPath(outputPath)
         self.handleMasterVersion(outputPath)
         self.dlg_export.accept()
-        self.core.copyToClipboard(outputPath, file=True)
+        if os.getenv("PRISM_COPY_FILE_CONTENT", "0") == "1":
+            self.core.copyToClipboard(outputPath, file=True)
+        else:
+            self.core.copyToClipboard(outputPath, file=False)
+
         self.core.callback(name="photoshop_onImageExported", args=[self, outputPath])
 
         try:
@@ -833,53 +841,135 @@ class Prism_Photoshop_Functions(object):
             )
 
     @err_catcher(name=__name__)
+    def getBitsPerChannel(self):
+        if self.win:
+            bdepth = self.psApp.Application.ActiveDocument.bitsPerChannel
+        else:
+            scpt = (
+                """
+            tell application "%s"
+                bits per channel of current document
+            end tell
+            """
+                % self.psAppName
+            )
+            bdepth = self.executeAppleScript(scpt)
+
+        return bdepth
+
+    @err_catcher(name=__name__)
     def exportImageToPath(self, outputPath):
         ext = os.path.splitext(outputPath)[1].lower()
-        bdepth = self.psApp.Application.ActiveDocument.bitsPerChannel
-        if ext in [".exr"]:
-            if bdepth != 32:
-                QMessageBox.warning(
-                    self.core.messageParent,
-                    "Export",
-                    "To export in this format you need to set the bit depth of your current document to 32.",
-                )
-                return
-
-            descr = win32com.client.dynamic.Dispatch("Photoshop.ActionDescriptor" + self.dispatchSuffix)
-            descr.PutString(self.getCharID("As  "), "OpenEXR")
-            descr.PutPath(self.getCharID("In  "), outputPath)
-            descr.PutBoolean(self.getCharID("LwCs"), True)
-            descr.PutBoolean(self.getCharID("Cpy "), True)
-            descr.PutEnumerated(
-                self.getStringID("saveStage"),
-                self.getStringID("saveStageType"),
-                self.getStringID("saveSucceeded"),
-            )
-            self.psApp.ExecuteAction(self.getCharID("save"), descr, 3)
-        else:
-            if bdepth == 32:
-                msg = "To export in this format you need to lower the bit depth of your current document."
-                result = self.core.popupQuestion(msg, buttons=["Lower bit depth and continue", "Cancel"], icon=QMessageBox.Warning)
-                if result != "Lower bit depth and continue":
+        bdepth = self.getBitsPerChannel()
+        if self.win:
+            if ext in [".exr"]:
+                if bdepth != 32:
+                    msg = "To export in this format you need to set the bit depth of your current document to 32."
+                    self.core.popup(msg, title="Prism Export")
                     return
 
-                self.psApp.Application.ActiveDocument.bitsPerChannel = 16
+                descr = win32com.client.dynamic.Dispatch("Photoshop.ActionDescriptor" + self.dispatchSuffix)
+                descr.PutString(self.getCharID("As  "), "OpenEXR")
+                descr.PutPath(self.getCharID("In  "), outputPath)
+                descr.PutBoolean(self.getCharID("LwCs"), True)
+                descr.PutBoolean(self.getCharID("Cpy "), True)
+                descr.PutEnumerated(
+                    self.getStringID("saveStage"),
+                    self.getStringID("saveStageType"),
+                    self.getStringID("saveSucceeded"),
+                )
+                self.psApp.ExecuteAction(self.getCharID("save"), descr, 3)
+            elif ext in [".psd"]:
+                curFileName = self.core.getCurrentFileName()
+                self.core.copySceneFile(curFileName, outputPath)
+            else:
+                if bdepth == 32:
+                    msg = "To export in this format you need to lower the bit depth of your current document."
+                    result = self.core.popupQuestion(msg, buttons=["Lower bit depth and continue", "Cancel"], icon=QMessageBox.Warning)
+                    if result != "Lower bit depth and continue":
+                        return
 
-            if ext in [".jpg", ".jpeg"]:
-                options = win32com.client.dynamic.Dispatch(
-                    "Photoshop.JPEGSaveOptions" + self.dispatchSuffix
-                )
-                options.quality = 10
-            elif ext in [".png"]:
-                options = win32com.client.dynamic.Dispatch(
-                    "Photoshop.PNGSaveOptions" + self.dispatchSuffix
-                )
-            elif ext in [".tif", ".tiff"]:
-                options = win32com.client.dynamic.Dispatch(
-                    "Photoshop.TiffSaveOptions" + self.dispatchSuffix
-                )
+                    self.psApp.Application.ActiveDocument.bitsPerChannel = 16
 
-            self.psApp.Application.ActiveDocument.SaveAs(outputPath, options, True)
+                if ext in [".jpg", ".jpeg"]:
+                    options = win32com.client.dynamic.Dispatch(
+                        "Photoshop.JPEGSaveOptions" + self.dispatchSuffix
+                    )
+                    options.quality = 10
+                elif ext in [".png"]:
+                    options = win32com.client.dynamic.Dispatch(
+                        "Photoshop.PNGSaveOptions" + self.dispatchSuffix
+                    )
+                elif ext in [".tif", ".tiff"]:
+                    options = win32com.client.dynamic.Dispatch(
+                        "Photoshop.TiffSaveOptions" + self.dispatchSuffix
+                    )
+
+                self.psApp.Application.ActiveDocument.SaveAs(outputPath, options, True)
+
+        else:
+            if ext in [".exr"]:
+                if bdepth != "thirty two\n":
+                    msg = "To export in this format you need to set the bit depth of your current document to 32."
+                    self.core.popup(msg, title="Prism Export")
+                    return
+
+                scpt = """
+                    tell application "%s"
+                        do javascript "
+                            var idsave = charIDToTypeID( 'save' );
+                                var desc26 = new ActionDescriptor();
+                                var idAs = charIDToTypeID( 'As  ' );
+                                    var desc27 = new ActionDescriptor();
+                                    var idBtDp = charIDToTypeID( 'BtDp' );
+                                    desc27.putInteger( idBtDp, 16 );
+                                    var idCmpr = charIDToTypeID( 'Cmpr' );
+                                    desc27.putInteger( idCmpr, 4 );
+                                    var idAChn = charIDToTypeID( 'AChn' );
+                                    desc27.putInteger( idAChn, 0 );
+                                var idEXRf = charIDToTypeID( 'EXRf' );
+                                desc26.putObject( idAs, idEXRf, desc27 );
+                                var idIn = charIDToTypeID( 'In  ' );
+                                desc26.putPath( idIn, new File( '%s' ) );
+                                var idCpy = charIDToTypeID( 'Cpy ' );
+                                desc26.putBoolean( idCpy, true );
+                                var idsaveStage = stringIDToTypeID( 'saveStage' );
+                                var idsaveStageType = stringIDToTypeID( 'saveStageType' );
+                                var idsaveSucceeded = stringIDToTypeID( 'saveSucceeded' );
+                                desc26.putEnumerated( idsaveStage, idsaveStageType, idsaveSucceeded );
+                            executeAction( idsave, desc26, DialogModes.NO );
+                        " show debugger on runtime error
+                    end tell
+                """ % (
+                    self.psAppName,
+                    outputPath,
+                )
+            elif ext in [".psd"]:
+                curFileName = self.core.getCurrentFileName()
+                self.core.copySceneFile(curFileName, outputPath)
+            else:
+                if bdepth == "thirty two\n":
+                    msg = "To export in this format you need to lower the bit depth of your current document."
+                    self.core.popup(msg, title="Prism Export")
+                    return
+
+                if ext in [".jpg", ".jpeg"]:
+                    formatName = "JPEG"
+                elif ext in [".png"]:
+                    formatName = "PNG"
+                elif ext in [".tif", ".tiff"]:
+                    formatName = "TIFF"
+
+                scpt = """
+                    tell application "%s"
+                        save current document in file "%s" as %s with copying
+                    end tell
+                """ % (
+                    self.psAppName,
+                    outputPath,
+                    formatName,
+                )
+            self.executeAppleScript(scpt)
 
     @err_catcher(name=__name__)
     def isUsingMasterVersion(self):

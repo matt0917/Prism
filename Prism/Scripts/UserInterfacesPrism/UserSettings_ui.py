@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'UserSettings.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.4.2
+## Created by: Qt User Interface Compiler version 6.9.0
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -22,18 +22,18 @@ class Ui_dlg_UserSettings(object):
         self.verticalLayout.setObjectName(u"verticalLayout")
         self.splitter = QSplitter(dlg_UserSettings)
         self.splitter.setObjectName(u"splitter")
-        self.splitter.setOrientation(Qt.Horizontal)
+        self.splitter.setOrientation(Qt.Orientation.Horizontal)
         self.lw_categories = QListWidget(self.splitter)
         self.lw_categories.setObjectName(u"lw_categories")
-        self.lw_categories.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.lw_categories.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.lw_categories.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.lw_categories.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.splitter.addWidget(self.lw_categories)
         self.scrollArea = QScrollArea(self.splitter)
         self.scrollArea.setObjectName(u"scrollArea")
         self.scrollArea.setWidgetResizable(True)
         self.scrollAreaWidgetContents = QWidget()
         self.scrollAreaWidgetContents.setObjectName(u"scrollAreaWidgetContents")
-        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 457, 739))
+        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 639, 738))
         self.horizontalLayout_9 = QHBoxLayout(self.scrollAreaWidgetContents)
         self.horizontalLayout_9.setSpacing(20)
         self.horizontalLayout_9.setObjectName(u"horizontalLayout_9")
@@ -93,7 +93,7 @@ class Ui_dlg_UserSettings(object):
 
         self.verticalLayout_3.addWidget(self.groupBox_3)
 
-        self.verticalSpacer_3 = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        self.verticalSpacer_3 = QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
 
         self.verticalLayout_3.addItem(self.verticalSpacer_3)
 
@@ -115,7 +115,7 @@ class Ui_dlg_UserSettings(object):
         self.gridLayout.setContentsMargins(0, 0, 0, 0)
         self.l_projectName = QLabel(self.widget_5)
         self.l_projectName.setObjectName(u"l_projectName")
-        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.l_projectName.sizePolicy().hasHeightForWidth())
@@ -141,7 +141,7 @@ class Ui_dlg_UserSettings(object):
 
         self.verticalLayout_6.addWidget(self.widget_5)
 
-        self.verticalSpacer_9 = QSpacerItem(20, 15, QSizePolicy.Minimum, QSizePolicy.Fixed)
+        self.verticalSpacer_9 = QSpacerItem(20, 15, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
 
         self.verticalLayout_6.addItem(self.verticalSpacer_9)
 
@@ -162,7 +162,7 @@ class Ui_dlg_UserSettings(object):
 
         self.b_browseLocal = QPushButton(self.widget_3)
         self.b_browseLocal.setObjectName(u"b_browseLocal")
-        self.b_browseLocal.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.b_browseLocal.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 
         self.horizontalLayout.addWidget(self.b_browseLocal)
 
@@ -179,7 +179,7 @@ class Ui_dlg_UserSettings(object):
 
         self.horizontalLayout_15.addWidget(self.label_5)
 
-        self.horizontalSpacer_10 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_10 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_15.addItem(self.horizontalSpacer_10)
 
@@ -205,7 +205,7 @@ class Ui_dlg_UserSettings(object):
 
         self.verticalLayout_8.addWidget(self.w_curPrj)
 
-        self.verticalSpacer_8 = QSpacerItem(20, 20, QSizePolicy.Minimum, QSizePolicy.Fixed)
+        self.verticalSpacer_8 = QSpacerItem(20, 20, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
 
         self.verticalLayout_8.addItem(self.verticalSpacer_8)
 
@@ -214,17 +214,17 @@ class Ui_dlg_UserSettings(object):
         self.horizontalLayout_10 = QHBoxLayout(self.widget_6)
         self.horizontalLayout_10.setObjectName(u"horizontalLayout_10")
         self.horizontalLayout_10.setContentsMargins(0, 0, 0, 0)
-        self.horizontalSpacer_5 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_5 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_10.addItem(self.horizontalSpacer_5)
 
         self.b_manageProjects = QPushButton(self.widget_6)
         self.b_manageProjects.setObjectName(u"b_manageProjects")
-        self.b_manageProjects.setFocusPolicy(Qt.NoFocus)
+        self.b_manageProjects.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout_10.addWidget(self.b_manageProjects)
 
-        self.horizontalSpacer_6 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_6 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_10.addItem(self.horizontalSpacer_6)
 
@@ -233,7 +233,7 @@ class Ui_dlg_UserSettings(object):
 
         self.w_projects = QWidget(self.tabWidgetPage2)
         self.w_projects.setObjectName(u"w_projects")
-        sizePolicy1 = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        sizePolicy1 = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         sizePolicy1.setHorizontalStretch(0)
         sizePolicy1.setVerticalStretch(10)
         sizePolicy1.setHeightForWidth(self.w_projects.sizePolicy().hasHeightForWidth())
@@ -241,14 +241,14 @@ class Ui_dlg_UserSettings(object):
         self.lo_projects = QVBoxLayout(self.w_projects)
         self.lo_projects.setObjectName(u"lo_projects")
         self.lo_projects.setContentsMargins(0, 0, 0, 0)
-        self.verticalSpacer_4 = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        self.verticalSpacer_4 = QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
 
         self.lo_projects.addItem(self.verticalSpacer_4)
 
 
         self.verticalLayout_8.addWidget(self.w_projects)
 
-        self.verticalSpacer_10 = QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        self.verticalSpacer_10 = QSpacerItem(0, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
 
         self.verticalLayout_8.addItem(self.verticalSpacer_10)
 
@@ -304,11 +304,11 @@ class Ui_dlg_UserSettings(object):
 
         self.tw_plugins = QTableWidget(self.tab_Plugins)
         self.tw_plugins.setObjectName(u"tw_plugins")
-        self.tw_plugins.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.tw_plugins.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.tw_plugins.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.tw_plugins.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.tw_plugins.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.tw_plugins.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tw_plugins.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tw_plugins.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tw_plugins.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.tw_plugins.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.tw_plugins.horizontalHeader().setHighlightSections(False)
         self.tw_plugins.verticalHeader().setVisible(False)
 
@@ -332,9 +332,9 @@ class Ui_dlg_UserSettings(object):
         __qtablewidgetitem1 = QTableWidgetItem()
         self.tw_environment.setHorizontalHeaderItem(1, __qtablewidgetitem1)
         self.tw_environment.setObjectName(u"tw_environment")
-        self.tw_environment.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.tw_environment.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.tw_environment.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.tw_environment.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tw_environment.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.tw_environment.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.tw_environment.horizontalHeader().setStretchLastSection(True)
         self.tw_environment.verticalHeader().setVisible(False)
 
@@ -345,7 +345,7 @@ class Ui_dlg_UserSettings(object):
         self.horizontalLayout_4 = QHBoxLayout(self.widget_2)
         self.horizontalLayout_4.setObjectName(u"horizontalLayout_4")
         self.horizontalLayout_4.setContentsMargins(0, 0, 0, 0)
-        self.horizontalSpacer_2 = QSpacerItem(374, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_2 = QSpacerItem(374, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_4.addItem(self.horizontalSpacer_2)
 
@@ -360,8 +360,8 @@ class Ui_dlg_UserSettings(object):
         self.tw_settings.addTab(self.tab, "")
         self.tab_2 = QWidget()
         self.tab_2.setObjectName(u"tab_2")
-        self.verticalLayout_14 = QVBoxLayout(self.tab_2)
-        self.verticalLayout_14.setObjectName(u"verticalLayout_14")
+        self.lo_miscellaneousTab = QVBoxLayout(self.tab_2)
+        self.lo_miscellaneousTab.setObjectName(u"lo_miscellaneousTab")
         self.gb_miscellaneous = QGroupBox(self.tab_2)
         self.gb_miscellaneous.setObjectName(u"gb_miscellaneous")
         self.lo_miscellaneous = QVBoxLayout(self.gb_miscellaneous)
@@ -377,6 +377,11 @@ class Ui_dlg_UserSettings(object):
         self.chb_captureViewport.setChecked(True)
 
         self.lo_miscellaneous.addWidget(self.chb_captureViewport)
+
+        self.chb_captureViewportProduct = QCheckBox(self.gb_miscellaneous)
+        self.chb_captureViewportProduct.setObjectName(u"chb_captureViewportProduct")
+
+        self.lo_miscellaneous.addWidget(self.chb_captureViewportProduct)
 
         self.chb_browserStartup = QCheckBox(self.gb_miscellaneous)
         self.chb_browserStartup.setObjectName(u"chb_browserStartup")
@@ -408,7 +413,7 @@ class Ui_dlg_UserSettings(object):
 
         self.horizontalLayout_7.addWidget(self.b_startTray)
 
-        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_7.addItem(self.horizontalSpacer)
 
@@ -426,6 +431,23 @@ class Ui_dlg_UserSettings(object):
 
         self.lo_miscellaneous.addWidget(self.chb_debug)
 
+        self.w_protocolHandler = QWidget(self.gb_miscellaneous)
+        self.w_protocolHandler.setObjectName(u"w_protocolHandler")
+        self.layout_16 = QHBoxLayout(self.w_protocolHandler)
+        self.layout_16.setObjectName(u"layout_16")
+        self.layout_16.setContentsMargins(0, 0, 0, 0)
+        self.b_protocolHandler = QPushButton(self.w_protocolHandler)
+        self.b_protocolHandler.setObjectName(u"b_protocolHandler")
+
+        self.layout_16.addWidget(self.b_protocolHandler)
+
+        self.horizontalSpacer_7 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.layout_16.addItem(self.horizontalSpacer_7)
+
+
+        self.lo_miscellaneous.addWidget(self.w_protocolHandler)
+
         self.w_styleSheet = QWidget(self.gb_miscellaneous)
         self.w_styleSheet.setObjectName(u"w_styleSheet")
         self.horizontalLayout_8 = QHBoxLayout(self.w_styleSheet)
@@ -441,7 +463,7 @@ class Ui_dlg_UserSettings(object):
 
         self.horizontalLayout_8.addWidget(self.cb_styleSheet)
 
-        self.horizontalSpacer_4 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_4 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_8.addItem(self.horizontalSpacer_4)
 
@@ -463,7 +485,7 @@ class Ui_dlg_UserSettings(object):
 
         self.horizontalLayout_6.addWidget(self.b_exportSettings)
 
-        self.horizontalSpacer_3 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_3 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_6.addItem(self.horizontalSpacer_3)
 
@@ -471,70 +493,11 @@ class Ui_dlg_UserSettings(object):
         self.lo_miscellaneous.addWidget(self.widget_4)
 
 
-        self.verticalLayout_14.addWidget(self.gb_miscellaneous)
+        self.lo_miscellaneousTab.addWidget(self.gb_miscellaneous)
 
-        self.gb_mediaPlayer = QGroupBox(self.tab_2)
-        self.gb_mediaPlayer.setObjectName(u"gb_mediaPlayer")
-        self.verticalLayout_5 = QVBoxLayout(self.gb_mediaPlayer)
-        self.verticalLayout_5.setObjectName(u"verticalLayout_5")
-        self.widget_8 = QWidget(self.gb_mediaPlayer)
-        self.widget_8.setObjectName(u"widget_8")
-        self.gridLayout_3 = QGridLayout(self.widget_8)
-        self.gridLayout_3.setObjectName(u"gridLayout_3")
-        self.gridLayout_3.setContentsMargins(0, 0, 0, 0)
-        self.e_mediaPlayerName = QLineEdit(self.widget_8)
-        self.e_mediaPlayerName.setObjectName(u"e_mediaPlayerName")
+        self.verticalSpacer_2 = QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
 
-        self.gridLayout_3.addWidget(self.e_mediaPlayerName, 0, 1, 1, 1)
-
-        self.label_7 = QLabel(self.widget_8)
-        self.label_7.setObjectName(u"label_7")
-
-        self.gridLayout_3.addWidget(self.label_7, 0, 0, 1, 1)
-
-        self.label_12 = QLabel(self.widget_8)
-        self.label_12.setObjectName(u"label_12")
-
-        self.gridLayout_3.addWidget(self.label_12, 1, 0, 1, 1)
-
-        self.e_mediaPlayerPath = QLineEdit(self.widget_8)
-        self.e_mediaPlayerPath.setObjectName(u"e_mediaPlayerPath")
-        sizePolicy2 = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        sizePolicy2.setHorizontalStretch(10)
-        sizePolicy2.setVerticalStretch(0)
-        sizePolicy2.setHeightForWidth(self.e_mediaPlayerPath.sizePolicy().hasHeightForWidth())
-        self.e_mediaPlayerPath.setSizePolicy(sizePolicy2)
-
-        self.gridLayout_3.addWidget(self.e_mediaPlayerPath, 1, 1, 1, 1)
-
-        self.b_browseMediaPlayer = QPushButton(self.widget_8)
-        self.b_browseMediaPlayer.setObjectName(u"b_browseMediaPlayer")
-        self.b_browseMediaPlayer.setContextMenuPolicy(Qt.CustomContextMenu)
-
-        self.gridLayout_3.addWidget(self.b_browseMediaPlayer, 1, 2, 1, 1)
-
-
-        self.verticalLayout_5.addWidget(self.widget_8)
-
-        self.widget_7 = QWidget(self.gb_mediaPlayer)
-        self.widget_7.setObjectName(u"widget_7")
-        self.horizontalLayout_3 = QHBoxLayout(self.widget_7)
-        self.horizontalLayout_3.setObjectName(u"horizontalLayout_3")
-        self.horizontalLayout_3.setContentsMargins(0, 0, 0, 0)
-        self.chb_mediaPlayerPattern = QCheckBox(self.widget_7)
-        self.chb_mediaPlayerPattern.setObjectName(u"chb_mediaPlayerPattern")
-
-        self.horizontalLayout_3.addWidget(self.chb_mediaPlayerPattern)
-
-
-        self.verticalLayout_5.addWidget(self.widget_7)
-
-
-        self.verticalLayout_14.addWidget(self.gb_mediaPlayer)
-
-        self.verticalSpacer_2 = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
-
-        self.verticalLayout_14.addItem(self.verticalSpacer_2)
+        self.lo_miscellaneousTab.addItem(self.verticalSpacer_2)
 
         self.tw_settings.addTab(self.tab_2, "")
 
@@ -547,8 +510,8 @@ class Ui_dlg_UserSettings(object):
 
         self.buttonBox = QDialogButtonBox(dlg_UserSettings)
         self.buttonBox.setObjectName(u"buttonBox")
-        self.buttonBox.setOrientation(Qt.Horizontal)
-        self.buttonBox.setStandardButtons(QDialogButtonBox.Apply|QDialogButtonBox.Cancel|QDialogButtonBox.Save)
+        self.buttonBox.setOrientation(Qt.Orientation.Horizontal)
+        self.buttonBox.setStandardButtons(QDialogButtonBox.StandardButton.Apply|QDialogButtonBox.StandardButton.Cancel|QDialogButtonBox.StandardButton.Save)
         self.buttonBox.setCenterButtons(False)
 
         self.verticalLayout.addWidget(self.buttonBox)
@@ -558,7 +521,7 @@ class Ui_dlg_UserSettings(object):
 
         self.retranslateUi(dlg_UserSettings)
 
-        self.tw_settings.setCurrentIndex(5)
+        self.tw_settings.setCurrentIndex(0)
 
 
         QMetaObject.connectSlotsByName(dlg_UserSettings)
@@ -621,12 +584,14 @@ class Ui_dlg_UserSettings(object):
         self.gb_miscellaneous.setTitle(QCoreApplication.translate("dlg_UserSettings", u"Miscellaneous", None))
         self.chb_autosave.setText(QCoreApplication.translate("dlg_UserSettings", u"Autosave popup", None))
         self.chb_captureViewport.setText(QCoreApplication.translate("dlg_UserSettings", u"Capture viewport preview on scene save", None))
+        self.chb_captureViewportProduct.setText(QCoreApplication.translate("dlg_UserSettings", u"Capture viewport preview for products", None))
         self.chb_browserStartup.setText(QCoreApplication.translate("dlg_UserSettings", u"Open Project Browser on application startup", None))
         self.chb_mediaThumbnails.setText(QCoreApplication.translate("dlg_UserSettings", u"Automatically generate thumbnails for media", None))
         self.chb_trayStartup.setText(QCoreApplication.translate("dlg_UserSettings", u"Show Prism tray icon on system startup", None))
         self.b_startTray.setText(QCoreApplication.translate("dlg_UserSettings", u"Start Prism tray now", None))
         self.chb_errorReports.setText(QCoreApplication.translate("dlg_UserSettings", u"Send anonymous error reports", None))
         self.chb_debug.setText(QCoreApplication.translate("dlg_UserSettings", u"Debug mode", None))
+        self.b_protocolHandler.setText(QCoreApplication.translate("dlg_UserSettings", u"Install Prism Url Protocol Handler", None))
         self.l_styleSheet.setText(QCoreApplication.translate("dlg_UserSettings", u"Standalone Style Sheet:", None))
 #if QT_CONFIG(tooltip)
         self.b_importSettings.setToolTip(QCoreApplication.translate("dlg_UserSettings", u"Import User Settings...", None))
@@ -636,11 +601,6 @@ class Ui_dlg_UserSettings(object):
         self.b_exportSettings.setToolTip(QCoreApplication.translate("dlg_UserSettings", u"Export User Settings...", None))
 #endif // QT_CONFIG(tooltip)
         self.b_exportSettings.setText(QCoreApplication.translate("dlg_UserSettings", u"...", None))
-        self.gb_mediaPlayer.setTitle(QCoreApplication.translate("dlg_UserSettings", u"Media Player", None))
-        self.label_7.setText(QCoreApplication.translate("dlg_UserSettings", u"Name:", None))
-        self.label_12.setText(QCoreApplication.translate("dlg_UserSettings", u"Executable Path:", None))
-        self.b_browseMediaPlayer.setText(QCoreApplication.translate("dlg_UserSettings", u"...", None))
-        self.chb_mediaPlayerPattern.setText(QCoreApplication.translate("dlg_UserSettings", u"Understands Framepatterns", None))
         self.tw_settings.setTabText(self.tw_settings.indexOf(self.tab_2), QCoreApplication.translate("dlg_UserSettings", u"Miscellaneous", None))
     # retranslateUi
 

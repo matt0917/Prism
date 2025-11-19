@@ -123,6 +123,9 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
 
     @err_catcher(name=__name__)
     def closeEvent(self, event=None):
+        if hasattr(self, "detailWin") and self.detailWin.isVisible():
+            self.detailWin.close()
+
         self.closing.emit()
 
     @err_catcher(name=__name__)
@@ -161,9 +164,7 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
                 brsData["showSearchAlways"]
             )
 
-        if len(self.w_entities.getLocations()) > 1 or (self.projectBrowser and len(self.projectBrowser.locations) > 1):
-            self.versionLabels.insert(3, "Location")
-
+        self.refreshLocations()
         if self.projectBrowser and self.projectBrowser.act_rememberWidgetSizes.isChecked():
             if "productsSplitter1" in brsData:
                 self.splitter1.setSizes(brsData["productsSplitter1"])
@@ -174,10 +175,37 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         self.tw_versions.dragLeaveEvent = self.productDragLeaveEvent
         self.tw_versions.dropEvent = self.productDropEvent
 
+        if self.core.products.getUseProductPreviews():
+            self.tw_versions.viewport().installEventFilter(self)
+            self.tw_versions.viewport().setMouseTracking(True)
+
         self.tw_versions.setDragEnabled(True)
         self.setStyleSheet("QSplitter::handle{background-color: transparent}")
         self.updateSizeColumn()
         self.tw_versions.sortByColumn(0, Qt.DescendingOrder)
+
+    # add this method to your class (e.g. QMainWindow or QWidget where self.tw_test lives)
+    def eventFilter(self, source, event):
+        if event.type() == QEvent.MouseMove:
+            self.tableMoveEvent(event)   # call your existing handler
+        elif event.type() == QEvent.Leave:
+            self.tableLeaveEvent(event)  # custom leave handler
+        elif event.type() == QEvent.FocusOut:
+            self.tableFocusOutEvent(event)  # custom focus out handler
+
+        return super().eventFilter(source, event)
+
+    @err_catcher(name=__name__)
+    def refreshLocations(self):
+        if len(self.w_entities.getLocations()) > 1 or (self.projectBrowser and len(self.projectBrowser.locations) > 1):
+            if "Location" not in self.versionLabels:
+                self.versionLabels.insert(3, "Location")
+                self.versionHeaderChanged()
+
+        else:
+            if "Location" in self.versionLabels:
+                self.versionLabels.remove("Location")
+                self.versionHeaderChanged()
 
     @err_catcher(name=__name__)
     def saveSettings(self, data):
@@ -418,6 +446,9 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
             result = self.setProductPath(path=fileName, custom=True)
             if result:
                 if self.autoClose:
+                    if hasattr(self, "detailWin") and self.detailWin.isVisible():
+                        self.detailWin.close()
+
                     self.close()
                 elif self.handleImport:
                     sm = self.core.getStateManager()
@@ -454,6 +485,9 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
             if result:
                 if self.autoClose:
                     self.isClosing = True
+                    if hasattr(self, "detailWin") and self.detailWin.isVisible():
+                        self.detailWin.close()
+
                     self.close()
                 elif self.handleImport:
                     sm = self.core.getStateManager()
@@ -639,6 +673,11 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
                 )
                 rcmenu.addAction(infoAct)
 
+                if self.core.products.getUseProductPreviews():
+                    prvAct = QAction(self.core.tr("Capture preview"), self)
+                    prvAct.triggered.connect(lambda: self.captureProductPreview(os.path.dirname(path)))
+                    rcmenu.addAction(prvAct)
+
                 infoAct = QAction("Show version info", viewUi)
                 infoAct.triggered.connect(
                     lambda: self.showVersionInfo(path)
@@ -680,8 +719,7 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         openex.triggered.connect(lambda: self.core.openFolder(path))
         rcmenu.addAction(openex)
 
-        copAct = QAction("Copy", viewUi)
-        copAct.triggered.connect(lambda: self.core.copyToClipboard(path, file=True))
+        copAct = self.core.getCopyAction(path, parent=viewUi)
         rcmenu.addAction(copAct)
 
         copAct = QAction("Copy path for next version", self)
@@ -708,6 +746,21 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
             "productSelectorContextMenuRequested", args=[self, viewUi, pos, rcmenu]
         )
         rcmenu.exec_((viewUi.viewport()).mapToGlobal(pos))
+
+    @err_catcher(name=__name__)
+    def captureProductPreview(self, path):
+        from PrismUtils import ScreenShot
+        self.window().setWindowOpacity(0)
+        previewImg = ScreenShot.grabScreenArea(self.core)
+        self.window().setWindowOpacity(1)
+        if previewImg:
+            previewImg = self.core.media.scalePixmap(
+                previewImg,
+                self.core.scenePreviewWidth,
+                self.core.scenePreviewHeight,
+                fitIntoBounds=False, crop=True
+            )
+            self.core.products.setProductPreview(path, previewImg)
 
     @err_catcher(name=__name__)
     def editTags(self, data):
@@ -1356,7 +1409,7 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         if (data.get("locations", {}) and len(self.w_entities.getLocations()) > 1) or (self.projectBrowser and len(self.projectBrowser.locations) > 1):
             self.locationLabels = {}
             locations = []
-            if self.projectBrowser and len(self.projectBrowser.locations) > 1:
+            if self.projectBrowser and len(self.projectBrowser.locations) > 1 and "Location" in self.versionLabels:
                 locations = []
                 w_location = QWidget()
                 lo_location = QHBoxLayout(w_location)
@@ -1439,6 +1492,133 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         self.tw_versions.setItem(row, self.versionLabels.index("Path"), item)
 
         self.core.callback(name="productVersionAdded", args=[self, row, filepath, versionName, comment, user, data.get("locations", {})])
+
+    @err_catcher(name=__name__)
+    def tableMoveEvent(self, event):
+        self.showDetailWin(event)
+        if hasattr(self, "detailWin") and self.detailWin.isVisible():
+            self.detailWin.move(QCursor.pos().x() + 20, QCursor.pos().y())
+
+    @err_catcher(name=__name__)
+    def showDetailWin(self, event):
+        index = self.tw_versions.indexAt(event.pos())
+        if index.data() is None:
+            if hasattr(self, "detailWin") and self.detailWin.isVisible():
+                self.detailWin.close()
+            return
+
+        scenePath = self.tw_versions.model().index(index.row(), 0).data(Qt.UserRole)
+        if scenePath is None:
+            if hasattr(self, "detailWin") and self.detailWin.isVisible():
+                self.detailWin.close()
+            return
+
+        scenePath = scenePath.get("path") or ""
+
+        infoPath = (
+            scenePath
+            + "versioninfo"
+            + self.core.configs.getProjectExtension()
+        )
+        prvPath = scenePath + "/preview.jpg"
+        if not os.path.exists(prvPath):
+            if hasattr(self, "detailWin") and self.detailWin.isVisible():
+                self.detailWin.close()
+            return
+
+        if (
+            not hasattr(self, "detailWin")
+            or not self.detailWin.isVisible()
+            or self.detailWin.scenePath != scenePath
+        ):
+            if hasattr(self, "detailWin"):
+                self.detailWin.close()
+
+            self.detailWin = QFrame()
+
+            ss = getattr(self.core.appPlugin, "getFrameStyleSheet", lambda x: "")(self)
+            self.detailWin.setStyleSheet(
+                ss + """ .QFrame{ border: 2px solid rgb(100,100,100);} """
+            )
+
+            self.detailWin.scenePath = scenePath
+            self.core.parentWindow(self.detailWin, parent=self)
+            winwidth = 320
+            winheight = 10
+            VBox = QVBoxLayout()
+            imgmap = self.core.media.getPixmapFromPath(prvPath)
+            l_prv = QLabel()
+            l_prv.setPixmap(imgmap)
+            l_prv.setStyleSheet(
+                """
+                border: 1px solid rgb(100,100,100);
+            """
+            )
+            VBox.addWidget(l_prv)
+
+            w_info = QWidget()
+            GridL = QGridLayout()
+            GridL.setColumnStretch(1, 1)
+            rc = 0
+            sPathL = QLabel("Version:\t")
+            sPath = QLabel(os.path.basename(scenePath))
+            GridL.addWidget(sPathL, rc, 0, Qt.AlignLeft)
+            GridL.addWidget(sPath, rc, 1, Qt.AlignLeft)
+            rc += 1
+            if os.path.exists(infoPath):
+                sceneInfo = self.core.getConfig(configPath=infoPath)
+                if sceneInfo is None:
+                    sceneInfo = {}
+                if "username" in sceneInfo:
+                    unameL = QLabel("User:\t")
+                    uname = QLabel(sceneInfo["username"])
+                    GridL.addWidget(unameL, rc, 0, Qt.AlignLeft)
+                    GridL.addWidget(uname, rc, 1, Qt.AlignLeft)
+                    GridL.addWidget(uname, rc, 1, Qt.AlignLeft)
+                    rc += 1
+                if "description" in sceneInfo and sceneInfo["description"] != "":
+                    descriptionL = QLabel(self.core.tr("Description:") + "\t")
+                    description = QLabel(sceneInfo["description"])
+                    GridL.addWidget(descriptionL, rc, 0, Qt.AlignLeft | Qt.AlignTop)
+                    GridL.addWidget(description, rc, 1, Qt.AlignLeft)
+                    rc += 1
+
+            if self.projectBrowser and self.projectBrowser.act_filesizes.isChecked():
+                if os.path.exists(scenePath):
+                    size = float(self.core.getFolderSize(scenePath)["size"] / 1024.0 / 1024.0)
+                else:
+                    size = 0
+
+                sizeStr = "%.2f mb" % size
+
+                sizeL = QLabel(self.core.tr("Size") + ":\t")
+                size = QLabel(sizeStr)
+                GridL.addWidget(sizeL, rc, 0, Qt.AlignLeft | Qt.AlignTop)
+                GridL.addWidget(size, rc, 1, Qt.AlignLeft)
+
+            w_info.setLayout(GridL)
+            GridL.setContentsMargins(0, 0, 0, 0)
+            VBox.addWidget(w_info)
+            self.detailWin.setLayout(VBox)
+            self.detailWin.setWindowFlags(
+                Qt.FramelessWindowHint  # hides the window controls
+                | Qt.WindowStaysOnTopHint  # forces window to top... maybe
+                | Qt.SplashScreen  # this one hides it from the task bar!
+            )
+            self.detailWin.setAttribute(Qt.WA_ShowWithoutActivating)
+            self.detailWin.setGeometry(0, 0, winwidth, winheight)
+            self.detailWin.move(QCursor.pos().x() + 20, QCursor.pos().y())
+            self.detailWin.show()
+
+    @err_catcher(name=__name__)
+    def tableLeaveEvent(self, event):
+        if hasattr(self, "detailWin") and self.detailWin.isVisible():
+            self.detailWin.close()
+
+    @err_catcher(name=__name__)
+    def tableFocusOutEvent(self, event):
+        if hasattr(self, "detailWin") and self.detailWin.isVisible():
+            self.detailWin.close()
 
     @err_catcher(name=__name__)
     def getCurSelection(self):

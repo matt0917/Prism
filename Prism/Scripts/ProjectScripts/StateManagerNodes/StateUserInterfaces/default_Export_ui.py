@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'default_Export.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.8.1
+## Created by: Qt User Interface Compiler version 6.9.0
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -50,8 +50,33 @@ class Ui_wg_Export(object):
 
         self.gb_export = QGroupBox(wg_Export)
         self.gb_export.setObjectName(u"gb_export")
-        self.verticalLayout_2 = QVBoxLayout(self.gb_export)
-        self.verticalLayout_2.setObjectName(u"verticalLayout_2")
+        self.lo_export = QVBoxLayout(self.gb_export)
+        self.lo_export.setObjectName(u"lo_export")
+        self.w_comment = QWidget(self.gb_export)
+        self.w_comment.setObjectName(u"w_comment")
+        self.horizontalLayout_16 = QHBoxLayout(self.w_comment)
+        self.horizontalLayout_16.setSpacing(0)
+        self.horizontalLayout_16.setObjectName(u"horizontalLayout_16")
+        self.horizontalLayout_16.setContentsMargins(9, 0, 9, 0)
+        self.l_comment = QLabel(self.w_comment)
+        self.l_comment.setObjectName(u"l_comment")
+        self.l_comment.setMinimumSize(QSize(40, 0))
+        self.l_comment.setMaximumSize(QSize(95, 16777215))
+
+        self.horizontalLayout_16.addWidget(self.l_comment)
+
+        self.horizontalSpacer_8 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_16.addItem(self.horizontalSpacer_8)
+
+        self.e_comment = QLineEdit(self.w_comment)
+        self.e_comment.setObjectName(u"e_comment")
+
+        self.horizontalLayout_16.addWidget(self.e_comment)
+
+
+        self.lo_export.addWidget(self.w_comment)
+
         self.w_context = QWidget(self.gb_export)
         self.w_context.setObjectName(u"w_context")
         self.horizontalLayout_10 = QHBoxLayout(self.w_context)
@@ -86,7 +111,7 @@ class Ui_wg_Export(object):
         self.horizontalLayout_10.addWidget(self.cb_context)
 
 
-        self.verticalLayout_2.addWidget(self.w_context)
+        self.lo_export.addWidget(self.w_context)
 
         self.w_taskname = QWidget(self.gb_export)
         self.w_taskname.setObjectName(u"w_taskname")
@@ -117,7 +142,7 @@ class Ui_wg_Export(object):
         self.horizontalLayout_4.addWidget(self.b_changeTask)
 
 
-        self.verticalLayout_2.addWidget(self.w_taskname)
+        self.lo_export.addWidget(self.w_taskname)
 
         self.w_range = QWidget(self.gb_export)
         self.w_range.setObjectName(u"w_range")
@@ -140,7 +165,7 @@ class Ui_wg_Export(object):
         self.horizontalLayout_6.addWidget(self.cb_rangeType)
 
 
-        self.verticalLayout_2.addWidget(self.w_range)
+        self.lo_export.addWidget(self.w_range)
 
         self.f_frameRange_2 = QWidget(self.gb_export)
         self.f_frameRange_2.setObjectName(u"f_frameRange_2")
@@ -190,7 +215,7 @@ class Ui_wg_Export(object):
         self.gridLayout.addWidget(self.l_rangeEndInfo, 1, 0, 1, 1)
 
 
-        self.verticalLayout_2.addWidget(self.f_frameRange_2)
+        self.lo_export.addWidget(self.f_frameRange_2)
 
         self.w_master = QWidget(self.gb_export)
         self.w_master.setObjectName(u"w_master")
@@ -214,7 +239,7 @@ class Ui_wg_Export(object):
         self.horizontalLayout_20.addWidget(self.chb_master)
 
 
-        self.verticalLayout_2.addWidget(self.w_master)
+        self.lo_export.addWidget(self.w_master)
 
         self.w_outPath = QWidget(self.gb_export)
         self.w_outPath.setObjectName(u"w_outPath")
@@ -238,7 +263,7 @@ class Ui_wg_Export(object):
         self.horizontalLayout_11.addWidget(self.cb_outPath)
 
 
-        self.verticalLayout_2.addWidget(self.w_outPath)
+        self.lo_export.addWidget(self.w_outPath)
 
         self.w_outType = QWidget(self.gb_export)
         self.w_outType.setObjectName(u"w_outType")
@@ -262,7 +287,7 @@ class Ui_wg_Export(object):
         self.horizontalLayout_9.addWidget(self.cb_outType)
 
 
-        self.verticalLayout_2.addWidget(self.w_outType)
+        self.lo_export.addWidget(self.w_outType)
 
         self.w_cam = QWidget(self.gb_export)
         self.w_cam.setObjectName(u"w_cam")
@@ -283,7 +308,7 @@ class Ui_wg_Export(object):
         self.horizontalLayout_3.addWidget(self.cb_cam)
 
 
-        self.verticalLayout_2.addWidget(self.w_cam)
+        self.lo_export.addWidget(self.w_cam)
 
         self.w_sCamShot = QWidget(self.gb_export)
         self.w_sCamShot.setObjectName(u"w_sCamShot")
@@ -304,7 +329,7 @@ class Ui_wg_Export(object):
         self.horizontalLayout_7.addWidget(self.cb_sCamShot)
 
 
-        self.verticalLayout_2.addWidget(self.w_sCamShot)
+        self.lo_export.addWidget(self.w_sCamShot)
 
         self.w_selectCam = QWidget(self.gb_export)
         self.w_selectCam.setObjectName(u"w_selectCam")
@@ -319,7 +344,7 @@ class Ui_wg_Export(object):
         self.horizontalLayout_2.addWidget(self.b_selectCam)
 
 
-        self.verticalLayout_2.addWidget(self.w_selectCam)
+        self.lo_export.addWidget(self.w_selectCam)
 
         self.w_additionalOptions = QWidget(self.gb_export)
         self.w_additionalOptions.setObjectName(u"w_additionalOptions")
@@ -342,7 +367,7 @@ class Ui_wg_Export(object):
         self.horizontalLayout_15.addWidget(self.chb_additionalOptions)
 
 
-        self.verticalLayout_2.addWidget(self.w_additionalOptions)
+        self.lo_export.addWidget(self.w_additionalOptions)
 
         self.w_wholeScene = QWidget(self.gb_export)
         self.w_wholeScene.setObjectName(u"w_wholeScene")
@@ -366,7 +391,7 @@ class Ui_wg_Export(object):
         self.horizontalLayout.addWidget(self.chb_wholeScene)
 
 
-        self.verticalLayout_2.addWidget(self.w_wholeScene)
+        self.lo_export.addWidget(self.w_wholeScene)
 
         self.gb_objects = QGroupBox(self.gb_export)
         self.gb_objects.setObjectName(u"gb_objects")
@@ -400,7 +425,7 @@ class Ui_wg_Export(object):
         self.verticalLayout_3.addWidget(self.b_add)
 
 
-        self.verticalLayout_2.addWidget(self.gb_objects)
+        self.lo_export.addWidget(self.gb_objects)
 
         self.gb_submit = QGroupBox(self.gb_export)
         self.gb_submit.setObjectName(u"gb_submit")
@@ -555,7 +580,7 @@ class Ui_wg_Export(object):
         self.verticalLayout_8.addWidget(self.w_dlConcurrentTasks)
 
 
-        self.verticalLayout_2.addWidget(self.gb_submit)
+        self.lo_export.addWidget(self.gb_submit)
 
         self.gb_previous = QGroupBox(self.gb_export)
         self.gb_previous.setObjectName(u"gb_previous")
@@ -567,7 +592,7 @@ class Ui_wg_Export(object):
         self.scrollArea.setWidgetResizable(True)
         self.scrollAreaWidgetContents = QWidget()
         self.scrollAreaWidgetContents.setObjectName(u"scrollAreaWidgetContents")
-        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 329, 262))
+        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 329, 248))
         self.horizontalLayout_12 = QHBoxLayout(self.scrollAreaWidgetContents)
         self.horizontalLayout_12.setObjectName(u"horizontalLayout_12")
         self.l_pathLast = QLabel(self.scrollAreaWidgetContents)
@@ -587,7 +612,7 @@ class Ui_wg_Export(object):
         self.horizontalLayout_13.addWidget(self.b_pathLast)
 
 
-        self.verticalLayout_2.addWidget(self.gb_previous)
+        self.lo_export.addWidget(self.gb_previous)
 
 
         self.verticalLayout.addWidget(self.gb_export)
@@ -625,6 +650,7 @@ class Ui_wg_Export(object):
         self.l_name.setText(QCoreApplication.translate("wg_Export", u"Name:", None))
         self.l_class.setText(QCoreApplication.translate("wg_Export", u"Export", None))
         self.gb_export.setTitle(QCoreApplication.translate("wg_Export", u"General", None))
+        self.l_comment.setText(QCoreApplication.translate("wg_Export", u"Comment:", None))
         self.label_4.setText(QCoreApplication.translate("wg_Export", u"Context:", None))
         self.l_context.setText("")
         self.b_context.setText(QCoreApplication.translate("wg_Export", u"Select", None))

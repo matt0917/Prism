@@ -34,6 +34,7 @@
 
 import os
 import re
+import logging
 from collections import OrderedDict
 
 from qtpy.QtCore import *
@@ -41,6 +42,9 @@ from qtpy.QtGui import *
 from qtpy.QtWidgets import *
 
 from PrismUtils.Decorators import err_catcher
+
+
+logger = logging.getLogger(__name__)
 
 
 class PathManager(object):
@@ -91,8 +95,10 @@ class PathManager(object):
             if outputData:
                 outputPath = outputData["path"].replace("\\", "/")
             else:
+                # logger.debug("no output data: %s - %s - %s - %s" % (fnameData, taskName, version, extension))
                 outputPath = "FileNotInPipeline"
         else:
+            # logger.debug("not in pipeline: %s" % fileName)
             outputPath = "FileNotInPipeline"
 
         if render and outputPath != "FileNotInPipeline":
@@ -147,12 +153,21 @@ class PathManager(object):
         if "asset_path" in context:
             context["asset"] = os.path.basename(context["asset_path"])
 
-        context["version"] = context["version"] + " (%s)" % extension[1:]
         context["extension"] = extension
         if extension in videoFormats or not addFramePadding:
             context["frame"] = ""
         else:
             context["frame"] = "%%0%sd" % self.core.framePadding
+
+        context["layer"] = ""
+        mode = os.getenv("PRISM_MEDIA_CONVERSION_OUTPUT_MODE", "version_suffix")
+        if mode == "version_suffix":
+            context["version"] = context["version"] + " (%s)" % extension[1:]
+        elif mode == "same_folder":
+            pass
+        elif mode == "next_version":
+            context["version"] = self.core.mediaProducts.getHighestMediaVersion(context)
+
         outputPath = self.core.projects.getResolvedProjectStructurePath(
             key, context=context
         )
@@ -361,6 +376,23 @@ class PathManager(object):
                 pathData = self.core.mediaProducts.getMediaDataFromVersionFolder(productPath, mediaType=mediaType)
             else:
                 pathData = self.core.mediaProducts.getRenderProductDataFromFilepath(productPath, mediaType=mediaType)
+                if not pathData or (pathData.get("type") == "asset" and "asset_path" not in pathData) or (pathData.get("type") == "shot" and "shot" not in pathData):
+                    if mediaType == "2drenders":
+                        productVersionPath = os.path.dirname(productPath)
+                    else:
+                        productVersionPath = os.path.dirname(os.path.dirname(productPath))
+
+                    newPathData = self.getRenderProductData(
+                        productVersionPath,
+                        isFilepath=False,
+                        addPathData=addPathData,
+                        mediaType=mediaType,
+                        validateModTime=validateModTime,
+                        isVersionFolder=True,
+                        allowCache=allowCache
+                    )
+                    if newPathData:
+                        pathData = newPathData
 
             productData.update(pathData)
 
@@ -384,7 +416,7 @@ class PathManager(object):
         return productData
 
     @err_catcher(name=__name__)
-    def getPlayblastProductData(self, productPath, isFilepath=True, addPathData=True, validateModTime=False):
+    def getPlayblastProductData(self, productPath, isFilepath=True, addPathData=True, validateModTime=False, isVersionFolder=False):
         productPath = os.path.normpath(productPath)
         if os.path.splitext(productPath)[1]:
             productConfig = self.core.mediaProducts.getPlayblastVersionInfoPathFromFilepath(productPath)
@@ -402,7 +434,11 @@ class PathManager(object):
         productData = self.core.getConfig(configPath=productConfig) or {}
         productData["mediaType"] = "playblasts"
         if addPathData:
-            pathData = self.core.mediaProducts.getRenderProductDataFromFilepath(productPath)
+            if isVersionFolder:
+                pathData = self.core.mediaProducts.getMediaDataFromVersionFolder(productPath, mediaType="playblasts")
+            else:
+                pathData = self.core.mediaProducts.getRenderProductDataFromFilepath(productPath, mediaType="playblasts")
+
             productData.update(pathData)
 
         return productData

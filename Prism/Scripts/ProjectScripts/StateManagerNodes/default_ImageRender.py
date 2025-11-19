@@ -36,12 +36,16 @@ import os
 import sys
 import time
 import platform
+import logging
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
 from qtpy.QtWidgets import *
 
 from PrismUtils.Decorators import err_catcher
+
+
+logger = logging.getLogger(__name__)
 
 
 class ImageRenderClass(object):
@@ -319,9 +323,9 @@ class ImageRenderClass(object):
         self.le_dlGPUdevices.editingFinished.connect(self.gpuDevicesChanged)
         self.gb_passes.toggled.connect(self.stateManager.saveStatesToScene)
         self.b_addPasses.clicked.connect(self.showPasses)
-        self.lw_passes.customContextMenuRequested.connect(self.rclickPasses)
+        self.tw_passes.customContextMenuRequested.connect(self.rclickPasses)
         self.b_pathLast.clicked.connect(lambda: self.stateManager.showLastPathMenu(self))
-        self.lw_passes.itemDoubleClicked.connect(
+        self.tw_passes.itemDoubleClicked.connect(
             lambda x: self.core.appPlugin.sm_render_openPasses(self)
         )
 
@@ -368,11 +372,18 @@ class ImageRenderClass(object):
                 "label": "Open in Explorer...",
                 "callback": lambda: self.core.openFolder(path)
             },
-            {
+        ]
+        if os.getenv("PRISM_COPY_FILE_CONTENT", "0") == "1":
+            options.append({
                 "label": "Copy",
                 "callback": lambda: self.core.copyToClipboard(path, file=True)
-            },
-        ]
+            })
+        else:
+            options.append({
+                "label": "Copy Path",
+                "callback": lambda: self.core.copyToClipboard(path, file=False)
+            })
+
         return options
 
     @err_catcher(name=__name__)
@@ -784,6 +795,7 @@ class ImageRenderClass(object):
         self.refreshContext()
         self.refreshCameras()
         self.updateRange()
+        self.w_comment.setHidden(not self.stateManager.useStateComments())
 
         if not self.core.mediaProducts.getUseMaster():
             self.w_master.setVisible(False)
@@ -891,7 +903,7 @@ class ImageRenderClass(object):
             context = self.getCurrentContext()
             if context.get("type") == "shot" and "sequence" in context:
                 frange = self.core.entities.getShotRange(context)
-                if frange:
+                if frange and frange[0] is not None and frange[1] is not None:
                     startFrame, endFrame = frange
                     startFrame -= 1
                     endFrame += 1
@@ -1018,24 +1030,33 @@ class ImageRenderClass(object):
 
     @err_catcher(name=__name__)
     def rclickPasses(self, pos):
-        if self.lw_passes.currentItem() is None or not getattr(
-            self.core.appPlugin, "canDeleteRenderPasses", True
-        ):
-            return
-
         rcmenu = QMenu()
 
-        delAct = QAction("Delete", self)
-        delAct.triggered.connect(self.deleteAOVs)
-        rcmenu.addAction(delAct)
+        refreshAct = QAction("Refresh", self)
+        refreshAct.triggered.connect(lambda: getattr(self.core.appPlugin, "sm_render_refreshPasses", lambda x: None)(self))
+        rcmenu.addAction(refreshAct)
+
+        if self.tw_passes.currentItem() and getattr(
+            self.core.appPlugin, "canDeleteRenderPasses", True
+        ):
+            delAct = QAction("Delete", self)
+            delAct.triggered.connect(self.deleteAOVs)
+            rcmenu.addAction(delAct)
+
+        if hasattr(self.core.appPlugin, "sm_render_rightclickPasses"):
+            self.core.appPlugin.sm_render_rightclickPasses(self, rcmenu, pos)
+
+        if rcmenu.isEmpty():
+            return
 
         rcmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
     def deleteAOVs(self):
-        items = self.lw_passes.selectedItems()
+        items = self.tw_passes.selectedItems()
         for i in items:
-            self.core.appPlugin.removeAOV(i.text())
+            self.core.appPlugin.removeAOV(i.text(0))
+
         self.updateUi()
 
     @err_catcher(name=__name__)
@@ -1105,7 +1126,7 @@ class ImageRenderClass(object):
         return [self.state.text(0), warnings]
 
     @err_catcher(name=__name__)
-    def getOutputName(self, useVersion="next", identifier=None):
+    def getOutputName(self, useVersion="next", identifier=None, layer=None):
         if identifier is None:
             identifier = self.getIdentifier()
 
@@ -1115,7 +1136,7 @@ class ImageRenderClass(object):
         extension = self.cb_format.currentText()
         context = self.getCurrentContext()
         framePadding = (
-            "#"*self.core.framePadding if self.getRangeType() != "Single Frame" else ""
+            "#" * self.core.framePadding if self.getRangeType() != "Single Frame" else ""
         )
 
         if "type" not in context:
@@ -1128,23 +1149,37 @@ class ImageRenderClass(object):
         else:
             version = useVersion if useVersion != "next" else None
 
+        additionalContext = getattr(
+            self.core.appPlugin, "getAdditionalRenderContext", lambda x, x2, x3, x4: None
+        )(self, context, identifier, layer)
+
         outputPathData = self.core.mediaProducts.generateMediaProductPath(
             entity=context,
             task=identifier,
             extension=extension,
             framePadding=framePadding,
-            comment=self.stateManager.publishComment,
+            comment=self.getComment(),
             version=version,
             location=location,
             singleFrame=singleFrame,
             returnDetails=True,
             mediaType=self.mediaType,
             state=self,
+            additionalContext=additionalContext,
         )
 
         outputFolder = os.path.dirname(outputPathData["path"])
         hVersion = outputPathData["version"]
         return outputPathData["path"], outputFolder, hVersion
+
+    @err_catcher(name=__name__)
+    def getComment(self):
+        if self.stateManager.useStateComments():
+            comment = self.e_comment.text() or self.stateManager.publishComment
+        else:
+            comment = self.stateManager.publishComment
+
+        return comment
 
     @err_catcher(name=__name__)
     def executeState(self, parent, useVersion="next"):
@@ -1176,23 +1211,40 @@ class ImageRenderClass(object):
             if idfs is None:
                 idfs = [self.getIdentifier()]
 
-            for idf in idfs:
-                result = self.executeIdentifier(
-                    idf,
-                    useVersion,
-                    context,
-                    fileName,
-                    startFrame,
-                    endFrame,
-                    frames,
-                    rangeType,
-                    parent
-                )
-                if not isinstance(result, dict):
-                    return result
+            layerFunc = getattr(self.core.appPlugin, "sm_render_getLayers", None)
+            if layerFunc:
+                layers = layerFunc(self)
+            else:
+                layers = None
 
-                if not self.renderingStarted:
-                    self.core.appPlugin.sm_render_undoRenderSettings(self, result["rSettings"])
+            if layers is None:
+                layers = [""]
+
+            if useVersion == "next" and len(idfs) > 1 and os.getenv("PRISM_RENDER_LAYERS_ALIGN_VERSIONS", "1") == "1":
+                for idf in idfs:
+                    for layer in layers:
+                        outputName, outputPath, hVersion = self.getOutputName(useVersion="next", identifier=idf, layer=layer)
+                        useVersion = hVersion if useVersion == "next" or (self.core.compareVersions(hVersion, useVersion) == "higher") else useVersion
+
+            for idf in idfs:
+                for layer in layers:
+                    result = self.executeIdentifier(
+                        idf,
+                        useVersion,
+                        context,
+                        fileName,
+                        startFrame,
+                        endFrame,
+                        frames,
+                        rangeType,
+                        parent,
+                        layer,
+                    )
+                    if not isinstance(result, dict):
+                        return result
+
+                    if not self.renderingStarted:
+                        self.core.appPlugin.sm_render_undoRenderSettings(self, result["rSettings"])
 
             updateMaster = result["updateMaster"]
             rSettings = result["rSettings"]
@@ -1256,7 +1308,8 @@ class ImageRenderClass(object):
         endFrame,
         frames,
         rangeType,
-        parent
+        parent,
+        layer,
     ):
         if self.tasknameRequired and not identifier:
             return [
@@ -1273,7 +1326,7 @@ class ImageRenderClass(object):
                 + ": error - no camera is selected. Skipping activation of this state."
             ]
 
-        outputName, outputPath, hVersion = self.getOutputName(useVersion=useVersion, identifier=identifier)
+        outputName, outputPath, hVersion = self.getOutputName(useVersion=useVersion, identifier=identifier, layer=layer)
         expandedOutputPath = self.expandvars(outputPath)
 
         outLength = len(outputName)
@@ -1297,9 +1350,11 @@ class ImageRenderClass(object):
         details["version"] = hVersion
         details["sourceScene"] = fileName
         details["identifier"] = identifier
-        details["comment"] = self.stateManager.publishComment
+        details["comment"] = self.getComment()
         details["startframe"] = startFrame
         details["endframe"] = endFrame
+        if layer:
+            details["layer"] = layer
 
         if self.mediaType == "3drenders":
             infopath = os.path.dirname(expandedOutputPath)
@@ -1310,8 +1365,6 @@ class ImageRenderClass(object):
             filepath=infopath, details=details
         )
 
-        self.l_pathLast.setText(outputName)
-        self.l_pathLast.setToolTip(outputName)
         self.stateManager.saveStatesToScene()
 
         rSettings = {
@@ -1322,6 +1375,8 @@ class ImageRenderClass(object):
             "rangeType": rangeType,
             "identifier": identifier,
         }
+        if layer:
+            rSettings["layer"] = layer
 
         if (
             self.chb_renderPreset.isChecked()
@@ -1337,6 +1392,8 @@ class ImageRenderClass(object):
             )
 
         self.core.appPlugin.sm_render_preSubmit(self, rSettings)
+        self.l_pathLast.setText(rSettings["outputName"])
+        self.l_pathLast.setToolTip(rSettings["outputName"])
 
         kwargs = {
             "state": self,
@@ -1353,7 +1410,10 @@ class ImageRenderClass(object):
                 ]
 
         if not os.path.exists(self.expandvars(os.path.dirname(rSettings["outputName"]))):
-            os.makedirs(self.expandvars(os.path.dirname(rSettings["outputName"])))
+            try:
+                os.makedirs(self.expandvars(os.path.dirname(rSettings["outputName"])))
+            except:
+                logger.debug("failed to create folder: " + self.expandvars(os.path.dirname(rSettings["outputName"])))
 
         if self.stateManager.actionSaveDuringPub.isChecked():
             self.core.saveScene(versionUp=False, prismReq=False)
@@ -1384,7 +1444,7 @@ class ImageRenderClass(object):
                 self, rSettings["outputName"], rSettings
             )
 
-        resultData = {"result": result, "updateMaster": updateMaster, "rSettings": rSettings, "outputName": outputName}
+        resultData = {"result": result, "updateMaster": updateMaster, "rSettings": rSettings, "outputName": rSettings["outputName"], "details": details}
         return resultData
 
     @err_catcher(name=__name__)

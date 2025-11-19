@@ -34,6 +34,7 @@
 
 import os
 import sys
+import platform
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -643,3 +644,218 @@ class SaveComment(QDialog, SaveComment_ui.Ui_dlg_SaveComment):
             args=[self, details],
         )
         return details
+
+
+class MediaPlayersWidget(QGroupBox):
+    def __init__(self, origin, playerData=None):
+        super(MediaPlayersWidget, self).__init__()
+        self.core = origin.core
+        self.loadLayout()
+        self.connectEvents()
+        if playerData:
+            self.loadPlayerData(playerData)
+
+    @err_catcher(name=__name__)
+    def loadLayout(self):
+        self.w_add = QWidget()
+        self.b_add = QToolButton()
+        self.lo_add = QHBoxLayout()
+        self.w_add.setLayout(self.lo_add)
+        self.lo_add.addStretch()
+        self.lo_add.addWidget(self.b_add)
+
+        path = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "add.png"
+        )
+        icon = self.core.media.getColoredIcon(path)
+        self.b_add.setIcon(icon)
+        self.b_add.setIconSize(QSize(20, 20))
+        self.b_add.setToolTip("Add Media Player")
+        if self.core.appPlugin.pluginName != "Standalone":
+            self.b_add.setStyleSheet(
+                "QWidget{padding: 0; border-width: 0px;background-color: transparent} QWidget:hover{border-width: 1px; }"
+            )
+
+        path = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "reset.png"
+        )
+        icon = self.core.media.getColoredIcon(path)
+
+        self.lo_player = QVBoxLayout()
+        self.lo_main = QVBoxLayout()
+        self.setLayout(self.lo_main)
+        self.lo_main.addLayout(self.lo_player)
+        self.lo_main.addWidget(self.w_add)
+        self.setTitle("Media Players")
+
+    @err_catcher(name=__name__)
+    def connectEvents(self):
+        self.b_add.clicked.connect(self.addItem)
+
+    @err_catcher(name=__name__)
+    def refresh(self):
+        data = self.getPlayerData()
+        self.clearItems()
+        self.loadPlayerData(data)
+
+    @err_catcher(name=__name__)
+    def loadPlayerData(self, playerData):
+        self.clearItems()
+        for player in playerData:
+            self.addItem(
+                name=player["name"],
+                path=player["path"],
+                understandsFramepattern=player["understandsFramepattern"],
+            )
+
+    @err_catcher(name=__name__)
+    def addItem(self, name=None, path=None, understandsFramepattern=None):
+        item = MediaPlayerItem(self)
+        item.removed.connect(self.removeItem)
+        if name:
+            item.setName(name)
+
+        if path:
+            item.setPath(path)
+
+        if understandsFramepattern is not None:
+            item.setUnderstandsFramepattern(understandsFramepattern)
+
+        self.lo_player.addWidget(item)
+        return item
+
+    @err_catcher(name=__name__)
+    def removeItem(self, item):
+        idx = self.lo_player.indexOf(item)
+        if idx != -1:
+            w = self.lo_player.takeAt(idx)
+            if w.widget():
+                w.widget().deleteLater()
+
+    @err_catcher(name=__name__)
+    def clearItems(self):
+        for idx in reversed(range(self.lo_player.count())):
+            item = self.lo_player.takeAt(idx)
+            w = item.widget()
+            if w:
+                w.setVisible(False)
+                w.deleteLater()
+
+    @err_catcher(name=__name__)
+    def getPlayerData(self):
+        playerData = []
+        for idx in range(self.lo_player.count()):
+            w = self.lo_player.itemAt(idx)
+            widget = w.widget()
+            if widget:
+                if isinstance(widget, MediaPlayerItem):
+                    if not widget.name():
+                        continue
+
+                    sdata = {
+                        "name": widget.name(),
+                        "path": widget.path(),
+                        "understandsFramepattern": widget.understandsFramepattern(),
+                    }
+                    playerData.append(sdata)
+
+        return playerData
+
+
+class MediaPlayerItem(QWidget):
+
+    removed = Signal(object)
+
+    def __init__(self, origin):
+        super(MediaPlayerItem, self).__init__()
+        self.origin = origin
+        self.core = self.origin.core
+        self.loadLayout()
+
+    @err_catcher(name=__name__)
+    def loadLayout(self):
+        self.e_name = QLineEdit()
+        self.e_name.setPlaceholderText("Name")
+        self.e_path = QLineEdit()
+        self.e_path.setPlaceholderText("Executable Path")
+        # self.b_browseMediaPlayer.clicked.connect(lambda: self.browse("mediaPlayer", getFile=True))
+        # self.b_browseMediaPlayer.customContextMenuRequested.connect(
+        #     lambda: self.core.openFolder(self.e_mediaPlayerPath.text())
+        # )
+        self.b_browse = QToolButton()
+        self.b_browse.setToolTip("Browse...")
+        self.b_browse.clicked.connect(self.browse)
+        iconPath = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "browse.png"
+        )
+        icon = self.core.media.getColoredIcon(iconPath)
+        self.b_browse.setIcon(icon)
+        self.b_browse.customContextMenuRequested.connect(
+            lambda: self.core.openFolder(self.e_path.text())
+        )
+
+        self.chb_understandsFramepattern = QCheckBox("Understands Framepatterns")
+        self.chb_understandsFramepattern.setChecked(True)
+
+        self.b_remove = QToolButton()
+        self.b_remove.clicked.connect(lambda: self.removed.emit(self))
+
+        self.lo_main = QHBoxLayout()
+        self.lo_main.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(self.lo_main)
+        self.lo_main.addWidget(self.e_name, 3)
+        self.lo_main.addWidget(self.e_path, 10)
+        self.lo_main.addWidget(self.b_browse, 0)
+        self.lo_main.addWidget(self.chb_understandsFramepattern, 0)
+        self.lo_main.addWidget(self.b_remove, 0)
+
+        path = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "delete.png"
+        )
+        icon = self.core.media.getColoredIcon(path)
+        self.b_remove.setIcon(icon)
+        self.b_remove.setIconSize(QSize(20, 20))
+        self.b_remove.setToolTip("Delete")
+        if self.core.appPlugin.pluginName != "Standalone":
+            self.b_remove.setStyleSheet(
+                "QWidget{padding: 0; border-width: 0px;background-color: transparent} QWidget:hover{border-width: 1px; }"
+            )
+
+    @err_catcher(name=__name__)
+    def browse(self):
+        windowTitle = "Select Media Player executable"
+        if platform.system() == "Windows":
+            fStr = "Executable (*.exe);;All files (*)"
+        else:
+            fStr = "All files (*)"
+
+        selectedPath = QFileDialog.getOpenFileName(
+            self, windowTitle, self.e_path.text(), fStr
+        )[0]
+
+        if selectedPath != "":
+            self.e_path.setText(self.core.fixPath(selectedPath))
+
+    @err_catcher(name=__name__)
+    def name(self):
+        return self.e_name.text()
+
+    @err_catcher(name=__name__)
+    def setName(self, name):
+        return self.e_name.setText(name)
+
+    @err_catcher(name=__name__)
+    def path(self):
+        return os.path.normpath(self.e_path.text())
+
+    @err_catcher(name=__name__)
+    def setPath(self, text):
+        self.e_path.setText(text)
+
+    @err_catcher(name=__name__)
+    def understandsFramepattern(self):
+        return self.chb_understandsFramepattern.isChecked()
+
+    @err_catcher(name=__name__)
+    def setUnderstandsFramepattern(self, understandsFramepattern):
+        self.chb_understandsFramepattern.setChecked(understandsFramepattern)

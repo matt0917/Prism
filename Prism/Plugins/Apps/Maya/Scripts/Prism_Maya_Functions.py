@@ -79,6 +79,9 @@ class Prism_Maya_Functions(object):
             "prePlayblast", self.prePlayblast, plugin=self.plugin
         )
         self.core.registerCallback(
+            "onStateCreated", self.onStateCreated, plugin=self.plugin
+        )
+        self.core.registerCallback(
             "updatedEnvironmentVars", self.updatedEnvironmentVars, plugin=self.plugin
         )
         if "OCIO" in [item["key"] for item in self.core.users.getUserEnvironment()]:
@@ -186,7 +189,382 @@ class Prism_Maya_Functions(object):
                 parent=prism_menu,
                 command=lambda x: self.core.prismSettings(),
             )
+
+            if os.getenv("PRISM_MAYA_LAYOUT_TOOLS", "1") == "1":
+                layoutMenu = cmds.menuItem(subMenu=True, label="Layout")
+                cmds.menuItem(
+                    label="Create Shots in Sequencer...",
+                    annotation="Create Shots in Sequencer...",
+                    parent=layoutMenu,
+                    command=lambda x: self.layoutCreateShots(),
+                )
+                cmds.menuItem(
+                    label="Duplicate Selected Shot...",
+                    annotation="Duplicate Selected Shot...",
+                    parent=layoutMenu,
+                    command=lambda x: self.layoutDuplicateShot(),
+                )
+                cmds.menuItem(
+                    label="Extend Selected Shot...",
+                    annotation="Extend Selected Shot...",
+                    parent=layoutMenu,
+                    command=lambda x: self.layoutExtendShot(),
+                )
+                cmds.menuItem(
+                    label="Split Shots...",
+                    annotation="Split Shots",
+                    parent=layoutMenu,
+                    command=lambda x: self.layoutSplitShot(),
+                )
+                cmds.setParent("..", menu=True)
+
             self.core.callback(name="onMayaMenuCreated", args=[self, prism_menu])
+
+    @err_catcher(name=__name__)
+    def layoutCreateShots(self):
+        def get_maya_window():
+            """Get Maya's main window for parenting the UI."""
+            from maya import OpenMayaUI as omui
+            try:
+                from shiboken6 import wrapInstance
+            except:
+                from shiboken2 import wrapInstance
+
+            ptr = omui.MQtUtil.mainWindow()
+            return wrapInstance(int(ptr), QMainWindow)
+
+        class ShotCreator(QDialog):
+            """UI for creating multiple sequential shots with cameras in Maya's Camera Sequencer."""
+            def __init__(self, parent=get_maya_window()):
+                super(ShotCreator, self).__init__(parent)
+                self.setWindowTitle("Shot Creator")
+                self.setMinimumWidth(300)
+
+                # --- Widgets ---
+                self.numShotsSpin = QSpinBox()
+                self.numShotsSpin.setMinimum(1)
+                self.numShotsSpin.setMaximum(999)
+                self.numShotsSpin.setValue(5)
+
+                self.framesPerShotSpin = QSpinBox()
+                self.framesPerShotSpin.setMinimum(1)
+                self.framesPerShotSpin.setMaximum(10000)
+                self.framesPerShotSpin.setValue(100)
+
+                self.bufferFramesSpin = QSpinBox()
+                self.bufferFramesSpin.setMinimum(0)
+                self.bufferFramesSpin.setMaximum(10000)
+                self.bufferFramesSpin.setValue(10)
+
+                okBtn = QPushButton("OK")
+                okBtn.clicked.connect(self.create_shots)
+
+                # --- Layout ---
+                formLayout = QFormLayout()
+                formLayout.addRow("Number of Shots:", self.numShotsSpin)
+                formLayout.addRow("Frames per Shot:", self.framesPerShotSpin)
+                formLayout.addRow("Buffer Frames:", self.bufferFramesSpin)
+
+                mainLayout = QVBoxLayout(self)
+                mainLayout.addLayout(formLayout)
+                mainLayout.addWidget(okBtn)
+
+            def create_camera_group(self):
+                """Create or get the 'All_Cameras' group"""
+                if cmds.objExists("All_Cameras"):
+                    return "All_Cameras"
+                else:
+                    return cmds.group(empty=True, name="All_Cameras")
+
+            def configure_camera_settings(self, camera_shape):
+                """Configure camera settings with specified parameters"""
+                # Set camera aperture (36mm x 24mm)
+                # cmds.setAttr("%s.horizontalFilmAperture" % camera_shape, 1.41732)  # 36mm in inches
+                # cmds.setAttr("%s.verticalFilmAperture" % camera_shape, 0.94488)    # 24mm in inches
+
+                # Set film aspect ratio to 1.5 (36/24 = 1.5)
+                # This is automatically calculated from the aperture settings
+
+                # Set Fit Resolution Gate to Horizontal
+                # cmds.setAttr("%s.filmFit" % camera_shape, 2)  # 2 = Horizontal
+
+                # Ensure camera is not orthographic
+                # cmds.setAttr("%s.orthographic" % camera_shape, 0)
+
+            def create_shots(self):
+                num_shots = self.numShotsSpin.value()
+                frames_per_shot = self.framesPerShotSpin.value()
+                buffer_frames = self.bufferFramesSpin.value()
+
+                # Create or get the camera group
+                camera_group = self.create_camera_group()
+
+                # --- Ensure sequencer exists ---
+                sequencers = cmds.ls(type="sequencer")
+                if not sequencers:
+                    sequencer = cmds.createNode("sequencer", name="sequencer1")
+                else:
+                    sequencer = sequencers[0]
+
+                track_num = 1  # Track V1
+
+                # --- Find existing shots on this track ---
+                existing_shots = cmds.ls(type="shot") or []
+                track_shots = [s for s in existing_shots if cmds.getAttr("%s.track" % s) == track_num]
+
+                if track_shots:
+                    # Find last shot's timeline end and sequence end
+                    last_shot = max(track_shots, key=lambda s: cmds.getAttr("%s.sequenceEndFrame" % s))
+                    cumulative_start = cmds.getAttr("%s.endFrame" % last_shot) + buffer_frames + 1
+                    cumulative_starts = cmds.getAttr("%s.sequenceEndFrame" % last_shot) + 1
+                else:
+                    cumulative_start = 1
+                    cumulative_starts = 1
+
+                # List to store all created cameras
+                created_cameras = []
+
+                for i in range(num_shots):
+                    shot_index = len(existing_shots) + i + 1
+                    shot_name = "shot%03d" % shot_index
+                    cam_name = "Camera%03d" % shot_index
+
+                    # Create camera if it doesn't exist
+                    if not cmds.objExists(cam_name):
+                        cam_transform, cam_shape = cmds.camera(filmFit="horizontal")
+                        camera = cam_name
+                        cmds.rename(cam_shape, cam_name + "Shape")
+                        cmds.rename(cam_transform, cam_name)
+
+                        # Configure camera settings
+                        self.configure_camera_settings(cam_shape)
+
+                        # Add to created cameras list
+                        created_cameras.append(camera)
+                    else:
+                        camera = cam_name
+                        # Configure existing camera settings
+                        cam_shape = cmds.listRelatives(camera, shapes=True)[0]
+                        self.configure_camera_settings(cam_shape)
+
+                    # Compute shot end frames
+                    cumulative_end = cumulative_start + frames_per_shot - 1
+                    cumulative_ends = cumulative_starts + frames_per_shot - 1
+
+                    # Create shot node
+                    if not cmds.objExists(shot_name):
+                        cmds.shot(
+                            shot_name,
+                            sequenceStartTime=cumulative_starts,
+                            startTime=cumulative_start,
+                            endTime=cumulative_end,
+                            track=track_num,
+                            currentCamera=camera
+                        )
+
+                    # Advance for next shot
+                    cumulative_start = cumulative_end + buffer_frames + 1
+                    cumulative_starts = cumulative_ends + 1
+
+                # Group all created cameras
+                if created_cameras:
+                    # Ungroup cameras first if they're in any other group
+                    for cam in created_cameras:
+                        parent = cmds.listRelatives(cam, parent=True)
+                        if parent and parent[0] != camera_group:
+                            cmds.parent(cam, world=True)
+
+                    # Parent cameras to the group
+                    cmds.parent(created_cameras, camera_group)
+
+                # Update timeline to include new shots
+                total_frames = cumulative_end + buffer_frames
+                cmds.playbackOptions(minTime=1, maxTime=total_frames)
+
+                cmds.inViewMessage(
+                    amg="<hl>%s</hl> shots added sequentially to Track V1!" % num_shots,
+                    pos="topCenter", fade=True
+                )
+
+        try:
+            shot_creator_dialog.close()
+            shot_creator_dialog.deleteLater()
+        except:
+            pass
+
+        shot_creator_dialog = ShotCreator()
+        shot_creator_dialog.show()
+
+    @err_catcher(name=__name__)
+    def layoutDuplicateShot(self):
+        def duplicate_keys(source_start, source_end, target_start):
+            """
+            Duplicate all animation keyframes from source_start..source_end
+            into a new range starting at target_start.
+            """
+
+            # Calculate offset between target and source
+            offset = target_start - source_start
+            duration = source_end - source_start
+
+            # Get all anim curves in the scene
+            anim_curves = cmds.ls(type="animCurve")
+            if not anim_curves:
+                cmds.warning("No animation curves found in the scene.")
+                return
+
+            for anim_curve in anim_curves:
+                connections = cmds.listConnections(anim_curve, source=False, destination=True) or []
+                skip_curve = False
+
+                for c in connections:
+                    node_type = cmds.nodeType(c)
+
+                    # Skip if it's a camera shape
+                    if node_type == "camera":
+                        skip_curve = True
+                        break
+
+                    # Skip if it's a transform that has a camera shape child
+                    if node_type == "transform":
+                        children = cmds.listRelatives(c, children=True, type="camera") or []
+                        if children:
+                            skip_curve = True
+                            break
+
+                if skip_curve:
+                    continue  # skip this curve
+
+                # Find keys inside source range
+                keys = cmds.keyframe(
+                    anim_curve,
+                    query=True,
+                    time=(source_start, source_end)
+                )
+                if not keys:
+                    continue
+
+                # Duplicate each key with offset
+                for key_time in keys:
+                    # Get key value
+                    value = cmds.keyframe(anim_curve, query=True, time=(key_time,), valueChange=True)[0]
+                    # Compute new time
+                    new_time = key_time + offset
+                    # Insert new key
+                    cmds.setKeyframe(anim_curve, time=new_time, value=value)
+
+        def copy_camera_keys(source_cam, source_start, source_end, target_cam, target_start):
+            """
+            Copy keyframes from source_cam (source_start..source_end)
+            to target_cam (target_start..target_start + duration).
+            """
+
+            # Validate cameras
+            if not cmds.objExists(source_cam):
+                cmds.error("Source camera '%s' does not exist." % source_cam)
+                return
+            if not cmds.objExists(target_cam):
+                cmds.error("Target camera '%s' does not exist." % target_cam)
+                return
+
+            # Ensure we're working with transform nodes (not shapes)
+            if cmds.nodeType(source_cam) == "camera":
+                source_cam = cmds.listRelatives(source_cam, parent=True)[0]
+            if cmds.nodeType(target_cam) == "camera":
+                target_cam = cmds.listRelatives(target_cam, parent=True)[0]
+
+            offset = target_start - source_start
+            duration = source_end - source_start
+
+            # Find animCurves connected to source camera
+            anim_curves = cmds.listConnections(source_cam, type="animCurve") or []
+            if not anim_curves:
+                cmds.warning("No animation found on %s." % source_cam)
+                return
+
+            for anim_curve in anim_curves:
+                # What attribute is this animCurve driving?
+                attrs = cmds.listConnections(anim_curve, plugs=True, source=False, destination=True) or []
+                for attr in attrs:
+                    if attr.startswith(source_cam + "."):
+                        # Extract attribute name (e.g., translateX, rotateY)
+                        short_attr = attr.split(".")[-1]
+                        target_attr = "%s.%s" % (target_cam, short_attr)
+
+                        if not cmds.objExists(target_attr):
+                            continue  # target doesn't have this attribute
+
+                        # Get keys in range
+                        keys = cmds.keyframe(anim_curve, query=True, time=(source_start, source_end))
+                        if not keys:
+                            continue
+
+                        for key_time in keys:
+                            value = cmds.keyframe(anim_curve, query=True, time=(key_time,), valueChange=True)[0]
+                            new_time = key_time + offset
+                            cmds.setKeyframe(target_attr, time=new_time, value=value)
+
+        objs = cmds.ls(selection=True)
+        shots = [obj for obj in objs if cmds.objectType(obj) == "shot"]
+        if len(shots) != 1:
+            QMessageBox.warning(None, "Duplicate Shot", "Please select exactly one shot.")
+        else:
+            oldShot = shots[0]
+            start = cmds.shot(oldShot, q=True, startTime=True)
+            end = cmds.shot(oldShot, q=True, endTime=True)
+            
+            newStart = end + 10
+            
+            dlg = QDialog()
+            dlg.setWindowTitle("Duplicate Shot")
+            lo = QVBoxLayout(dlg)
+            w_startframe = QWidget()
+            lo_startframe = QHBoxLayout(w_startframe)
+            l_startframe = QLabel("Startframe:")
+            sp_startframe = QSpinBox()
+            sp_startframe.setRange(1, 100000)
+            sp_startframe.setValue(newStart)
+            lo_startframe.addWidget(l_startframe)
+            lo_startframe.addWidget(sp_startframe)
+            lo.addWidget(w_startframe)
+            bb = QDialogButtonBox()
+            bb.addButton("Duplicate", QDialogButtonBox.AcceptRole)
+            bb.addButton("Cancel", QDialogButtonBox.RejectRole)
+            bb.accepted.connect(dlg.accept)
+            bb.rejected.connect(dlg.reject)
+            lo.addWidget(bb)
+            
+            result = dlg.exec_()
+            if result != 0:
+                newShot = cmds.duplicate(oldShot)[0]
+                newStart = sp_startframe.value()
+                newEnd = newStart + end - start
+                
+                cmds.setAttr(f"{newShot}.sequenceEndFrame", newEnd)
+                cmds.setAttr(f"{newShot}.sequenceStartFrame", newStart)
+                cmds.setAttr(f"{newShot}.endFrame", newEnd)
+                cmds.setAttr(f"{newShot}.startFrame", newStart)
+                cmds.setAttr(f"{newShot}.track", 1)
+                
+                duplicate_keys(start, end, newStart)
+                
+                oldCam = cmds.shot(oldShot, q=True, currentCamera=True)
+                newCam = cmds.duplicate(oldCam)[0]
+                cmds.shot(newShot, e=True, currentCamera=newCam)
+                cam_name = "Camera%03d" % 1
+                newCam = cmds.rename(newCam, cam_name)
+                cmds.shot(newShot, e=True, currentCamera=newCam)
+                copy_camera_keys(oldCam, start, end, newCam, newStart)
+
+    @err_catcher(name=__name__)
+    def layoutExtendShot(self):
+        self.dlg_extendShots = ShotExtendWindow(self.core.messageParent)
+        self.dlg_extendShots.show()
+
+    @err_catcher(name=__name__)
+    def layoutSplitShot(self):
+        self.dlg_splitShots = ShotSplitWindow(self.core.messageParent, plugin=self)
+        self.dlg_splitShots.show()
 
     @err_catcher(name=__name__)
     def autosaveEnabled(self, origin):
@@ -202,6 +580,9 @@ class Prism_Maya_Functions(object):
 
     @err_catcher(name=__name__)
     def addProjectPaths(self):
+        if not getattr(self.core, "projectPath", ""):
+            return
+
         mayaModPath = os.path.join(
             self.core.projects.getPipelineFolder(), "CustomModules", "Maya"
         )
@@ -266,47 +647,8 @@ class Prism_Maya_Functions(object):
         return state
 
     @err_catcher(name=__name__)
-    def onShelfClickedImportConnectedAssets(self, doubleclick=False):
-        sm = self.core.getStateManager()
-        if not sm:
-            return
-
-        filepath = self.core.getCurrentFileName()
-        entity = self.core.getScenefileData(filepath)
-        if not entity or entity.get("type") != "shot":
-            msg = "Importing connected assets is possible in shot scenefiles only."
-            self.core.popup(msg)
-            return
-
-        productsToImport = []
-        entities = self.core.entities.getConnectedEntities(entity)
-        if not entities:
-            result = self.core.popupQuestion("No assets are connected to the current shot.", buttons=["Connect Assets...", "Close"], icon=QMessageBox.Information)
-            if result == "Connect Assets...":
-                self.core.entities.connectEntityDlg(entities=[entity])
-
-            return
-
-        tags = ["usd", "assembly"]
-        for centity in entities:
-            products = self.core.products.getProductsByTags(centity, tags)
-            productsToImport += products
-
-        if not productsToImport:
-            msg = "No products to import.\n(checking for tags: \"%s\")" % "\", \"".join(tags)
-            self.core.popup(msg)
-            return
-
-        for product in productsToImport:
-            if "asset_path" not in product:
-                continue
-
-            productPath = self.core.products.getLatestVersionpathFromProduct(product["product"], entity=product)
-            if not productPath:
-                continue
-
-            sm.importFile(productPath)
-            logger.debug("added product to shot: %s - %s" % (self.core.entities.getShotName(entity), productPath))
+    def onShelfClickedImportConnectedAssets(self, doubleclick=False, quiet=False):
+        self.core.products.importConnectedAssets(quiet=quiet)
 
     @err_catcher(name=__name__)
     def onShelfClickedExport(self, doubleclick=False):
@@ -780,9 +1122,13 @@ class Prism_Maya_Functions(object):
             return
 
     @err_catcher(name=__name__)
-    def importBackplate(self, mediaPath):
-        camera = cmds.camera()
-        imagePlane = cmds.imagePlane(camera=camera[1])
+    def importBackplate(self, mediaPath, camera=None):
+        if camera:
+            camShape = cmds.listRelatives(camera, shapes=True)[0]
+        else:
+            camera, camShape = cmds.camera()
+
+        imagePlane = cmds.imagePlane(camera=camShape)
         cmds.setAttr(imagePlane[1] + ".imageName", mediaPath, type="string")
         if "#" in os.path.basename(mediaPath):
             cmds.setAttr(imagePlane[1] + ".useFrameExtension", 1)
@@ -920,18 +1266,6 @@ class Prism_Maya_Functions(object):
         origin.lo_fbxSettings.addSpacerItem(spacer)
         origin.lo_fbxSettings.addWidget(origin.b_fbxSettings)
 
-        origin.w_exportNamespaces = QWidget()
-        origin.lo_exportNamespaces = QHBoxLayout()
-        origin.lo_exportNamespaces.setContentsMargins(9, 0, 9, 0)
-        origin.w_exportNamespaces.setLayout(origin.lo_exportNamespaces)
-        origin.l_exportNamespaces = QLabel("Keep namespaces:")
-        spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Expanding)
-        origin.chb_exportNamespaces = QCheckBox()
-        origin.chb_exportNamespaces.setChecked(False)
-        origin.lo_exportNamespaces.addWidget(origin.l_exportNamespaces)
-        origin.lo_exportNamespaces.addSpacerItem(spacer)
-        origin.lo_exportNamespaces.addWidget(origin.chb_exportNamespaces)
-
         origin.w_importReferences = QWidget()
         origin.lo_importReferences = QHBoxLayout()
         origin.lo_importReferences.setContentsMargins(9, 0, 9, 0)
@@ -988,16 +1322,12 @@ class Prism_Maya_Functions(object):
             idx = layout.count()-3
 
         layout.insertWidget(idx, origin.w_fbxSettings)
-        layout.insertWidget(idx, origin.w_exportNamespaces)
         layout.insertWidget(idx, origin.w_importReferences)
         layout.insertWidget(idx, origin.w_preserveReferences)
         layout.insertWidget(idx, origin.w_deleteUnknownNodes)
         layout.insertWidget(idx, origin.w_deleteDisplayLayers)
 
         origin.b_fbxSettings.clicked.connect(self.editFbxSettings)
-        origin.chb_exportNamespaces.stateChanged.connect(
-            origin.stateManager.saveStatesToScene
-        )
         origin.chb_importReferences.stateChanged.connect(
             lambda x: origin.w_preserveReferences.setEnabled(not x)
         )
@@ -1211,19 +1541,31 @@ class Prism_Maya_Functions(object):
             self.setFrameRange(None, origRange[0], origRange[1])
         elif expType == ".abc":
             wholeScene = origin.chb_wholeScene.isChecked()
-            namespaces = origin.chb_exportNamespaces.isChecked()
             result = self.exportAlembic(
                 outputName,
                 startFrame,
                 endFrame,
                 nodes=expNodes,
                 wholeScene=wholeScene,
-                namespaces=namespaces
+                origin=origin,
+            )
+            if not result:
+                return result
+
+        elif expType == ".atom":
+            wholeScene = origin.chb_wholeScene.isChecked()
+            result = self.exportAtom(
+                outputName,
+                startFrame,
+                endFrame,
+                nodes=expNodes,
+                wholeScene=wholeScene,
             )
             if not result:
                 return result
 
         elif expType in [".ma", ".mb"]:
+            requiresReload = False
             if origin.chb_importReferences.isChecked():
                 refFiles = cmds.file(query=True, reference=True)
                 prevSel = cmds.ls(selection=True, long=True)
@@ -1247,10 +1589,10 @@ class Prism_Maya_Functions(object):
 
                         if result == 1:
                             cmds.file(i, removeReference=True)
-                            origin.stateManager.reloadScenefile = True
+                            requiresReload = True
                     else:
                         cmds.file(i, importReference=True)
-                        origin.stateManager.reloadScenefile = True
+                        requiresReload = True
 
                 try:
                     cmds.select(prevSel, noExpand=True)
@@ -1266,14 +1608,14 @@ class Prism_Maya_Functions(object):
                             cmds.lockNode(item, lock=False)
 
                         cmds.delete(item)
-                        origin.stateManager.reloadScenefile = True
+                        requiresReload = True
                 for item in unknownDagNodes:
                     if cmds.objExists(item):
                         if cmds.lockNode(item, query=True)[0]:
                             cmds.lockNode(item, lock=False)
 
                         cmds.delete(item)
-                        origin.stateManager.reloadScenefile = True
+                        requiresReload = True
 
                 self.cleanUnknownPlugins()
 
@@ -1282,12 +1624,16 @@ class Prism_Maya_Functions(object):
                 for i in layers:
                     if i != "defaultLayer":
                         cmds.delete(i)
-                        origin.stateManager.reloadScenefile = True
+                        requiresReload = True
+
+            if requiresReload:
+                origin.stateManager.reloadScenefile = True
 
             curFileName = self.core.getCurrentFileName()
             if (
                 origin.chb_wholeScene.isChecked()
                 and os.path.splitext(curFileName)[1] == expType
+                and not requiresReload
             ):
                 self.core.copySceneFile(curFileName, outputName)
             else:
@@ -1470,7 +1816,7 @@ class Prism_Maya_Functions(object):
         return attrs
 
     @err_catcher(name=__name__)
-    def exportAlembic(self, outputName, startFrame, endFrame, nodes=None, wholeScene=False, namespaces=False):
+    def exportAlembic(self, outputName, startFrame, endFrame, nodes=None, wholeScene=False, origin=None):
         rootString = ""
         customAttributes = []
         if wholeScene:
@@ -1484,26 +1830,49 @@ class Prism_Maya_Functions(object):
                 if len([k for k in nodes if x.rsplit("|", 1)[0] == k]) == 0
             ]
             for i in rootNodes:
-                rootString += "-root %s " % i
+                rootString += "-root %s" % i
                 customAttributes += self.getCustomAttributes(i)
                 customAttributes = list(set(customAttributes))
 
-        expStr = 'AbcExport -j "-frameRange %s %s %s -eulerFilter -worldSpace -uvWrite -writeUVSets -writeVisibility -stripNamespaces -file \\"%s\\""' % (
+        expStr = 'AbcExport -j "-frameRange %s %s %s' % (
             startFrame,
             endFrame,
-            rootString,
-            outputName.replace("\\", "\\\\\\\\"),
+            rootString
         )
 
-        attrStr = ""
+        if getattr(origin, "additionalSettings", None):
+            for setting in origin.additionalSettings:
+                if setting["name"] == "abcStep":
+                    expStr += " -step " + str(setting["value"])
+                elif setting["name"] == "abcNoNormals" and setting["value"]:
+                    expStr += " -noNormals"
+                elif setting["name"] == "abcRenderableOnly" and setting["value"]:
+                    expStr += " -ro"
+                elif setting["name"] == "abcStripNamespaces" and setting["value"]:
+                    expStr += " -stripNamespaces"
+                elif setting["name"] == "abcUvWrite" and setting["value"]:
+                    expStr += " -uvWrite"
+                elif setting["name"] == "abcWriteColorSets" and setting["value"]:
+                    expStr += " -writeColorSets"
+                elif setting["name"] == "abcWriteFaceSets" and setting["value"]:
+                    expStr += " -writeFaceSets"
+                elif setting["name"] == "abcWholeFrameGeo" and setting["value"]:
+                    expStr += " -wholeFrameGeo"
+                elif setting["name"] == "abcWorldSpace" and setting["value"]:
+                    expStr += " -worldSpace"
+                elif setting["name"] == "abcWriteVisibility" and setting["value"]:
+                    expStr += " -writeVisibility"
+                elif setting["name"] == "abcFilterEulerRotations" and setting["value"]:
+                    expStr += " -eulerFilter"
+                elif setting["name"] == "abcWriteCreases" and setting["value"]:
+                    expStr += " -autoSubd"
+                elif setting["name"] == "abcWriteUvSets" and setting["value"]:
+                    expStr += " -writeUVSets"
+
         for customAttribute in customAttributes:
-            attrStr += "-attr %s " % customAttribute
+            expStr += " -attr %s " % customAttribute
 
-        expStr = expStr.replace(" -file ", " %s -file " % attrStr)
-
-        if namespaces:
-            expStr = expStr.replace("-stripNamespaces", "")
-
+        expStr += " -file \\\"%s\\\"\"" % outputName.replace("\\", "\\\\\\\\")
         cmd = {"export_cmd": expStr}
         self.core.callback(name="maya_export_abc", args=[self, cmd])
 
@@ -1541,6 +1910,24 @@ class Prism_Maya_Functions(object):
         return True
 
     @err_catcher(name=__name__)
+    def exportAtom(self, outputName, startFrame, endFrame, nodes=None, wholeScene=False):
+        cmds.loadPlugin("atomImportExport.mll", quiet=True)
+        try:
+            cmds.file(
+                outputName,
+                force=True,
+                exportSelected=not wholeScene,
+                type="atomExport",
+                preserveReferences=True,
+                options="statics=1;targetTime=3;selected=childrenToo",
+            )
+        except Exception as e:
+            self.core.popup("Error occured during publish:\n\n%s" % e)
+            return False
+
+        return True
+
+    @err_catcher(name=__name__)
     def sm_export_preDelete(self, origin):
         setName = self.getSetPrefix() + self.validate(origin.getTaskname())
         try:
@@ -1557,7 +1944,6 @@ class Prism_Maya_Functions(object):
     @err_catcher(name=__name__)
     def sm_export_typeChanged(self, origin, idx):
         origin.w_fbxSettings.setVisible(idx == ".fbx")
-        origin.w_exportNamespaces.setVisible(idx == ".abc")
         exportScene = idx in [".ma", ".mb"]
         origin.w_importReferences.setVisible(exportScene)
         origin.w_deleteUnknownNodes.setVisible(exportScene)
@@ -1611,8 +1997,6 @@ class Prism_Maya_Functions(object):
 
     @err_catcher(name=__name__)
     def sm_export_loadData(self, origin, data):
-        if "exportnamespaces" in data:
-            origin.chb_exportNamespaces.setChecked(eval(data["exportnamespaces"]))
         if "importreferences" in data:
             origin.chb_importReferences.setChecked(eval(data["importreferences"]))
         if "deleteunknownnodes" in data:
@@ -1627,7 +2011,6 @@ class Prism_Maya_Functions(object):
         stateProps.pop("connectednodes")
         stateProps.update(
             {
-                "exportnamespaces": str(origin.chb_exportNamespaces.isChecked()),
                 "importreferences": str(origin.chb_importReferences.isChecked()),
                 "deleteunknownnodes": str(origin.chb_deleteUnknownNodes.isChecked()),
                 "deletedisplaylayers": str(origin.chb_deleteDisplayLayers.isChecked()),
@@ -1680,7 +2063,12 @@ class Prism_Maya_Functions(object):
             else:
                 rlayerNames.append(i)
 
-        rlayerNames += ["All Renderable Renderlayers", "All Renderlayers"]
+        rlayerNames += [
+            "All Renderable Renderlayers",
+            "All Renderable Renderlayers (separate identifiers)",
+            "All Renderlayers",
+            "All Renderlayers (separate identifiers)"
+        ]
         return rlayerNames
 
     @err_catcher(name=__name__)
@@ -1689,6 +2077,34 @@ class Prism_Maya_Functions(object):
 
     @err_catcher(name=__name__)
     def sm_render_getIdentifiers(self, origin):
+        layer = self.getSelectedRenderlayer(origin)
+        if layer == "All Renderable Renderlayers (separate identifiers)":
+            rlayers = self.getRenderLayersFromScene() or []
+            rrlayers = []
+            for layer in rlayers:
+                if cmds.getAttr("%s.renderable" % layer):
+                    rrlayers.append(layer)
+
+            rlayers = rrlayers
+        elif layer == "All Renderlayers (separate identifiers)":
+            rlayers = self.getRenderLayersFromScene() or []
+        else:
+            return
+
+        newRLayers = []
+        for rlayer in rlayers:
+            if rlayer.startswith("rs_"):
+                rlayer = rlayer[len("rs_"):]
+
+            if rlayer == "defaultRenderLayer":
+                rlayer = os.getenv("PRISM_MAYA_DFT_RENDERLAYER_NAME", "masterLayer")
+
+            newRLayers.append(rlayer)
+
+        return newRLayers
+
+    @err_catcher(name=__name__)
+    def sm_render_getLayers(self, origin):
         layer = self.getSelectedRenderlayer(origin)
         if layer == "All Renderable Renderlayers":
             rlayers = self.getRenderLayersFromScene() or []
@@ -1717,7 +2133,7 @@ class Prism_Maya_Functions(object):
 
     @err_catcher(name=__name__)
     def sm_render_updateUi(self, origin):
-        multipleLayers = self.getSelectedRenderlayer(origin) in ["All Renderable Renderlayers", "All Renderlayers"]
+        multipleLayers = self.getSelectedRenderlayer(origin) in ["All Renderable Renderlayers (separate identifiers)", "All Renderlayers (separate identifiers)"]
         origin.f_taskname.setEnabled(not multipleLayers)
         if multipleLayers:
             origin.setTaskWarn(False)
@@ -1732,7 +2148,7 @@ class Prism_Maya_Functions(object):
             return
 
         origin.gb_passes.setVisible(True)
-        origin.lw_passes.clear()
+        origin.tw_passes.clear()
 
         aovs = []
         if curRender == "arnold":
@@ -1777,12 +2193,12 @@ class Prism_Maya_Functions(object):
 
         for i in aovs:
             if type(i) == list:
-                item = QListWidgetItem(i[0])
-                item.setToolTip(i[1])
+                item = QTreeWidgetItem([i[0]])
+                item.setToolTip(0, i[1])
             else:
-                item = QListWidgetItem(i)
+                item = QTreeWidgetItem([i])
 
-            origin.lw_passes.addItem(item)
+            origin.tw_passes.addTopLevelItem(item)
 
     @err_catcher(name=__name__)
     def sm_render_openPasses(self, origin, item=None):
@@ -1854,8 +2270,10 @@ tabLayout -e -sti %s $tabLayout;"""
     def sm_render_preSubmit(self, origin, rSettings):
         rlayers = cmds.ls(type="renderLayer")
         selRenderLayer = origin.cb_renderLayer.currentText()
-        if selRenderLayer in ["All Renderable Renderlayers", "All Renderlayers"]:
+        if selRenderLayer in ["All Renderable Renderlayers (separate identifiers)", "All Renderlayers (separate identifiers)"]:
             selRenderLayer = rSettings["identifier"]
+        elif selRenderLayer in ["All Renderable Renderlayers", "All Renderlayers"]:
+            selRenderLayer = rSettings["layer"]
 
         if selRenderLayer == os.getenv("PRISM_MAYA_DFT_RENDERLAYER_NAME", "masterLayer"):
             stateRenderLayer = "defaultRenderLayer"
@@ -2031,7 +2449,7 @@ tabLayout -e -sti %s $tabLayout;"""
                 "exr (multichannel)",
                 "exr (deep)",
             ]
-            if not multichannel:
+            if not multichannel or imgFormat != ".exr":
                 cmds.setAttr(
                     "vraySettings.imageFormatStr", imgFormat[1:], type="string"
                 )
@@ -2175,6 +2593,19 @@ tabLayout -e -sti %s $tabLayout;"""
             cmds.setAttr("defaultRenderGlobals.imageFormat", rndFormat)
             cmds.setAttr("defaultRenderGlobals.exrPixelType", 1)  # 16 bit
             cmds.setAttr("defaultRenderGlobals.exrCompression", 3)  # ZIP compression
+
+    @err_catcher(name=__name__)
+    def getAdditionalRenderContext(self, origin, context=None, identifier=None, layer=None):
+        selRenderLayer = origin.cb_renderLayer.currentText()
+        if selRenderLayer in ["All Renderable Renderlayers (separate identifiers)", "All Renderlayers (separate identifiers)"]:
+            selRenderLayer = identifier
+        elif selRenderLayer in ["All Renderable Renderlayers", "All Renderlayers"]:
+            selRenderLayer = layer
+
+        if selRenderLayer == os.getenv("PRISM_MAYA_DFT_RENDERLAYER_NAME", "masterLayer"):
+            return
+
+        return {"layer": selRenderLayer}
 
     @err_catcher(name=__name__)
     def sm_render_startLocalRender(self, origin, outputName, rSettings):
@@ -2497,6 +2928,12 @@ tabLayout -e -sti %s $tabLayout;"""
 
             rlayer = self.getSelectedRenderlayer(origin)
             if rlayer in ["All Renderable Renderlayers", "All Renderlayers"]:
+                rlayer = dlParams["details"]["layer"]
+                sceneLayers = self.getRenderLayersFromScene()
+                if rlayer not in sceneLayers and ("rs_" + rlayer) in sceneLayers:
+                    rlayer = "rs_" + rlayer
+
+            if rlayer in ["All Renderable Renderlayers (separate identifiers)", "All Renderlayers (separate identifiers)"]:
                 rlayer = dlParams["details"]["identifier"]
                 sceneLayers = self.getRenderLayersFromScene()
                 if rlayer not in sceneLayers and ("rs_" + rlayer) in sceneLayers:
@@ -2516,21 +2953,24 @@ tabLayout -e -sti %s $tabLayout;"""
     @err_catcher(name=__name__)
     def getDeadlineScript(self, stateType):
         script = """
+import sys
+
 try:
     from PySide6.QtCore import *
     from PySide6.QtGui import *
     from PySide6.QtWidgets import *
+    import shiboken6 as shiboken
 except:
     from PySide2.QtCore import *
     from PySide2.QtGui import *
     from PySide2.QtWidgets import *
+    import shiboken2 as shiboken
 
 qapp = QApplication.instance()
 if not qapp:
     qapp = QApplication(sys.argv)
 
-import shiboken2
-shiboken2.delete(QApplication.instance())
+shiboken.delete(QApplication.instance())
 QApplication.instance()
 QApplication([])
 
@@ -2561,6 +3001,9 @@ print( "READY FOR INPUT\\n" )
     @err_catcher(name=__name__)
     def getCurrentSceneFiles(self, origin):
         curFileName = self.core.getCurrentFileName()
+        if not curFileName:
+            return []
+
         curFileBase = os.path.splitext(os.path.basename(curFileName))[0]
         xgenfiles = [
             os.path.join(os.path.dirname(curFileName), x)
@@ -2696,7 +3139,7 @@ print( "READY FOR INPUT\\n" )
         return outputName
 
     @err_catcher(name=__name__)
-    def getProgramVersion(self, origin):
+    def getProgramVersion(self, origin=None):
         return cmds.about(version=True)
 
     @err_catcher(name=__name__)
@@ -2743,6 +3186,13 @@ print( "READY FOR INPUT\\n" )
         origin.b_connectRefNode = QPushButton("Connect selected reference node")
         origin.b_connectRefNode.clicked.connect(lambda: self.connectRefNode(origin))
         origin.gb_import.layout().addWidget(origin.b_connectRefNode)
+        origin.l_abcPath.setText("Update Path Only:")
+
+    @err_catcher(name=__name__)
+    def sm_import_updateUi(self, origin):
+        base, ext = os.path.splitext(origin.getImportPath() or "")
+        showUpdatePath = ext.lower() in [".ass"]
+        origin.f_abcPath.setHidden(not showUpdatePath)
 
     @err_catcher(name=__name__)
     def connectRefNode(self, origin):
@@ -2851,19 +3301,26 @@ print( "READY FOR INPUT\\n" )
                 mode = settings.get("mode", "reference")
                 useNamespace = settings.get("useNamespace", True)
 
-                namespaceTemplate = "{entity}_{task}"
-                namespaceTemplate = self.core.getConfig(
-                    "globals",
-                    "defaultMayaNamespace",
-                    dft=namespaceTemplate,
-                    configPath=self.core.prismIni,
-                )
-                cacheData = self.core.paths.getCachePathData(impFileName)
+                if "namespace" in settings:
+                    namespaceTemplate = settings["namespace"]
+                else:
+                    namespaceTemplate = "{entity}_{task}"
+                    namespaceTemplate = self.core.getConfig(
+                        "globals",
+                        "defaultMayaNamespace",
+                        dft=namespaceTemplate,
+                        configPath=self.core.prismIni,
+                    )
 
+                cacheData = self.core.paths.getCachePathData(impFileName)
                 if cacheData.get("type") == "asset":
                     cacheData["entity"] = cacheData.get("asset_path", "")
+                    cacheData["asset"] = os.path.basename(cacheData.get("asset_path", ""))
+                    cacheData["shot"] = ""
                 elif cacheData.get("type") == "shot":
                     cacheData["entity"] = self.core.entities.getShotName(cacheData)
+                    cacheData["asset"] = ""
+                    cacheData["shot"] = cacheData.get("shot", "")
 
                 try:
                     namespace = namespaceTemplate.format(**cacheData)
@@ -2879,7 +3336,7 @@ print( "READY FOR INPUT\\n" )
                     rb_reference = QRadioButton("Create Reference")
                     rb_reference.setChecked(mode == "reference")
                     rb_import = QRadioButton("Import Objects Only")
-                    rb_reference.setChecked(mode == "import")
+                    rb_import.setChecked(mode == "import")
                     rb_applyCache = QRadioButton("Apply As Cache")
                     w_caches = QWidget()
                     lo_caches = QVBoxLayout(w_caches)
@@ -2896,7 +3353,7 @@ print( "READY FOR INPUT\\n" )
                     lo_caches.addWidget(rb_applyCacheEntity)
                     lo_caches.addWidget(w_applyCacheEntities)
                     rb_gpuCache = QRadioButton("Load As GPU Cache")
-                    rb_reference.setChecked(mode == "applyCache")
+                    rb_gpuCache.setChecked(mode == "applyCache")
                     w_namespace = QWidget()
                     nLayout = QHBoxLayout()
                     nLayout.setContentsMargins(0, 15, 0, 0)
@@ -3176,7 +3633,7 @@ print( "READY FOR INPUT\\n" )
             importOnly = False
 
         if importOnly:
-            if fileName[1] not in self.importHandlers or not self.importHandlers[fileName[1]].get("handlesUpdate"):
+            if (fileName[1] not in self.importHandlers or not self.importHandlers[fileName[1]].get("handlesUpdate")) and fileName[1] not in [".ass"]:
                 origin.preDelete(
                     baseText="Do you want to delete the currently connected objects?\n\n"
                 )
@@ -3221,44 +3678,63 @@ print( "READY FOR INPUT\\n" )
                                 cmds.setAttr(node + ".useFrameExtension", 1)
 
             else:
+                doImport = True
                 if fileName[1] == ".fbx":
                     mel.eval("FBXImportMode -v merge")
                     mel.eval("FBXImportConvertUnitString  -v cm")
+                elif fileName[1] == ".atom":
+                    cmds.loadPlugin("atomImportExport.mll", quiet=True)
+                    settings = settings or {}
+                    settings["type"] = "atomImport"
+                    settings["options"] = "targetTime=3;match=hierarchy;selected=childrenToo"
+                elif fileName[1] == ".ass":
+                    if origin.chb_abcPath.isChecked() and len(origin.nodes) > 0:
+                        standins = [x for x in origin.nodes if cmds.objectType(x) == "aiStandIn"]
+                        if standins:
+                            cmds.setAttr(standins[0] + ".dso", impFileName, type="string")
+                            doImport = False
+                            importedNodes = origin.nodes
 
-                kwargs = {
-                    "i": True,
-                    "returnNewNodes": True,
-                    "importFunction": self.basicImport,
-                    "settings": settings,
-                    "update": update,
-                    "origin": origin,
-                }
+                    if doImport:
+                        origin.preDelete(
+                            baseText="Do you want to delete the currently connected objects?\n\n"
+                        )
 
-                if fileName[1] in self.importHandlers:
-                    kwargs.update(self.importHandlers[fileName[1]])
+                if doImport:
+                    kwargs = {
+                        "i": True,
+                        "returnNewNodes": True,
+                        "importFunction": self.basicImport,
+                        "settings": settings,
+                        "update": update,
+                        "origin": origin,
+                    }
 
-                if "handlesUpdate" in kwargs:
-                    del kwargs["handlesUpdate"]
+                    if fileName[1] in self.importHandlers:
+                        kwargs.update(self.importHandlers[fileName[1]])
 
-                result = kwargs["importFunction"](impFileName, kwargs)
+                    if "handlesUpdate" in kwargs:
+                        del kwargs["handlesUpdate"]
 
-                if result and result["result"]:
-                    importedNodes = result["nodes"]
-                else:
-                    importedNodes = []
-                    if result:
-                        if "error" not in result:
-                            return
+                    result = kwargs["importFunction"](impFileName, kwargs)
 
-                        error = str(result["error"])
+                    if result and result["result"]:
+                        importedNodes = result["nodes"]
                     else:
-                        error = ""
+                        importedNodes = []
+                        if result:
+                            if "error" not in result:
+                                return
 
-                    msg = "An error occured while importing the file:\n\n%s\n\n%s" % (
-                        impFileName,
-                        error,
-                    )
-                    self.core.popup(msg, title="Import error")
+                            error = str(result["error"])
+                        else:
+                            error = ""
+
+                        msg = "An error occured while importing the file:\n\n%s\n\n%s" % (
+                            impFileName,
+                            error,
+                        )
+                        self.core.popup(msg, title="Import error")
 
         cams = cmds.listCameras()
         for i in importedNodes:
@@ -3279,8 +3755,8 @@ print( "READY FOR INPUT\\n" )
         if len(origin.nodes) > 0:
             name = self.getSetPrefix() + "Import_%s_" % fileName[0]
             origin.setName = cmds.sets(name=name)
-        for node in origin.nodes:
-            cmds.sets(node, include=origin.setName)
+            for node in origin.nodes:
+                cmds.sets(node, include=origin.setName)
 
         result = len(importedNodes) > 0
 
@@ -3465,7 +3941,7 @@ Show only polygon objects, plugin shapes and image planes in viewport.
         elif selFmt == ".qt (with audio)":
             outputName = tmpOutputName + ".mov"
         elif selFmt == ".mp4 (with audio)":
-            outputName = tmpOutputName + ".mov"
+            outputName = tmpOutputName + (".avi" if os.getenv("PRISM_MAYA_PLAYBLAST_MP4_SOURCE_FMT", "avi") == "avi" else ".mov")
         else:
             if not os.path.splitext(kwargs["outputpath"])[0].endswith("#"):
                 outputName = (
@@ -3482,7 +3958,7 @@ Show only polygon objects, plugin shapes and image planes in viewport.
             return {"outputName": outputName}
 
     @err_catcher(name=__name__)
-    def sm_playblast_createPlayblast(self, origin, jobFrames, outputName):
+    def sm_playblast_createPlayblast(self, origin, jobFrames, outputName, useAvi=False):
         self.pbSceneSettings = {}
         if self.core.uiAvailable:
             if origin.curCam is not None and self.isNodeValid(origin, origin.curCam):
@@ -3562,8 +4038,12 @@ Show only polygon objects, plugin shapes and image planes in viewport.
             fmt = "qt"
             outputName += ".mov"
         elif selFmt == ".mp4 (with audio)":
-            fmt = "qt"
-            outputName += ".mov"
+            if os.getenv("PRISM_MAYA_PLAYBLAST_MP4_SOURCE_FMT", "avi") == "avi" or useAvi:
+                fmt = "avi"
+                outputName += ".avi"
+            else:
+                fmt = "qt"
+                outputName += ".mov"
         else:
             fmt = "image"
 
@@ -3582,6 +4062,8 @@ Show only polygon objects, plugin shapes and image planes in viewport.
 
         if selFmt == ".png":
             cmdString += ", compression=\"png\""
+        elif fmt == "avi":
+            cmdString += ", compression=\"iyuv\""
 
         if origin.chb_resOverride.isChecked():
             cmdString += ", width=%s, height=%s" % (
@@ -3608,13 +4090,16 @@ Show only polygon objects, plugin shapes and image planes in viewport.
             logger.debug(e)
 
         if len(os.listdir(os.path.dirname(outputName))) < 2 and fmt == "qt":
-            self.core.popup(
-                "Couldn't create quicktime video. Make sure quicktime is installed on your system and try again."
-            )
+            if selFmt == ".mp4 (with audio)":
+                return self.sm_playblast_createPlayblast(origin, jobFrames, outputName, useAvi=True)
+            else:
+                self.core.popup(
+                    "Couldn't create quicktime video. Make sure quicktime is installed on your system and try again."
+                )
         else:
             if selFmt == ".mp4 (with audio)":
                 mp4path = os.path.splitext(outputName)[0] + ".mp4"
-                self.core.media.convertMedia(outputName, 0, mp4path)
+                result = self.core.media.convertMedia(outputName, 0, mp4path)
                 try:
                     os.remove(outputName)
                 except:
@@ -3816,6 +4301,107 @@ Show only polygon objects, plugin shapes and image planes in viewport.
             cmds.fileInfo(remove="PrismStates")
 
     @err_catcher(name=__name__)
+    def onStateCreated(self, origin, state, stateData):
+        if state.className in ["Export"]:
+            abcSettings = []
+            additionalSettingsValues = (stateData or {}).get("additionalSettings") or {}
+            abcSettings += [
+                {
+                    "name": "abcStep",
+                    "label": "Step",
+                    "type": "float",
+                    "value": 1.0 if "abcStep" not in additionalSettingsValues else additionalSettingsValues["abcStep"],
+                    "visible": lambda dlg, state: state.getOutputType() in [".abc"]
+                },
+                {
+                    "name": "abcNoNormals",
+                    "label": "No Normals",
+                    "type": "checkbox",
+                    "value": False if "abcNoNormals" not in additionalSettingsValues else additionalSettingsValues["abcNoNormals"],
+                    "visible": lambda dlg, state: state.getOutputType() in [".abc"]
+                },
+                {
+                    "name": "abcRenderableOnly",
+                    "label": "Renderable Only",
+                    "type": "checkbox",
+                    "value": False if "abcRenderableOnly" not in additionalSettingsValues else additionalSettingsValues["abcRenderableOnly"],
+                    "visible": lambda dlg, state: state.getOutputType() in [".abc"]
+                },
+                {
+                    "name": "abcStripNamespaces",
+                    "label": "Strip Namespaces",
+                    "type": "checkbox",
+                    "value": True if "abcStripNamespaces" not in additionalSettingsValues else additionalSettingsValues["abcStripNamespaces"],
+                    "visible": lambda dlg, state: state.getOutputType() in [".abc"]
+                },
+                {
+                    "name": "abcUvWrite",
+                    "label": "UV Write",
+                    "type": "checkbox",
+                    "value": True if "abcUvWrite" not in additionalSettingsValues else additionalSettingsValues["abcUvWrite"],
+                    "visible": lambda dlg, state: state.getOutputType() in [".abc"]
+                },
+                {
+                    "name": "abcWriteColorSets",
+                    "label": "Write Color Sets",
+                    "type": "checkbox",
+                    "value": False if "abcWriteColorSets" not in additionalSettingsValues else additionalSettingsValues["abcWriteColorSets"],
+                    "visible": lambda dlg, state: state.getOutputType() in [".abc"]
+                },
+                {
+                    "name": "abcWriteFaceSets",
+                    "label": "Write Face Sets",
+                    "type": "checkbox",
+                    "value": False if "abcWriteFaceSets" not in additionalSettingsValues else additionalSettingsValues["abcWriteFaceSets"],
+                    "visible": lambda dlg, state: state.getOutputType() in [".abc"]
+                },
+                {
+                    "name": "abcWholeFrameGeo",
+                    "label": "Whole Frame Geo",
+                    "type": "checkbox",
+                    "value": False if "abcWholeFrameGeo" not in additionalSettingsValues else additionalSettingsValues["abcWholeFrameGeo"],
+                    "visible": lambda dlg, state: state.getOutputType() in [".abc"]
+                },
+                {
+                    "name": "abcWorldSpace",
+                    "label": "World Space",
+                    "type": "checkbox",
+                    "value": True if "abcWorldSpace" not in additionalSettingsValues else additionalSettingsValues["abcWorldSpace"],
+                    "visible": lambda dlg, state: state.getOutputType() in [".abc"]
+                },
+                {
+                    "name": "abcWriteVisibility",
+                    "label": "Write Visibility",
+                    "type": "checkbox",
+                    "value": True if "abcWriteVisibility" not in additionalSettingsValues else additionalSettingsValues["abcWriteVisibility"],
+                    "visible": lambda dlg, state: state.getOutputType() in [".abc"]
+                },
+                {
+                    "name": "abcFilterEulerRotations",
+                    "label": "Filter Euler Rotations",
+                    "type": "checkbox",
+                    "value": True if "abcFilterEulerRotations" not in additionalSettingsValues else additionalSettingsValues["abcFilterEulerRotations"],
+                    "visible": lambda dlg, state: state.getOutputType() in [".abc"]
+                },
+                {
+                    "name": "abcWriteCreases",
+                    "label": "Write Creases",
+                    "type": "checkbox",
+                    "value": False if "abcWriteCreases" not in additionalSettingsValues else additionalSettingsValues["abcWriteCreases"],
+                    "visible": lambda dlg, state: state.getOutputType() in [".abc"]
+                },
+                {
+                    "name": "abcWriteUvSets",
+                    "label": "Write UV Sets",
+                    "type": "checkbox",
+                    "value": True if "abcWriteUvSets" not in additionalSettingsValues else additionalSettingsValues["abcWriteUvSets"],
+                    "visible": lambda dlg, state: state.getOutputType() in [".abc"]
+                },
+            ]
+
+            state.additionalSettings += abcSettings
+
+    @err_catcher(name=__name__)
     def sm_getExternalFiles(self, origin):
         prjPath = cmds.workspace(fullName=True, query=True)
         if prjPath.endswith(":"):
@@ -3898,6 +4484,10 @@ class ExporterDlg(QDialog):
         self.setLayout(self.lo_main)
         self.lo_main.addWidget(self.state.ui)
 
+        self.e_comment = QLineEdit()
+        self.e_comment.setPlaceholderText("Comment...")
+        self.lo_main.addWidget(self.e_comment)
+
         self.b_submit = QPushButton("Export")
         self.lo_main.addWidget(self.b_submit)
         self.b_submit.clicked.connect(self.submit)
@@ -3923,6 +4513,7 @@ class ExporterDlg(QDialog):
         version = None
         saveScene = None
         incrementScene = sm.actionVersionUp.isChecked()
+        sm.e_comment.setText(self.e_comment.text())
 
         result = sm.publish(
             successPopup=False,
@@ -3979,6 +4570,10 @@ class PlayblastDlg(QDialog):
         self.setLayout(self.lo_main)
         self.lo_main.addWidget(self.state.ui)
 
+        self.e_comment = QLineEdit()
+        self.e_comment.setPlaceholderText("Comment...")
+        self.lo_main.addWidget(self.e_comment)
+
         self.b_submit = QPushButton("Playblast")
         self.lo_main.addWidget(self.b_submit)
         self.b_submit.clicked.connect(self.submit)
@@ -4003,6 +4598,7 @@ class PlayblastDlg(QDialog):
         version = None
         saveScene = None
         incrementScene = sm.actionVersionUp.isChecked()
+        sm.e_comment.setText(self.e_comment.text())
 
         result = sm.publish(
             successPopup=False,
@@ -4059,6 +4655,10 @@ class RenderDlg(QDialog):
         self.setLayout(self.lo_main)
         self.lo_main.addWidget(self.state.ui)
 
+        self.e_comment = QLineEdit()
+        self.e_comment.setPlaceholderText("Comment...")
+        self.lo_main.addWidget(self.e_comment)
+
         self.b_submit = QPushButton("Render")
         self.lo_main.addWidget(self.b_submit)
         self.b_submit.clicked.connect(self.submit)
@@ -4083,6 +4683,7 @@ class RenderDlg(QDialog):
         version = None
         saveScene = None
         incrementScene = sm.actionVersionUp.isChecked()
+        sm.e_comment.setText(self.e_comment.text())
 
         result = sm.publish(
             successPopup=False,
@@ -4109,3 +4710,1005 @@ class RenderDlg(QDialog):
             self.close()
         elif openOnFail:
             self.show()
+
+
+class ShotExtendWindow(QDialog):
+    def __init__(self, parent=None):
+        super(ShotExtendWindow, self).__init__(parent)
+        self.setWindowTitle("Shot Extend Tool")
+        self.setMinimumSize(500, 250)  # Adjusted window size for this simpler UI
+        
+        # Store the current shot
+        self.current_shot = None
+        
+        # Create the UI
+        self.initUI()
+        
+        # Load the currently selected shot
+        self.refreshSelectedShot()
+        
+    def initUI(self):
+        # Main layout
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(10)
+        
+        # Shot information section
+        info_group = QGroupBox("Shot Information")
+        info_layout = QVBoxLayout(info_group)
+        
+        # Shot label
+        self.shot_label = QLabel("No shot selected")
+        self.shot_label.setStyleSheet("font-weight: bold; font-size: 16px;")
+        info_layout.addWidget(self.shot_label)
+        
+        # Shot details (start and end frame)
+        self.frame_info_label = QLabel("Start frame: N/A   End frame: N/A   Duration: N/A")
+        info_layout.addWidget(self.frame_info_label)
+        
+        # Refresh button
+        refresh_layout = QHBoxLayout()
+        refresh_layout.addStretch()
+        self.refresh_btn = QPushButton("Refresh Selected Shot")
+        self.refresh_btn.clicked.connect(self.refreshSelectedShot)
+        refresh_layout.addWidget(self.refresh_btn)
+        info_layout.addLayout(refresh_layout)
+        
+        main_layout.addWidget(info_group)
+        
+        # Extension settings
+        extend_group = QGroupBox("Extension Settings")
+        extend_layout = QHBoxLayout(extend_group)
+        
+        # Spinbox for frame extension
+        extend_layout.addWidget(QLabel("Extend by frames:"))
+        self.frames_spinbox = QSpinBox()
+        self.frames_spinbox.setMinimum(1)
+        self.frames_spinbox.setMaximum(1000)
+        self.frames_spinbox.setValue(10)
+        extend_layout.addWidget(self.frames_spinbox)
+        
+        main_layout.addWidget(extend_group)
+        
+        # Create a spacer to push buttons to the bottom
+        main_layout.addStretch()
+        
+        # Action buttons at the bottom
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        self.extend_btn = QPushButton("Extend Shot")
+        self.extend_btn.clicked.connect(self.extendShot)
+        self.extend_btn.setStyleSheet("background-color: #3498db; color: white; font-weight: bold;")
+        button_layout.addWidget(self.extend_btn)
+
+        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(self.cancel_btn)
+
+        main_layout.addLayout(button_layout)
+        
+    def refreshSelectedShot(self):
+        """Get the currently selected shot from Maya's sequencer"""
+        # Get selected shot
+        selected_shots = cmds.ls(selection=True, type="shot")
+        
+        if not selected_shots:
+            self.shot_label.setText("No shot selected")
+            self.frame_info_label.setText("Start frame: N/A   End frame: N/A   Duration: N/A")
+            self.current_shot = None
+            return
+        
+        # Use the first selected shot
+        self.current_shot = selected_shots[0]
+        
+        # Get shot details
+        shot_name = cmds.getAttr(self.current_shot + ".shotName")
+        start_frame = cmds.getAttr(self.current_shot + ".startFrame")
+        end_frame = cmds.getAttr(self.current_shot + ".endFrame")
+        duration = end_frame - start_frame + 1
+        
+        # Update UI
+        self.shot_label.setText("Selected Shot: %s" % shot_name)
+        self.frame_info_label.setText("Start frame: %s   End frame: %s   Duration: %s" % (start_frame, end_frame, duration))
+    
+    def extendShot(self):
+        """Extend the selected shot and adjust subsequent shots"""
+        if not self.current_shot:
+            QMessageBox.warning(self, "Shot Extend", "No shot is selected. Please select a shot first.")
+            return
+        
+        # Get the extension amount
+        extension_frames = self.frames_spinbox.value()
+        
+        # Get shot data
+        shot_name = cmds.getAttr(self.current_shot + ".shotName")
+        start_frame = cmds.getAttr(self.current_shot + ".startFrame")
+        end_frame = cmds.getAttr(self.current_shot + ".endFrame")
+        
+        # Find all shots in the scene
+        all_shots = cmds.ls(type="shot")
+        
+        # Separate shots into those that come after the current shot
+        shots_after = []
+        for shot in all_shots:
+            if shot != self.current_shot:
+                shot_start = cmds.getAttr(shot + ".startFrame")
+                if shot_start > end_frame:
+                    shots_after.append(shot)
+        
+        # Confirm operation
+        message = "This will extend shot '%s' by %s frames and move %s subsequent shots. Continue?" % (shot_name, extension_frames, len(shots_after))
+        result = QMessageBox.question(
+            self, "Confirm Extension", message, 
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if result != QMessageBox.Yes:
+            return
+        
+        # Start the undoable operation
+        cmds.undoInfo(openChunk=True)
+        try:
+            # 1. Move keyframes in subsequent shots
+            if shots_after:
+                # Get a list of all animated objects in the scene
+                animated_objects = set()
+                for shot_node in shots_after:
+                    # Get the shot's start frame to filter keyframes
+                    shot_start = cmds.getAttr(shot_node + ".startFrame")
+                    
+                    # Find all animated attributes in the scene with keyframes at or after this shot's start
+                    anim_curves = cmds.ls(type=["animCurveTA", "animCurveTL", "animCurveTT", "animCurveTU"])
+                    for curve in anim_curves:
+                        keyframes = cmds.keyframe(curve, query=True, timeChange=True) or []
+                        # Check if any keyframe is at or after this shot's start
+                        if any(keyframe >= shot_start for keyframe in keyframes):
+                            animated_objects.add(curve)
+                
+                # Move all the keyframes in one operation if possible
+                if animated_objects:
+                    try:
+                        cmds.keyframe(list(animated_objects), edit=True, relative=True, timeChange=extension_frames, time=(end_frame+1, 1e10))
+                    except Exception as e:
+                        print("Warning: Error moving keyframes: %s" % str(e))
+                        # Fall back to moving shot by shot if the bulk operation fails
+                        for shot_node in shots_after:
+                            shot_start = cmds.getAttr(shot_node + ".startFrame")
+                            # Move keyframes for this shot
+                            try:
+                                cmds.keyframe(list(animated_objects), edit=True, relative=True, 
+                                             timeChange=extension_frames, time=(shot_start, 1e10))
+                            except Exception as e:
+                                print("Warning: Error moving keyframes for shot %s: %s" % (shot_node, str(e)))
+            
+            # 2. Move subsequent shots
+            for shot in reversed(shots_after):
+                shot_start = cmds.getAttr(shot + ".startFrame")
+                shot_end = cmds.getAttr(shot + ".endFrame")
+                shot_sequence_start = cmds.getAttr(shot + ".sequenceStartFrame")
+                
+                # Move the shot
+                cmds.setAttr(shot + ".startFrame", shot_start + extension_frames)
+                cmds.setAttr(shot + ".endFrame", shot_end + extension_frames)
+                cmds.setAttr(shot + ".sequenceStartFrame", shot_sequence_start + extension_frames)
+            
+            # 3. Extend the current shot
+            cmds.setAttr(self.current_shot + ".endFrame", end_frame + extension_frames)
+            
+            # Show success message
+            QMessageBox.information(self, "Shot Extended", 
+                                  "Shot '%s' has been extended by %s frames." % (shot_name, extension_frames))
+            
+            # Refresh the UI to show updated information
+            self.refreshSelectedShot()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", "An error occurred: %s" % str(e))
+        finally:
+            cmds.undoInfo(closeChunk=True)
+
+
+class ShotSplitWindow(QDialog):
+    def __init__(self, parent=None, plugin=None):
+        super(ShotSplitWindow, self).__init__(parent)
+        self.plugin = plugin
+        self.setWindowTitle("Shot Split Tool")
+        self.setMinimumSize(1000, 700)  # Increased window size
+        
+        # Store shot-asset selections
+        self.shot_asset_selections = {}
+        self.all_assets = []
+        
+        # Create UI first to ensure all widgets are created
+        self.initUI()
+        
+        # Populate data after UI is fully set up
+        QApplication.processEvents()
+        self.populateShots()
+        self.populateAssets()
+        
+    def initUI(self):
+        # Create the main window layout first (without setting it to the dialog yet)
+        main_window_layout = QVBoxLayout()
+        
+        # Left side - Shots
+        left_widget = QWidget(self)  # Parent explicitly to the dialog
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        
+        shot_label = QLabel("Shots:", left_widget)  # Parent explicitly to left_widget
+        shot_label.setStyleSheet("font-weight: bold; font-size: 20px;")
+        left_layout.addWidget(shot_label)
+        
+        # Create list widget with explicit parent
+        self.shot_list = QListWidget(left_widget)
+        self.shot_list.setSelectionMode(QListWidget.ExtendedSelection)
+        self.shot_list.itemClicked.connect(self.onShotSelected)
+        self.shot_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.shot_list.customContextMenuRequested.connect(self.showShotContextMenu)
+        left_layout.addWidget(self.shot_list)
+        
+        # Right side - Assets
+        right_widget = QWidget(self)  # Parent explicitly to the dialog
+        right_layout = QVBoxLayout(right_widget)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        
+        asset_label = QLabel("Assets:", right_widget)  # Parent explicitly to right_widget
+        asset_label.setStyleSheet("font-weight: bold; font-size: 20px;")
+        right_layout.addWidget(asset_label)
+        
+        filter_layout = QHBoxLayout()
+        filter_label = QLabel("Filter:", right_widget)  # Explicit parent
+        self.filter_edit = QLineEdit(right_widget)  # Explicit parent
+        self.filter_edit.setPlaceholderText("Type to filter assets...")
+        self.filter_edit.textChanged.connect(self.filterAssets)
+        filter_layout.addWidget(filter_label)
+        filter_layout.addWidget(self.filter_edit)
+        
+        right_layout.addLayout(filter_layout)
+        
+        self.asset_list = QListWidget(right_widget)  # Explicit parent
+        self.asset_list.setSelectionMode(QListWidget.ExtendedSelection)
+        self.asset_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.asset_list.customContextMenuRequested.connect(self.showAssetContextMenu)
+        self.asset_list.itemSelectionChanged.connect(self.onAssetSelectionChanged)
+        # Set the asset list to word wrap so long paths are readable
+        self.asset_list.setWordWrap(True)
+        self.asset_list.setTextElideMode(Qt.ElideMiddle)
+        # Adjust the height to accommodate wrapped text
+        self.asset_list.setStyleSheet("QListWidget::item { padding: 4px; }")
+        right_layout.addWidget(self.asset_list)
+        
+        # Add asset buttons
+        asset_buttons_layout = QHBoxLayout()
+        self.add_selected_btn = QPushButton("Add Selected", right_widget)
+        self.add_selected_btn.clicked.connect(self.addSelectedAssetsToShot)
+        asset_buttons_layout.addWidget(self.add_selected_btn)
+        right_layout.addLayout(asset_buttons_layout)
+        
+        # Create a splitter with explicit parent
+        splitter = QSplitter(self)
+        splitter.addWidget(left_widget)
+        splitter.addWidget(right_widget)
+        splitter.setSizes([300, 500])
+        splitter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        
+        # Create a vertical layout for the main window
+        main_window_layout = QVBoxLayout()
+        main_window_layout.addWidget(splitter)
+        
+        # Bottom button
+        bottom_widget = QWidget(self)  # Explicit parent
+        button_layout = QVBoxLayout(bottom_widget)
+
+        w_settings = QWidget(bottom_widget)  # Explicit parent
+        lo_settings = QHBoxLayout(w_settings)
+        chb_deleteKeys = QCheckBox("Delete Keys Outside Shot Range", w_settings)  # Explicit parent
+        chb_deleteKeys.setChecked(True)
+        lo_settings.addWidget(chb_deleteKeys)
+        lo_settings.addStretch()
+        button_layout.addWidget(w_settings)
+
+        self.split_btn = QPushButton("Split Shots", bottom_widget)  # Explicit parent
+        self.split_btn.setMinimumHeight(50)  # Taller button
+        self.split_btn.setStyleSheet("background-color: #3498db; color: white; font-weight: bold; font-size: 20px;")
+        self.split_btn.clicked.connect(self.splitShots)
+        
+        button_layout.addWidget(self.split_btn)
+        
+        # Add bottom widget to the main window layout
+        main_window_layout.addWidget(bottom_widget)
+        
+        # Set the main window layout
+        self.setLayout(main_window_layout)
+        
+    def populateAllAssets(self):
+        """Populate all available assets in the scene with long names"""
+        self.all_assets = []
+        # Get all transforms in the scene as potential assets
+        transforms = cmds.ls(type="transform", long=True)  # Use long=True to get full paths
+        for transform in transforms:
+            # Skip camera and sequencer related transforms
+            if ("sequencer" in transform.lower() or 
+                "shot" in transform.lower() or 
+                transform.startswith("|persp") or 
+                transform.startswith("|front") or 
+                transform.startswith("|side") or 
+                transform.startswith("|top")):
+                continue
+            
+            # Skip empty transform groups with no shapes
+            shapes = cmds.listRelatives(transform, shapes=True)
+            if not shapes and not cmds.listRelatives(transform, children=True):
+                continue
+                
+            self.all_assets.append(transform)
+
+        self.all_assets = sorted(self.all_assets, key=lambda s: s.lower())
+        
+        return self.all_assets
+    
+    def getDefaultAssetsForShot(self, shot):
+        """Get default assets for a shot (camera and Layout group if it exists)"""
+        default_assets = set()
+        
+        # Get the camera for this shot
+        cam = cmds.shot(shot, q=True, currentCamera=True)
+        if cam:
+            # Get the long path for the camera
+            cam_long = cmds.ls(cam, long=True)
+            if cam_long:
+                default_assets.add(cam_long[0])
+        
+        # Check if Layout group exists and add it
+        layout_groups = cmds.ls("*Layout*", long=True, type="transform")
+        for layout in layout_groups:
+            if cmds.objExists(layout):
+                default_assets.add(layout)
+        
+        return default_assets
+    
+    def populateShots(self):
+        """Get all shots from Maya's sequencer and populate the list"""
+        self.shot_list.clear()
+        
+        # Get shots from Maya
+        shots = cmds.ls(type="shot") or []
+        
+        # First, prepare all assets for selection
+        # Populate all_assets if not already populated
+        if not self.all_assets:
+            self.populateAllAssets()
+        
+        for shot in shots:
+            # Get shot name
+            shot_name = cmds.getAttr(shot + ".shotName")
+            
+            # By default, only assign the shot's camera and Layout group if it exists
+            if shot not in self.shot_asset_selections:
+                self.shot_asset_selections[shot] = self.getDefaultAssetsForShot(shot)
+            
+            # Create list item with asset count
+            asset_count = len(self.shot_asset_selections[shot])
+            item = QListWidgetItem("%s (%s)" % (shot_name, asset_count))
+            item.setData(Qt.UserRole, shot)  # Store the Maya shot node
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Checked)
+            
+            self.shot_list.addItem(item)
+            
+        # Select first shot by default if any exist
+        if self.shot_list.count() > 0:
+            self.shot_list.setCurrentRow(0)
+            self.onShotSelected(self.shot_list.item(0))
+            
+    def populateAssets(self):
+        """Populate assets list for the current shot"""
+        self.asset_list.clear()
+        
+        # Get current selected shot
+        current_item = self.shot_list.currentItem()
+        if not current_item:
+            return
+        
+        shot_node = current_item.data(Qt.UserRole)
+        
+        # If we haven't populated all_assets yet or need to refresh
+        if not self.all_assets:
+            self.populateAllAssets()
+        
+        # Ensure this shot has a selection set initialized
+        if shot_node not in self.shot_asset_selections:
+            # By default, only include camera and Layout group
+            self.shot_asset_selections[shot_node] = self.getDefaultAssetsForShot(shot_node)
+        
+        # Initial population with assigned assets only
+        self.updateAssetList()
+            
+    def updateAssetList(self):
+        """Update the asset list based on current shot selection"""
+        self.asset_list.clear()
+        
+        # Get selected shots
+        current_items = self.shot_list.selectedItems()
+        if not current_items:
+            return
+        
+        # If multiple shots are selected, show assets common to all selected shots
+        selected_shots = [item.data(Qt.UserRole) for item in current_items]
+        
+        # Get assets that are selected in all shots
+        if len(selected_shots) > 1:
+            # Find common assets among all selected shots
+            common_assets = self.shot_asset_selections.get(selected_shots[0], set())
+            for shot in selected_shots[1:]:
+                common_assets = common_assets.intersection(self.shot_asset_selections.get(shot, set()))
+            selected_assets = common_assets
+        else:
+            # Single shot selection
+            current_shot = selected_shots[0]
+            # Ensure this shot has a selection set initialized with default assets
+            if current_shot not in self.shot_asset_selections:
+                self.shot_asset_selections[current_shot] = self.getDefaultAssetsForShot(current_shot)
+                
+            selected_assets = self.shot_asset_selections.get(current_shot, set())
+        
+        # Filter assets if filter is set
+        filter_text = self.filter_edit.text().lower()
+        
+        # Only show assigned assets (not all assets)
+        filtered_assets = [asset for asset in selected_assets 
+                            if not filter_text or filter_text in asset.lower()]
+        
+        # Add assigned assets to the list
+        for asset in sorted(filtered_assets, key=lambda s: s.lower()):
+            item = QListWidgetItem(asset)
+            
+            # Set tooltip to show the full path for easier reference
+            item.setToolTip(asset)
+                
+            self.asset_list.addItem(item)
+        
+        # Update the shot status display
+        self.updateShotStatus()
+        
+    def showShotContextMenu(self, position):
+        """Display context menu for the shot list"""
+        menu = QMenu(self)
+        
+        # Always show these options
+        check_all_action = menu.addAction("Check All Shots")
+        uncheck_all_action = menu.addAction("Uncheck All Shots")
+        menu.addSeparator()
+        
+        # Options for selected items
+        selected_items = self.shot_list.selectedItems()
+        if selected_items:
+            check_action = menu.addAction("Check Selected")
+            uncheck_action = menu.addAction("Uncheck Selected")
+            
+        # Add refresh option
+        menu.addSeparator()
+        refresh_action = menu.addAction("Refresh Shot List")
+        
+        action = menu.exec_(self.shot_list.mapToGlobal(position))
+        
+        # Handle action
+        if selected_items and action == check_action:
+            for item in selected_items:
+                item.setCheckState(Qt.Checked)
+        elif selected_items and action == uncheck_action:
+            for item in selected_items:
+                item.setCheckState(Qt.Unchecked)
+        elif action == check_all_action:
+            for i in range(self.shot_list.count()):
+                self.shot_list.item(i).setCheckState(Qt.Checked)
+        elif action == uncheck_all_action:
+            for i in range(self.shot_list.count()):
+                self.shot_list.item(i).setCheckState(Qt.Unchecked)
+        elif action == refresh_action:
+            # Remember selected shots
+            current_selection = self.shot_list.selectedItems()
+            selected_shot_nodes = [item.data(Qt.UserRole) for item in current_selection]
+            
+            # Refresh the shot list
+            self.populateShots()
+            
+            # Restore selection if possible
+            if selected_shot_nodes:
+                for i in range(self.shot_list.count()):
+                    item = self.shot_list.item(i)
+                    if item.data(Qt.UserRole) in selected_shot_nodes:
+                        item.setSelected(True)
+    
+    def showAssetContextMenu(self, position):
+        """Display context menu for the asset list"""
+        menu = QMenu(self)
+        
+        # Options for selected items
+        selected_items = self.asset_list.selectedItems()
+        if selected_items:
+            remove_selected_action = menu.addAction("Remove Selected")
+            select_in_scene_action = menu.addAction("Select in Scene")
+            menu.addSeparator()
+        
+        # Clear option
+        clear_action = menu.addAction("Clear All")
+        
+        # Add selection sync and refresh options
+        menu.addSeparator()
+        get_selection_action = menu.addAction("Get Selection From Outliner")
+        refresh_action = menu.addAction("Refresh Asset List")
+        
+        action = menu.exec_(self.asset_list.mapToGlobal(position))
+        
+        # Handle action
+        if selected_items and action == remove_selected_action:
+            self.removeSelectedAssets()
+        elif selected_items and action == select_in_scene_action:
+            self.selectAssetsInScene()
+        elif action == clear_action:
+            self.clearAssetList()
+        elif action == get_selection_action:
+            self.getSelectionFromOutliner()
+        elif action == refresh_action:
+            # Remember the selected assets
+            current_selection = self.asset_list.selectedItems()
+            selected_assets = [item.text() for item in current_selection]
+            
+            # Refresh all_assets with long names
+            self.populateAllAssets()
+            
+            # Refresh the asset list
+            self.populateAssets()
+            
+            # Restore selection if possible
+            if selected_assets:
+                for i in range(self.asset_list.count()):
+                    item = self.asset_list.item(i)
+                    if item.text() in selected_assets:
+                        item.setSelected(True)
+    
+    def onAssetSelectionChanged(self):
+        """When assets are selected in the list, select them in Maya too"""
+        selected_items = self.asset_list.selectedItems()
+        if not selected_items:
+            return
+            
+        # Get all the assets to select in Maya
+        assets_to_select = []
+        for item in selected_items:
+            asset_path = item.text()
+            if cmds.objExists(asset_path):
+                assets_to_select.append(asset_path)
+        
+        # Select the assets in Maya if any exist
+        if assets_to_select:
+            cmds.select(assets_to_select, replace=True)
+        
+    def addSelectedAssetsToShot(self):
+        """Add Maya-selected assets to the current shot"""
+        # Get currently selected shots in UI
+        selected_shots = self.shot_list.selectedItems()
+        if not selected_shots:
+            return
+        
+        # Get Maya-selected objects
+        maya_selection = cmds.ls(selection=True, long=True)
+        if not maya_selection:
+            QMessageBox.warning(self, "Add Selected", "No objects selected in Maya scene.")
+            return
+        
+        # Add selected assets to each selected shot
+        for shot_item in selected_shots:
+            shot_node = shot_item.data(Qt.UserRole)
+            if shot_node not in self.shot_asset_selections:
+                self.shot_asset_selections[shot_node] = set()
+            
+            # Add the selected assets
+            self.shot_asset_selections[shot_node].update(maya_selection)
+        
+        # Refresh the asset list to show the newly added assets
+        self.updateAssetList()
+        
+    def removeSelectedAssets(self):
+        """Remove selected assets from the current shot"""
+        # Get selected shots
+        selected_shots = self.shot_list.selectedItems()
+        if not selected_shots:
+            return
+        
+        # Get selected assets in the list
+        selected_assets = self.asset_list.selectedItems()
+        if not selected_assets:
+            return
+        
+        assets_to_remove = [item.text() for item in selected_assets]
+        
+        # Remove assets from each selected shot
+        for shot_item in selected_shots:
+            shot_node = shot_item.data(Qt.UserRole)
+            if shot_node in self.shot_asset_selections:
+                self.shot_asset_selections[shot_node] = self.shot_asset_selections[shot_node] - set(assets_to_remove)
+        
+        # Refresh the asset list
+        self.updateAssetList()
+        
+    def clearAssetList(self):
+        """Clear all assets from the selected shots"""
+        # Get selected shots
+        selected_shots = self.shot_list.selectedItems()
+        if not selected_shots:
+            return
+        
+        # Confirm operation
+        result = QMessageBox.question(
+            self, 
+            "Clear Assets", 
+            "Remove all assets from the selected shot(s)?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if result != QMessageBox.Yes:
+            return
+        
+        # Reset assets for each shot to just the defaults
+        for shot_item in selected_shots:
+            shot_node = shot_item.data(Qt.UserRole)
+            self.shot_asset_selections[shot_node] = set()
+        
+        # Refresh the asset list
+        self.updateAssetList()
+        
+    def selectAssetsInScene(self):
+        """Select the currently selected assets in the Maya scene"""
+        selected_items = self.asset_list.selectedItems()
+        if not selected_items:
+            return
+            
+        # Get all the assets to select in Maya
+        assets_to_select = []
+        for item in selected_items:
+            asset_path = item.text()
+            if cmds.objExists(asset_path):
+                assets_to_select.append(asset_path)
+        
+        # Select the assets in Maya if any exist
+        if assets_to_select:
+            cmds.select(assets_to_select, replace=True)
+        else:
+            cmds.select(clear=True)
+            QMessageBox.warning(self, "Select in Scene", "None of the selected assets exist in the Maya scene.")
+    
+    def getSelectionFromOutliner(self):
+        """Get current Maya selection and select corresponding items in the asset list"""
+        # Get current Maya selection
+        maya_selection = cmds.ls(selection=True, long=True)
+        if not maya_selection:
+            QMessageBox.information(self, "Get Selection", "No objects are currently selected in Maya.")
+            return
+        
+        # Clear current selection in asset list
+        self.asset_list.clearSelection()
+        
+        # Try to find and select these items in the asset list
+        selected_count = 0
+        for i in range(self.asset_list.count()):
+            item = self.asset_list.item(i)
+            asset_path = item.text()
+            
+            if asset_path in maya_selection:
+                item.setSelected(True)
+                selected_count += 1
+        
+        if selected_count == 0:
+            QMessageBox.information(
+                self, 
+                "Get Selection", 
+                "None of the selected objects in Maya are in the current asset list."
+            )
+        else:
+            # Ensure the asset list has focus and the selected items are visible
+            self.asset_list.setFocus()
+            if selected_count == 1:
+                self.asset_list.scrollToItem(self.asset_list.selectedItems()[0])
+            else:
+                # If multiple items are selected, scroll to the first one
+                self.asset_list.scrollToItem(self.asset_list.selectedItems()[0])
+    
+    def updateAssetSelections(self):
+        """Update selection sets after context menu actions"""
+        selected_shots = self.shot_list.selectedItems()
+        if not selected_shots:
+            return
+            
+        # The assets are now managed via the add/remove methods instead of checkboxes
+        # This method is kept for compatibility
+        
+        # Update the shot status display
+        self.updateShotStatus()
+            
+    def onShotSelected(self, item):
+        """Handle shot selection changes"""
+        # Update the asset list to show assets for this shot
+        self.updateAssetList()
+        
+        # Update shot status display
+        self.updateShotStatus()
+        
+    def updateShotStatus(self):
+        """Update the shot list items to show number of selected assets"""
+        for i in range(self.shot_list.count()):
+            item = self.shot_list.item(i)
+            shot = item.data(Qt.UserRole)
+            selected_assets = len(self.shot_asset_selections.get(shot, set()))
+            
+            # Get shot name without count suffix
+            shot_name = cmds.getAttr(shot + ".shotName")
+            item.setText("%s (%s)" % (shot_name, selected_assets))
+
+    def filterAssets(self, text):
+        """Filter assets based on text input"""
+        # Store current shot selection
+        selected_items = self.shot_list.selectedItems()
+        if selected_items:
+            current_shot = selected_items[0].data(Qt.UserRole)
+            self.updateAssetList()
+        
+    def splitShots(self):
+        """Perform the shot splitting operation"""
+        # Get checked shots
+        shots_to_split = []
+        for i in range(self.shot_list.count()):
+            item = self.shot_list.item(i)
+            if item.checkState() == Qt.Checked:
+                shot_node = item.data(Qt.UserRole)
+                # Get associated assets
+                assets = self.shot_asset_selections.get(shot_node, set())
+                shots_to_split.append((shot_node, assets))
+        
+        if not shots_to_split:
+            QMessageBox.warning(self, "Shot Split", "No shots selected for splitting.")
+            return
+            
+        # Confirm operation
+        result = QMessageBox.question(
+            self,
+            "Confirm Split",
+            "You are about to split %s shot(s). Continue?" % len(shots_to_split),
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if result == QMessageBox.Yes:
+            self._perform_split(shots_to_split)
+
+    def saveNewShotFile(self, shot_name, start, end):
+        """Save the current scene to a new file"""
+        if self.plugin:
+            ctx = self.plugin.core.getCurrentScenefileData()
+            if ctx and ctx.get("sequence") and ctx.get("department") and ctx.get("task"):
+                seq = ctx["sequence"]
+                dep = ctx.get("department")
+                task = ctx.get("task")
+                entity = {
+                    "type": "shot",
+                    "shot": shot_name,
+                    "sequence": seq,
+                }
+                result = self.plugin.core.entities.createShot(entity, frameRange=[int(start), int(end)])
+                if result:
+                    self.plugin.core.entities.createDepartment(dep, entity)
+                    self.plugin.core.entities.createCategory(entity, dep, task)
+                    self.plugin.core.entities.createVersionFromCurrentScene(result["entity"], dep, task)
+                    return
+
+        try:
+            # Build new filename
+            scene_path = cmds.file(q=True, sn=True)
+            scene_dir = os.path.dirname(scene_path)
+            new_file = os.path.join(scene_dir, "%s.ma" % shot_name)
+            cmds.file(rename=new_file)
+            cmds.file(save=True, type="mayaAscii")
+            print("Saved new shot file: %s" % new_file)
+        except Exception as e:
+            print("Error saving file %s: %s" % (new_file, str(e)))
+            raise e
+            
+    def _perform_split(self, shots_to_split):
+        """Perform the actual splitting operation"""
+        # Ensure scene is saved
+        scene_path = cmds.file(q=True, sn=True)
+        if not scene_path:
+            QMessageBox.warning(self, "Shot Split", "Please save your scene before running this tool.")
+            return
+
+        scene_dir = os.path.dirname(scene_path)
+        original_file = cmds.file(q=True, sceneName=True)
+        
+        # Create progress dialog
+        progress = QProgressDialog("Preparing to split shots...", "Cancel", 0, len(shots_to_split), self)
+        progress.setWindowTitle("Shot Split Progress")
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)  # Show immediately
+        progress.setValue(0)
+        QApplication.processEvents()
+
+        if self.plugin:
+            self.plugin.core.sceneOpenChecksEnabled = False
+        
+        # Store current undo state
+        current_undo_state = cmds.undoInfo(q=True, state=True)
+        cmds.undoInfo(state=True)  # Make sure undo is enabled
+        
+        # Process each shot
+        for i, (shot, assets) in enumerate(shots_to_split):
+            # Update progress dialog
+            shot_name = cmds.getAttr(shot + ".shotName") if cmds.objExists(shot) else "Shot %s" % (i+1)
+            progress.setLabelText("Processing shot %s of %s: %s" % (i+1, len(shots_to_split), shot_name))
+            progress.setValue(i)
+            QApplication.processEvents()
+            
+            # Check if the user canceled the operation
+            if progress.wasCanceled():
+                cmds.file(original_file, open=True, force=True)
+                cmds.undoInfo(state=current_undo_state)
+                if self.plugin:
+                    self.plugin.core.sceneOpenChecksEnabled = True
+                return
+            if i > 0:
+                # Instead of reloading, undo all changes from the previous shot processing
+                # cmds.undo()
+                
+                # Verify the undo worked correctly by checking if nodes exist
+                # If undo failed for any reason, reload the original scene as fallback
+                # if not cmds.objExists(shot):
+                    # cmds.warning("Undo didn't restore all nodes properly. Falling back to reload.")
+                cmds.file(original_file, open=True, force=True)
+            
+            start = cmds.getAttr("%s.startFrame" % shot)
+            end = cmds.getAttr("%s.endFrame" % shot)
+            shot_name = cmds.getAttr(shot + ".shotName")
+            
+            # Set timeline
+            cmds.playbackOptions(
+                animationStartTime=start,
+                animationEndTime=end,
+                minTime=start,
+                maxTime=end,
+            )
+            cmds.currentTime(start, edit=True)
+
+            prev_file = cmds.file(q=True, sceneName=True)
+
+            # Keep only this shot and the selected assets
+            cmds.undoInfo(openChunk=True)
+            try:
+                # Handle referenced objects first
+                # Get all references
+                references = cmds.ls(references=True) or []
+                referenced_nodes = {}
+                
+                # Build a dictionary of referenced nodes and their reference node
+                for ref in references:
+                    nodes = cmds.referenceQuery(ref, nodes=True, dagPath=True) or []
+                    longNodes = cmds.ls(nodes, long=True)
+                    for node in longNodes:
+                        referenced_nodes[node] = ref
+                
+                # Create sets to track what to keep and what to remove
+                references_to_remove = set()
+                references_to_keep = set()
+                
+                # Check if any referenced nodes are in our assets list
+                for asset in assets:
+                    if asset in referenced_nodes:
+                        ref = referenced_nodes[asset]
+                        references_to_keep.add(ref)
+                
+                # Identify references to remove (those not containing any assets)
+                for ref in references:
+                    if ref not in references_to_keep:
+                        references_to_remove.add(ref)
+                
+                # Remove references that don't contain assets
+                for ref in references_to_remove:
+                    try:
+                        cmds.file(referenceNode=ref, removeReference=True)
+                    except Exception as e:
+                        print("Warning: Failed to remove reference %s: %s" % (ref, str(e)))
+                
+                # Now delete all non-referenced nodes not in assets list
+                all_nodes = cmds.ls(type="transform", long=True)
+                nodes_to_delete = []
+                
+                # Build a set of nodes to keep - including parents and children of assets
+                nodes_to_keep = set()
+                
+                # First add all assets
+                for asset in assets:
+                    if cmds.objExists(asset):
+                        nodes_to_keep.add(asset)
+                        
+                        # Add all parent nodes in hierarchy
+                        parent = cmds.listRelatives(asset, parent=True, fullPath=True)
+                        while parent:
+                            parent_path = parent[0]
+                            nodes_to_keep.add(parent_path)
+                            parent = cmds.listRelatives(parent_path, parent=True, fullPath=True)
+                        
+                        # Add all children nodes
+                        children = cmds.listRelatives(asset, allDescendents=True, fullPath=True) or []
+                        for child in children:
+                            nodes_to_keep.add(child)
+                
+                # Collect nodes to delete
+                for node in all_nodes:
+                    try:
+                        # Skip if it's the shot node or in our assets list or their parents/children
+                        if node == shot or node in nodes_to_keep:
+                            continue
+                            
+                        # Skip if it's referenced (these were handled above)
+                        if cmds.referenceQuery(node, isNodeReferenced=True):
+                            continue
+                            
+                        # Skip default cameras and nodes
+                        if (node.startswith("|persp") or 
+                            node.startswith("|front") or 
+                            node.startswith("|side") or 
+                            node.startswith("|top") or
+                            "sequencer" in node.lower() or
+                            "defaultLayer" in node or
+                            "defaultLightSet" in node or
+                            "defaultObjectSet" in node):
+                            continue
+                        
+                        # Add to delete list
+                        nodes_to_delete.append(node)
+                    except Exception as e:
+                        print("Warning: Error processing node %s: %s" % (node, str(e)))
+                
+                # Delete collected nodes
+                if nodes_to_delete:
+                    try:
+                        cmds.delete(nodes_to_delete)
+                    except Exception as e:
+                        print("Warning: Failed to delete some nodes: %s" % str(e))
+                
+                # Save the file
+                self.saveNewShotFile(shot_name, start, end)
+            finally:
+                cmds.undoInfo(closeChunk=True)
+        
+        # Update progress for completing the operation
+        progress.setLabelText("Restoring original scene...")
+        progress.setValue(len(shots_to_split))
+        QApplication.processEvents()
+        
+        # After processing all shots, try to restore the original scene state using undo
+        try:
+            # cmds.undo()
+            
+            # Verify the scene has been properly restored (check if the first shot exists)
+            # if shots_to_split and not cmds.objExists(shots_to_split[0][0]):
+                # cmds.warning("Final undo didn't restore the scene properly. Falling back to reload.")
+            cmds.file(original_file, open=True, force=True)
+        except Exception as e:
+            # If undo fails for any reason, fall back to reloading the file
+            print("Warning: Scene restore with undo failed: %s" % str(e))
+            cmds.file(original_file, open=True, force=True)
+        
+        # Restore original undo state
+        cmds.undoInfo(state=current_undo_state)
+        
+        if self.plugin:
+            self.plugin.core.sceneOpenChecksEnabled = True
+            if self.plugin.core.pb:
+                self.plugin.core.pb.refreshUI()
+        
+        # Close the progress dialog
+        progress.close()
+
+        QMessageBox.information(self, "Shot Split", "Split shots completed successfully!")
+        self.accept()

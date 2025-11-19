@@ -222,9 +222,10 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
         path = os.path.join(self.core.prismRoot, "Scripts", "UserInterfacesPrism", "configure.png")
         icon = self.core.media.getColoredIcon(path)
         self.actionPrismSettings.setIcon(icon)
+        self.actionPrismSettings.setMenuRole(QAction.NoRole)  # to keep the action in it's menu on MacOS
 
         self.act_console = QAction("Console...", self)
-        self.act_console.triggered.connect(self.core.openConsole)
+        self.act_console.triggered.connect(lambda: self.core.openConsole(self))
         path = os.path.join(self.core.prismRoot, "Scripts", "UserInterfacesPrism", "console.png")
         icon = self.core.media.getColoredIcon(path)
         self.act_console.setIcon(icon)

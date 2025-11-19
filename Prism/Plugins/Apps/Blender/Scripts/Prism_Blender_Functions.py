@@ -93,12 +93,14 @@ class Prism_Blender_Functions(object):
             ".abc": {"importFunction": self.importAlembic},
             ".fbx": {"importFunction": self.importFBX},
             ".obj": {"importFunction": self.importObj},
+            ".glb": {"importFunction": self.importGlb},
         }
 
         self.exportHandlers = {
             ".abc": {"exportFunction": self.exportAlembic},
             ".fbx": {"exportFunction": self.exportFBX},
             ".obj": {"exportFunction": self.exportObj},
+            ".glb": {"exportFunction": self.exportGLB},
             ".blend": {"exportFunction": self.exportBlend},
         }
 
@@ -628,7 +630,13 @@ class Prism_Blender_Functions(object):
         return outputName
 
     @err_catcher(name=__name__)
-    def exportAlembic(self, outputName, origin, startFrame, endFrame, expNodes):
+    def exportAlembic(self, outputName, origin, startFrame, endFrame, expNodes, additionalSettings=None):
+        if getattr(origin, "additionalSettings", None):
+            additionalSettings = additionalSettings or {}
+            for setting in origin.additionalSettings:
+                if setting["name"] == "abcScale":
+                    additionalSettings["global_scale"] = setting["value"]
+
         if bpy.app.version < (4, 0, 0):
             bpy.ops.wm.alembic_export(
                 self.getOverrideContext(origin),
@@ -637,6 +645,7 @@ class Prism_Blender_Functions(object):
                 end=endFrame,
                 selected=(not origin.chb_wholeScene.isChecked()),
                 as_background_job=False,
+                **additionalSettings,
             )
         else:
             with bpy.context.temp_override(**self.getOverrideContext(origin)):
@@ -646,7 +655,19 @@ class Prism_Blender_Functions(object):
                     end=endFrame,
                     selected=(not origin.chb_wholeScene.isChecked()),
                     as_background_job=False,
+                    **additionalSettings,
                 )
+
+        return outputName
+
+    @err_catcher(name=__name__)
+    def exportGLB(self, outputName, origin, startFrame, endFrame, expNodes):
+        with bpy.context.temp_override(**self.getOverrideContext(origin)):
+            bpy.ops.export_scene.gltf(
+                filepath=outputName,
+                use_selection=(not origin.chb_wholeScene.isChecked()),
+                export_format="GLB",
+            )
 
         return outputName
 
@@ -826,10 +847,10 @@ class Prism_Blender_Functions(object):
     def registerPrismMenu(self):
         options = []
 
-        op = {"name": "save", "label": "Save", "code": "import PrismInit\nif platform.system() == \"Linux\":\n    PrismInit.pcore.saveScene()\n    for i in QApplication.topLevelWidgets():\n        if i.isVisible():\n            qApp.exec_()\n            break\nelse:\n    PrismInit.pcore.saveScene()"}
+        op = {"name": "save", "label": "Save Version", "code": "import PrismInit\nif platform.system() == \"Linux\":\n    PrismInit.pcore.saveScene()\n    for i in QApplication.topLevelWidgets():\n        if i.isVisible():\n            qApp.exec_()\n            break\nelse:\n    PrismInit.pcore.saveScene()"}
         options.append(op)
 
-        op = {"name": "savecomment", "label": "Save Comment", "code": "import PrismInit\nif platform.system() == \"Linux\":\n    PrismInit.pcore.saveWithComment()\n    for i in QApplication.topLevelWidgets():\n        if i.isVisible():\n            qApp.exec_()\n            break\nelse:\n    PrismInit.pcore.saveWithComment()"}
+        op = {"name": "savecomment", "label": "Save Extended", "code": "import PrismInit\nif platform.system() == \"Linux\":\n    PrismInit.pcore.saveWithComment()\n    for i in QApplication.topLevelWidgets():\n        if i.isVisible():\n            qApp.exec_()\n            break\nelse:\n    PrismInit.pcore.saveWithComment()"}
         options.append(op)
 
         op = {"name": "browser", "label": "Project Browser", "code": "import PrismInit\nif platform.system() == \"Linux\":\n    PrismInit.pcore.projectBrowser()\n    qApp.exec_()\nelse:\n    PrismInit.pcore.projectBrowser()"}
@@ -927,55 +948,96 @@ class Prism_Blender_Functions(object):
         origin.b_osSlaves.setMinimumWidth(50 * self.core.uiScaleFactor)
 
     @err_catcher(name=__name__)
+    def sm_render_rightclickPasses(self, origin, menu, pos):
+        idx = origin.tw_passes.indexAt(pos)
+        item = origin.tw_passes.itemFromIndex(idx)
+        if not item:
+            return
+
+        data = item.data(0, Qt.UserRole)
+        if data and data.get("node"):
+            if data.get("node").mute:
+                act = QAction("Enable", origin)
+                act.triggered.connect(lambda: setattr(data["node"], "mute", False))
+                act.triggered.connect(lambda: self.sm_render_refreshPasses(origin))
+            else:
+                act = QAction("Disable", origin)
+                act.triggered.connect(lambda: setattr(data["node"], "mute", True))
+                act.triggered.connect(lambda: self.sm_render_refreshPasses(origin))
+
+            menu.addAction(act)
+
+    @err_catcher(name=__name__)
     def sm_render_refreshPasses(self, origin):
-        origin.lw_passes.clear()
+        origin.tw_passes.clear()
 
         passNames = self.getNodeAOVs()
         logger.debug("node aovs: %s" % passNames)
         origin.b_addPasses.setVisible(not passNames)
-        self.plugin.canDeleteRenderPasses = bool(not passNames)
+        self.plugin.canDeleteRenderPasses = True  # bool(not passNames)
         if not passNames:
             passNames = self.getViewLayerAOVs()
             logger.debug("viewlayer aovs: %s" % passNames)
 
         if passNames:
-            origin.lw_passes.addItems(passNames)
+            for group in passNames:
+                if group["name"]:
+                    item = QTreeWidgetItem([group["name"]])
+                    item.setData(0, Qt.UserRole, {"node": group["node"]})
+                    origin.tw_passes.addTopLevelItem(item)
+                    item.setExpanded(True)
+                    if not group.get("enabled", True):
+                        item.setFlags(item.flags() & ~Qt.ItemIsEnabled)
+                else:
+                    item = origin.tw_passes.invisibleRootItem()
+
+                for passName in group["passes"]:
+                    citem = QTreeWidgetItem([passName])
+                    item.addChild(citem)
+                    if not group.get("enabled", True):
+                        citem.setFlags(citem.flags() & ~Qt.ItemIsEnabled)
 
     @err_catcher(name=__name__)
     def getNodeAOVs(self):
-        if bpy.context.scene.node_tree is None or not bpy.context.scene.use_nodes:
-            return
+        if bpy.app.version >= (5, 0, 0):
+            if not bpy.context.scene.compositing_node_group:
+                return
+
+            nodes = bpy.context.scene.compositing_node_group.nodes
+        else:
+            if bpy.context.scene.node_tree is None or not bpy.context.scene.use_nodes:
+                return
+
+            nodes = bpy.context.scene.node_tree.nodes
 
         outNodes = [
-            x for x in bpy.context.scene.node_tree.nodes if x.type == "OUTPUT_FILE"
+            x for x in nodes if x.type == "OUTPUT_FILE"
         ]
-        rlayerNodes = [
-            x for x in bpy.context.scene.node_tree.nodes if x.type == "R_LAYERS"
-        ]
-
         passNames = []
-
-        for m in outNodes:
+        for outNode in outNodes:
+            nodePassNames = []
+            layername = outNode.label
             connections = []
-            for i in m.inputs:
+            for i in outNode.inputs:
                 if len(list(i.links)) > 0:
                     connections.append(i.links[0])
 
-            for i in connections:
-                passName = i.from_socket.name
+            if outNode.format.file_format == "OPEN_EXR_MULTILAYER":
+                for _input in outNode.layer_slots:
+                    nodePassNames.append(_input.name)
+            else:
+                for _input in outNode.file_slots:
+                    nodePassNames.append(os.path.basename(_input.path))
 
-                if passName == "Image":
-                    passName = "beauty"
+            if not layername and connections:
+                if connections[0].from_node.type == "R_LAYERS":
+                    layername = connections[0].from_node.layer
 
-                if i.from_node.type == "R_LAYERS":
-                    if len(rlayerNodes) > 1:
-                        passName = "%s_%s" % (i.from_node.layer, passName)
+            if not layername:
+                layername = outNode.name
 
-                else:
-                    if hasattr(i.from_node, "label") and i.from_node.label != "":
-                        passName = i.from_node.label
-
-                passNames.append(passName)
+            if nodePassNames:
+                passNames.append({"name": layername, "passes": nodePassNames, "enabled": not outNode.mute, "node": outNode})
 
         return passNames
 
@@ -992,9 +1054,12 @@ class Prism_Blender_Functions(object):
                 logging.debug("Couldn't access aov %s" % aa["parm"])
 
             if val:
+                if aa["name"] == "Cryptomatte Accurate" and bpy.app.version >= (4, 0, 0):
+                    continue
+
                 aovNames.append(aa["name"])
 
-        return aovNames
+        return [{"name": "", "passes": aovNames}]
 
     @err_catcher(name=__name__)
     def getAvailableAOVs(self):
@@ -1032,37 +1097,26 @@ class Prism_Blender_Functions(object):
     @err_catcher(name=__name__)
     def removeAOV(self, aovName):
         if self.useNodeAOVs():
-            rlayerNodes = [
-                x for x in bpy.context.scene.node_tree.nodes if x.type == "R_LAYERS"
+            if bpy.app.version >= (5, 0, 0):
+                nodes = bpy.context.scene.compositing_node_group.nodes
+            else:
+                nodes = bpy.context.scene.node_tree.nodes
+
+            outNodes = [
+                x for x in nodes if x.type == "OUTPUT_FILE"
             ]
+            for outNode in outNodes:
+                if outNode.format.file_format == "OPEN_EXR_MULTILAYER":
+                    for idx, layer_slot in enumerate(outNode.layer_slots):
+                        if layer_slot.name == aovName:
+                            outNode.inputs.remove(outNode.inputs[idx])
+                            return
+                else:
+                    for idx, file_slot in enumerate(outNode.file_slots):
+                        if os.path.basename(file_slot.path) == aovName:
+                            outNode.inputs.remove(outNode.inputs[idx])
+                            return
 
-            for m in rlayerNodes:
-                connections = []
-                for i in m.outputs:
-                    if len(list(i.links)) > 0:
-                        connections.append(i.links[0])
-                        break
-
-                for i in connections:
-                    if i.to_node.type == "OUTPUT_FILE":
-                        for idx, k in enumerate(i.to_node.file_slots):
-                            links = i.to_node.inputs[idx].links
-                            if len(links) > 0:
-                                if links[0].from_socket.node != m:
-                                    continue
-
-                                passName = links[0].from_socket.name
-                                layerName = links[0].from_socket.node.layer
-
-                                if passName == "Image":
-                                    passName = "beauty"
-
-                                if (
-                                    passName == aovName.split("_", 1)[1]
-                                    and layerName == aovName.split("_", 1)[0]
-                                ):
-                                    i.to_node.inputs.remove(i.to_node.inputs[idx])
-                                    return
         else:
             self.enableViewLayerAOV(aovName, enable=False)
 
@@ -1094,7 +1148,7 @@ class Prism_Blender_Functions(object):
         nodeAOVs = self.getNodeAOVs()
         imgFormat = origin.cb_format.currentText()
         if imgFormat == ".exr":
-            if not nodeAOVs and self.getViewLayerAOVs():
+            if not nodeAOVs and self.getViewLayerAOVs() and bpy.app.version < (5, 0, 0):
                 fileFormat = "OPEN_EXR_MULTILAYER"
             else:
                 fileFormat = "OPEN_EXR"
@@ -1120,11 +1174,16 @@ class Prism_Blender_Functions(object):
 
         usePasses = False
         if self.useNodeAOVs():
+            if bpy.app.version >= (5, 0, 0):
+                nodes = bpy.context.scene.compositing_node_group.nodes
+            else:
+                nodes = bpy.context.scene.node_tree.nodes
+
             outNodes = [
-                x for x in bpy.context.scene.node_tree.nodes if x.type == "OUTPUT_FILE"
+                x for x in nodes if x.type == "OUTPUT_FILE"
             ]
             rlayerNodes = [
-                x for x in bpy.context.scene.node_tree.nodes if x.type == "R_LAYERS"
+                x for x in nodes if x.type == "R_LAYERS"
             ]
 
             for m in outNodes:
@@ -1145,21 +1204,39 @@ class Prism_Blender_Functions(object):
                 }
                 nodeExt = extensions[m.format.file_format]
                 if m.format.file_format == "OPEN_EXR_MULTILAYER":
-                    m.base_path = rSettings["outputName"]
-                    newOutputPath = rSettings["outputName"]
+                    filename, ext = os.path.splitext(os.path.basename(rSettings["outputName"]))
+                    layername = ""
+                    if len(outNodes) > 1:
+                        layername = m.label
+                        if not layername and connections:
+                            if connections[0][0].from_node.type == "R_LAYERS":
+                                layername = connections[0][0].from_node.layer
+
+                        if not layername:
+                            layername = m.name
+
+                    if layername:
+                        filename = filename.replace("beauty", "beauty_" + layername)
+
+                    newOutputPath = os.path.abspath(
+                        os.path.join(
+                            rSettings["outputName"],
+                            "..",
+                            filename + ext,
+                        )
+                    )
+                    m.base_path = newOutputPath
                     if connections:
                         usePasses = True
                 else:
                     m.base_path = os.path.dirname(rSettings["outputName"])
                     for i, idx in connections:
                         passName = i.from_socket.name
-
-                        if passName == "Image":
-                            passName = "beauty"
-
+                        layername = ""
                         if i.from_node.type == "R_LAYERS":
                             if len(rlayerNodes) > 1:
-                                passName = "%s_%s" % (i.from_node.layer, passName)
+                                layername = i.from_node.layer
+                                passName = "%s_%s" % (layername, passName)
 
                         else:
                             if hasattr(i.from_node, "label") and i.from_node.label != "":
@@ -1171,22 +1248,28 @@ class Prism_Blender_Functions(object):
                         else:
                             ext = extensions[curSlot.format.file_format]
 
+                        filename = os.path.splitext(os.path.basename(rSettings["outputName"]))[
+                            0
+                        ]
+                        if len(outNodes) > 1:
+                            layername = m.label or layername
+                            if not layername:
+                                layername = m.name
+
+                        if layername:
+                            filename = filename.replace("beauty", passName + "_" + layername)
+                        else:
+                            filename = filename.replace("beauty", passName)
+
                         curSlot.path = "../%s/%s" % (
-                            passName,
-                            os.path.splitext(os.path.basename(rSettings["outputName"]))[
-                                0
-                            ].replace("beauty", passName)
-                            + ext,
+                            passName, filename + ext
                         )
                         newOutputPath = os.path.abspath(
                             os.path.join(
                                 rSettings["outputName"],
                                 "../..",
                                 passName,
-                                os.path.splitext(os.path.basename(rSettings["outputName"]))[
-                                    0
-                                ].replace("beauty", passName)
-                                + ext,
+                                filename + ext,
                             )
                         )
                         usePasses = True
@@ -1489,6 +1572,11 @@ class Prism_Blender_Functions(object):
                 bpy.ops.wm.obj_import(filepath=importPath)
 
     @err_catcher(name=__name__)
+    def importGlb(self, importPath, origin=None):
+        with bpy.context.temp_override(**self.getOverrideContext(origin)):
+            bpy.ops.import_scene.gltf(filepath=importPath)
+
+    @err_catcher(name=__name__)
     def importUsd(self, filepath, origin=None):
         from _bpy import ops as _ops_module
         try:
@@ -1656,7 +1744,6 @@ class Prism_Blender_Functions(object):
                         except:
                             pass
 
-        self.core.popup(type(obj).__name__)
         if obj.bl_rna.identifier.upper() == "COLLECTION":
             if obj and obj.library:
                 bpy.context.view_layer.objects.active = None
@@ -1975,3 +2062,18 @@ class Prism_Blender_Functions(object):
             state.b_resPresets.setStyleSheet("padding-left: 1px;padding-right: 1px;")
         elif state.className == "Playblast":
             state.b_resPresets.setStyleSheet("padding-left: 1px;padding-right: 1px;")
+
+        if state.className in ["Export"]:
+            abcSettings = []
+            additionalSettingsValues = (stateData or {}).get("additionalSettings") or {}
+            abcSettings += [
+                {
+                    "name": "abcScale",
+                    "label": "Scale",
+                    "type": "float",
+                    "value": 1.0 if "abcScale" not in additionalSettingsValues else additionalSettingsValues["abcScale"],
+                    "visible": lambda dlg, state: state.getOutputType() in [".abc"]
+                }
+            ]
+
+            state.additionalSettings += abcSettings

@@ -38,6 +38,7 @@ import shutil
 import platform
 import errno
 import copy
+import time
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -99,6 +100,9 @@ class Products(object):
         products = []
         for loc in searchLocations:
             context = entity.copy()
+            if "product" in context:
+                del context["product"]
+
             if locations != "project_path":
                 context["project_path"] = locationData[loc]
 
@@ -470,6 +474,34 @@ class Products(object):
         return data
 
     @err_catcher(name=__name__)
+    def getUseProductPreviews(self):
+        return self.core.getConfig("globals", "capture_viewport_products", config="user", dft=False)
+
+    @err_catcher(name=__name__)
+    def getProductPreviewPath(self, productPath):
+        return productPath + "/preview.jpg"
+
+    @err_catcher(name=__name__)
+    def generateProductPreview(self):
+        scenePreviewPath = self.core.entities.getScenePreviewPath(self.core.getCurrentFileName())
+        previewTime = self.core.getFileModificationDate(scenePreviewPath, validate=True, asString=False)
+        if previewTime and (time.time() - previewTime) < 5:
+            return self.core.media.getPixmapFromPath(scenePreviewPath)
+
+        appPreview = getattr(self.core.appPlugin, "captureViewportThumbnail", lambda: None)()
+        if not appPreview:
+            return
+
+        preview = self.core.media.scalePixmap(appPreview, self.core.scenePreviewWidth, self.core.scenePreviewHeight, fitIntoBounds=False, crop=True)
+        return preview
+
+    @err_catcher(name=__name__)
+    def setProductPreview(self, productPath, preview):
+        prvPath = self.getProductPreviewPath(productPath)
+        logger.debug("saving product preview: %s" % prvPath)
+        self.core.media.savePixmap(preview, prvPath)
+
+    @err_catcher(name=__name__)
     def getPreferredFileFromVersion(self, version, location=None):
         if not version:
             return ""
@@ -585,7 +617,7 @@ class Products(object):
         return validLocs[0]
 
     @err_catcher(name=__name__)
-    def getProductVersion(self, product, version, entity=None, wedge=None, locations=None):
+    def getProductVersion(self, product, version, entity=None, wedge=None, locations=None, includeMaster=True):
         if not entity:
             fname = self.core.getCurrentFileName()
             entity = self.core.getScenefileData(fname)
@@ -596,7 +628,7 @@ class Products(object):
         versions = self.getVersionsFromProduct(entity, product, locations=locations)
         if version == "latest":
             versionData = self.getLatestVersionFromVersions(
-                versions, includeMaster=True, wedge=wedge
+                versions, includeMaster=includeMaster, wedge=wedge
             )
         else:
             for v in versions:
@@ -1160,6 +1192,63 @@ class Products(object):
                     foundProducts.append(product)
 
         return foundProducts
+
+    @err_catcher(name=__name__)
+    def importConnectedAssetsForEntities(self, entities=None, parent=None):
+        for entity in entities:
+            self.importConnectedAssets(entity)
+
+    @err_catcher(name=__name__)
+    def importConnectedAssets(self, entity=None, quiet=True):
+        sm = self.core.getStateManager()
+        if not sm:
+            return
+
+        if not entity:
+            filepath = self.core.getCurrentFileName()
+            entity = self.core.getScenefileData(filepath)
+
+        if not entity or entity.get("type") != "shot":
+            msg = "Importing connected assets is possible in shot scenefiles only."
+            self.core.popup(msg)
+            return
+
+        productsToImport = []
+        entities = self.core.entities.getConnectedEntities(entity)
+        if not entities:
+            result = self.core.popupQuestion("No assets are connected to the current shot.", buttons=["Connect Assets...", "Close"], icon=QMessageBox.Information)
+            if result == "Connect Assets...":
+                self.core.entities.connectEntityDlg(entities=[entity])
+
+            return
+
+        tags = [x.strip() for x in os.getenv("PRISM_AUTO_IMPORT_TAGS", "").split(",") if x]
+        if not tags:
+            tags = ["usd", "assembly", "main"]
+
+        for centity in entities:
+            products = self.core.products.getProductsByTags(centity, tags)
+            productsToImport += products
+
+        if not productsToImport:
+            msg = "No products to import.\n(checking for tags: \"%s\")" % "\", \"".join(tags)
+            self.core.popup(msg)
+            return
+
+        settings = {}
+        if quiet:
+            settings["quiet"] = True
+
+        for product in productsToImport:
+            if "asset_path" not in product:
+                continue
+
+            productPath = self.core.products.getLatestVersionpathFromProduct(product["product"], entity=product)
+            if not productPath:
+                continue
+
+            sm.importFile(productPath, settings=settings)
+            logger.debug("added product to shot: %s - %s" % (self.core.entities.getShotName(entity), productPath))
 
 
 class PreferredVersionDialog(QDialog):

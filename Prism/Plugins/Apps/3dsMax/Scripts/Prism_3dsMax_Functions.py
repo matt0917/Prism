@@ -458,6 +458,8 @@ class Prism_3dsMax_Functions(object):
             nodeHandles = [handle for handle in expNodeHandles if self.isNodeValid(origin,handle)]
             nodes = [rt.maxOps.getNodeByHandle(handle) for handle in nodeHandles]
             rt.select(nodes)
+        else:
+            nodes = None
 
         ext = origin.cb_outType.currentText()
         if ext in self.exportHandlers:
@@ -1041,12 +1043,12 @@ animationrange = interval tmpanimrange.x tmpanimrange.y
             isRs = self.getCurrentRenderer(origin) == "Redshift_Renderer"
             origin.w_redshift.setHidden((not isRs) or (not origin.gb_submit.isChecked()))
 
-        origin.lw_passes.clear()
+        origin.tw_passes.clear()
         elementMgr = rt.maxOps.GetCurRenderElementMgr()
         for i in range(elementMgr.NumRenderElements()):
             element = elementMgr.GetRenderElement(i)
-            item = QListWidgetItem(element.elementName)
-            origin.lw_passes.addItem(item)
+            item = QTreeWidgetItem([element.elementName])
+            origin.tw_passes.addTopLevelItem(item)
 
     @err_catcher(name=__name__)
     def sm_render_openPasses(self, origin, item=None):

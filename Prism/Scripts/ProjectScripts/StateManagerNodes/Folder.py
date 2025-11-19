@@ -103,13 +103,14 @@ class FolderClass(object):
         result = []
         self.osSubmittedJobs = {}
         self.osDependencies = []
-        self.dependencies = []
+        self.dependencies = (parent.dependencies if parent else None) or []
 
         for i in range(self.state.childCount()):
             curState = self.state.child(i)
             if (self.stateManager.publishType == "execute" or curState.checkState(0) == Qt.Checked) and (curState.ui.className == "Folder" or curState in set(
                 self.stateManager.execStates
             )):
+                self.stateManager.curExecutedState = curState.ui
                 if getattr(curState.ui, "canSetVersion", False):
                     exResult = curState.ui.executeState(
                         parent=self, useVersion=useVersion

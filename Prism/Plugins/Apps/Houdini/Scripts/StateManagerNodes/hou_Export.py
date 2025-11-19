@@ -441,11 +441,18 @@ class ExportClass(object):
                 "label": "Open in Explorer...",
                 "callback": lambda: self.core.openFolder(path)
             },
-            {
+        ]
+        if os.getenv("PRISM_COPY_FILE_CONTENT", "0") == "1":
+            options.append({
                 "label": "Copy",
                 "callback": lambda: self.core.copyToClipboard(path, file=True)
-            },
-        ]
+            })
+        else:
+            options.append({
+                "label": "Copy Path",
+                "callback": lambda: self.core.copyToClipboard(path, file=False)
+            })
+
         return options
 
     @err_catcher(name=__name__)
@@ -724,6 +731,7 @@ class ExportClass(object):
             self.core.appPlugin.filecache.refreshNodeUi(self.node, self)
 
         self.updateRange()
+        self.w_comment.setHidden(not self.stateManager.useStateComments())
         if not self.core.products.getUseMaster():
             self.w_master.setVisible(False)
 
@@ -794,7 +802,7 @@ class ExportClass(object):
             context = self.getOutputEntity()
             if context.get("type") == "shot" and "sequence" in context:
                 frange = self.core.entities.getShotRange(context)
-                if frange:
+                if frange and frange[0] is not None and frange[1] is not None:
                     startFrame, endFrame = frange
                     startFrame -= 1
                     endFrame += 1
@@ -1415,7 +1423,7 @@ class ExportClass(object):
             task=product,
             extension=extension,
             framePadding=framePadding,
-            comment=self.stateManager.publishComment,
+            comment=self.getComment(),
             version=version,
             location=location,
             returnDetails=True,
@@ -1429,6 +1437,15 @@ class ExportClass(object):
         outputFolder = os.path.dirname(outputPath)
         hVersion = outputPathData["version"]
         return outputPath, outputFolder, hVersion
+
+    @err_catcher(name=__name__)
+    def getComment(self):
+        if self.stateManager.useStateComments():
+            comment = self.e_comment.text() or self.stateManager.publishComment
+        else:
+            comment = self.stateManager.publishComment
+
+        return comment
 
     @err_catcher(name=__name__)
     def executeState(self, parent, useVersion="next"):
@@ -1521,7 +1538,7 @@ class ExportClass(object):
             details["version"] = hVersion
             details["sourceScene"] = fileName
             details["product"] = self.getProductname(expanded=True)
-            details["comment"] = self.stateManager.publishComment
+            details["comment"] = self.getComment()
 
             details.update(self.cb_sCamShot.currentData())
             details["entityType"] = "shot"
@@ -1533,6 +1550,10 @@ class ExportClass(object):
                 details["fps"] = self.core.getFPS()
 
             self.core.saveVersionInfo(filepath=infoPath, details=details)
+            if self.core.products.getUseProductPreviews():
+                preview = self.core.products.generateProductPreview()
+                if preview:
+                    self.core.products.setProductPreview(os.path.dirname(outputName), preview)
 
             abc_rop = self.core.appPlugin.createRop("alembic")
 
@@ -1640,9 +1661,9 @@ class ExportClass(object):
             entity = self.getOutputEntity()
             if not entity:
                 return [
-                        self.state.text(0)
-                        + ": error - Invalid output entity."
-                    ]
+                    self.state.text(0)
+                    + ": error - Invalid output entity."
+                ]
 
             outputName, outputPath, hVersion = self.getOutputName(useVersion=useVersion)
 
@@ -1655,7 +1676,13 @@ class ExportClass(object):
                 ]
 
             if self.getOutputType() in [".abc", ".fbx", ".usd", ".usda", ".usdc"]:
-                outputName = outputName.replace((".$F" + str(self.core.framePadding)), "")
+                singleFile = True
+                isFilecache = self.isPrismFilecacheNode(self.node)
+                if isFilecache:
+                    singleFile = not self.node.parm("writeFileSequence").eval()
+
+                if singleFile:
+                    outputName = outputName.replace((".$F" + str(self.core.framePadding)), "")
 
             api = self.core.appPlugin.getApiFromNode(self.node)
             isStart = ropNode.parm("f1").eval() == startFrame
@@ -1763,13 +1790,17 @@ class ExportClass(object):
             details["version"] = hVersion
             details["sourceScene"] = fileName
             details["product"] = self.getProductname(expanded=True)
-            details["comment"] = self.stateManager.publishComment
+            details["comment"] = self.getComment()
 
             if startFrame != endFrame:
                 details["fps"] = self.core.getFPS()
 
             if not isWedging:
                 self.core.saveVersionInfo(filepath=infoPath, details=details)
+                if self.core.products.getUseProductPreviews():
+                    preview = self.core.products.generateProductPreview()
+                    if preview:
+                        self.core.products.setProductPreview(os.path.dirname(outputName), preview)
 
             outputNames = [outputName]
 

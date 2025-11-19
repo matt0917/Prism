@@ -56,7 +56,13 @@ logger = logging.getLogger(__name__)
 
 
 class PrismTray:
-    def __init__(self, core):
+    def __init__(self, core: object) -> None:
+        """
+        Initialize the PrismTray.
+
+        Args:
+            core (object): The core Prism object.
+        """
         self.core = core
 
         try:
@@ -74,20 +80,35 @@ class PrismTray:
                 "initTray - %s - %s - %s" % (str(e), exc_type, exc_tb.tb_lineno),
             )
 
-    def startListener(self):
+    def startListener(self) -> None:
+        """
+        Start the listener thread for tray events.
+        """
         self.listenerThread = ListenerThread()
         self.listenerThread.dataReceived.connect(self.onDataReceived)
         self.listenerThread.errored.connect(self.core.writeErrorLog)
         self.listenerThread.start()
 
-    def onDataReceived(self, data):
+    def onDataReceived(self, data: object) -> None:
+        """
+        Handle data received from the listener thread.
+
+        Args:
+            data (object): The received data.
+        """
         logger.warning("received data: %s" % data)
         if data == "openProjectBrowser":
             self.startBrowser()
+        elif data.startswith("protocolHandler:"):
+            url = data[len("protocolHandler:"):]
+            self.core.protocolHandler(url)
         elif data == "close":
             self.exitTray()
 
-    def createTrayIcon(self):
+    def createTrayIcon(self) -> None:
+        """
+        Create and configure the system tray icon and its menu.
+        """
         try:
             self.trayIconMenu = QMenu(self.core.messageParent)
             self.browserAction = QAction(
@@ -156,7 +177,13 @@ class PrismTray:
                 "createTray - %s - %s - %s" % (str(e), exc_type, exc_tb.tb_lineno),
             )
 
-    def iconActivated(self, reason):
+    def iconActivated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
+        """
+        Handle tray icon activation events.
+
+        Args:
+            reason (QSystemTrayIcon.ActivationReason): The reason for activation.
+        """
         try:
             if reason == QSystemTrayIcon.Trigger:
                 self.browserStarted = False
@@ -191,7 +218,10 @@ class PrismTray:
             exc_type, exc_obj, exc_tb = sys.exc_info()
         #   QMessageBox.critical(self.core.messageParent, "Unknown Error", "iconActivated - %s - %s - %s" % (str(e), exc_type, exc_tb.tb_lineno))
 
-    def startBrowser(self):
+    def startBrowser(self) -> None:
+        """
+        Start the project browser window.
+        """
         if self.launching:
             logger.debug("Launching in progress. Skipped opening Project Browser")
             return
@@ -201,7 +231,14 @@ class PrismTray:
         self.launching = False
         return
 
-    def openFolder(self, path="", location=None):
+    def openFolder(self, path: str = "", location: str = None) -> None:
+        """
+        Open a folder in the file explorer.
+
+        Args:
+            path (str): The path to open.
+            location (str, optional): The location type ('Prism' or 'Project').
+        """
         if location == "Prism":
             path = self.core.prismRoot
         elif location == "Project":
@@ -218,10 +255,16 @@ class PrismTray:
 
         self.core.openFolder(path)
 
-    def openSettings(self):
+    def openSettings(self) -> None:
+        """
+        Open the Prism settings window.
+        """
         self.core.prismSettings()
 
-    def restartTray(self):
+    def restartTray(self) -> None:
+        """
+        Restart the Prism tray application.
+        """
         self.listenerThread.shutDown()
 
         pythonPath = self.core.getPythonPath(executable="Prism")
@@ -230,7 +273,10 @@ class PrismTray:
         subprocess.Popen(cmd, cwd=self.core.prismRoot, shell=True, env=self.core.startEnv)
         sys.exit(0)
 
-    def exitTray(self):
+    def exitTray(self) -> None:
+        """
+        Exit the Prism tray application.
+        """
         if hasattr(self, "listenerThread"):
             self.listenerThread.shutDown()
 
@@ -238,14 +284,26 @@ class PrismTray:
 
 
 class ListenerThread(QThread):
+    """
+    Thread for listening to inter-process communication events.
+    """
 
     dataReceived = Signal(object)
     errored = Signal(object)
 
-    def __init__(self, function=None):
+    def __init__(self, function: object = None) -> None:
+        """
+        Initialize the ListenerThread.
+
+        Args:
+            function (object, optional): Optional function to run.
+        """
         super(ListenerThread, self).__init__()
 
-    def run(self):
+    def run(self) -> None:
+        """
+        Run the listener thread.
+        """
         try:
             from multiprocessing.connection import Listener
 
@@ -280,7 +338,10 @@ class ListenerThread(QThread):
         except Exception as e:
             self.errored.emit(traceback.format_exc())
 
-    def shutDown(self):
+    def shutDown(self) -> None:
+        """
+        Shut down the listener thread.
+        """
         if hasattr(self, "listener"):
             self.listener.close()
 
@@ -288,25 +349,52 @@ class ListenerThread(QThread):
 
 
 class SenderThread(QThread):
-    def __init__(self, function=None):
+    """
+    Thread for sending inter-process communication events.
+    """
+    def __init__(self, function: object = None) -> None:
+        """
+        Initialize the SenderThread.
+
+        Args:
+            function (object, optional): Optional function to run.
+        """
         super(SenderThread, self).__init__()
         self.canceled = False
 
-    def run(self):
+    def run(self) -> None:
+        """
+        Run the sender thread.
+        """
         from multiprocessing.connection import Client
         port = 7571
         address = ('localhost', port)
         self.conn = Client(address)
 
-    def shutDown(self):
+    def shutDown(self) -> None:
+        """
+        Shut down the sender thread.
+        """
         self.conn.close()
         self.quit()
 
-    def send(self, data):
+    def send(self, data: object) -> None:
+        """
+        Send data to the listener.
+
+        Args:
+            data (object): The data to send.
+        """
         self.conn.send(data)
 
 
-def isAlreadyRunning():
+def isAlreadyRunning() -> bool:
+    """
+    Check if Prism is already running.
+
+    Returns:
+        bool: True if running, False otherwise.
+    """
     if platform.system() == "Windows":
         coreProc = []
         ignoredPids = [os.getpid()]
@@ -330,7 +418,13 @@ def isAlreadyRunning():
     return False
 
 
-def findPrismProcesses():
+def findPrismProcesses() -> list[str]:
+    """
+    Find running Prism processes.
+
+    Returns:
+        list[str]: List of process descriptions.
+    """
     procs = []
     exes = [
         "Prism.exe",
@@ -362,7 +456,17 @@ def findPrismProcesses():
     return procs
 
 
-def showDetailPopup(msgTxt, parent):
+def showDetailPopup(msgTxt: str, parent: QMessageBox) -> str:
+    """
+    Show a popup with details about running Prism processes.
+
+    Args:
+        msgTxt (str): The message text.
+        parent (QMessageBox): The parent widget.
+
+    Returns:
+        str: The result of the popup.
+    """
     procUserTxt = findPrismProcesses()
     if procUserTxt:
         msgTxt += "\n\nThe following Prism processes are already running:\n\n"
@@ -406,7 +510,17 @@ def showDetailPopup(msgTxt, parent):
     return result
 
 
-def popupQuestion(text, buttons):
+def popupQuestion(text: str, buttons: list[str]) -> str:
+    """
+    Show a question popup with custom buttons.
+
+    Args:
+        text (str): The question text.
+        buttons (list[str]): List of button labels.
+
+    Returns:
+        str: The result of the popup.
+    """
     text = str(text)
     title = "Prism"
     icon = QMessageBox.Warning
@@ -443,7 +557,10 @@ def popupQuestion(text, buttons):
     return result
 
 
-def closePrismProcesses():
+def closePrismProcesses() -> None:
+    """
+    Close all running Prism processes except the current one.
+    """
     try:
         import psutil
     except Exception as e:
@@ -466,26 +583,39 @@ def closePrismProcesses():
                     logger.warning("failed to kill process: %s" % str(e))
 
 
-def launch():
-    if isAlreadyRunning():
-        qApp = QApplication(sys.argv)
-        senderThread = SenderThread()
-        senderThread.start()
-        idx = 0
-        while True:
-            if hasattr(senderThread, "conn"):
-                break
-
-            time.sleep(1)
-            idx += 1
-            if idx > 3:
-                break
-
+def sendCommandToPrismProcess(command):
+    senderThread = SenderThread()
+    senderThread.start()
+    idx = 0
+    while True:
         if hasattr(senderThread, "conn"):
-            senderThread.send("openProjectBrowser")
-            senderThread.shutDown()
-        else:
-            senderThread.quit()
+            break
+
+        time.sleep(1)
+        idx += 1
+        if idx > 3:
+            break
+
+    if hasattr(senderThread, "conn"):
+        senderThread.send(command)
+        senderThread.shutDown()
+        return True
+    else:
+        senderThread.quit()
+        return False
+
+
+def launch() -> None:
+    """
+    Launch the Prism tray application.
+    """
+    if isAlreadyRunning():
+        qApp = QApplication.instance()
+        if not qApp:
+            qApp = QApplication(sys.argv)
+
+        result = sendCommandToPrismProcess("openProjectBrowser")
+        if not result:
             qApp = QApplication.instance()
             wIcon = QIcon(
                 os.path.join(

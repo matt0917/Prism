@@ -1,11 +1,15 @@
 import os
 import sys
+import platform
 
 
 def prismInit(prismArgs=[]):
     if "hython" in os.path.basename(sys.executable).lower():
         if "noUI" not in prismArgs:
             prismArgs.append("noUI")
+
+        if platform.system() == "Linux":
+            os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
         import hou
         psBase = os.path.join(hou.text.expandString("$HFS"), "python311/lib/site-packages-forced")

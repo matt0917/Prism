@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'hou_Playblast.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.4.2
+## Created by: Qt User Interface Compiler version 6.9.0
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -16,7 +16,7 @@ class Ui_wg_Playblast(object):
     def setupUi(self, wg_Playblast):
         if not wg_Playblast.objectName():
             wg_Playblast.setObjectName(u"wg_Playblast")
-        wg_Playblast.resize(340, 429)
+        wg_Playblast.resize(389, 479)
         self.verticalLayout = QVBoxLayout(wg_Playblast)
         self.verticalLayout.setObjectName(u"verticalLayout")
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
@@ -50,6 +50,31 @@ class Ui_wg_Playblast(object):
         self.gb_playblast.setObjectName(u"gb_playblast")
         self.verticalLayout_2 = QVBoxLayout(self.gb_playblast)
         self.verticalLayout_2.setObjectName(u"verticalLayout_2")
+        self.w_comment = QWidget(self.gb_playblast)
+        self.w_comment.setObjectName(u"w_comment")
+        self.horizontalLayout_25 = QHBoxLayout(self.w_comment)
+        self.horizontalLayout_25.setSpacing(0)
+        self.horizontalLayout_25.setObjectName(u"horizontalLayout_25")
+        self.horizontalLayout_25.setContentsMargins(9, 0, 9, 0)
+        self.l_comment = QLabel(self.w_comment)
+        self.l_comment.setObjectName(u"l_comment")
+        self.l_comment.setMinimumSize(QSize(40, 0))
+        self.l_comment.setMaximumSize(QSize(95, 16777215))
+
+        self.horizontalLayout_25.addWidget(self.l_comment)
+
+        self.horizontalSpacer_8 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_25.addItem(self.horizontalSpacer_8)
+
+        self.e_comment = QLineEdit(self.w_comment)
+        self.e_comment.setObjectName(u"e_comment")
+
+        self.horizontalLayout_25.addWidget(self.e_comment)
+
+
+        self.verticalLayout_2.addWidget(self.w_comment)
+
         self.widget_10 = QWidget(self.gb_playblast)
         self.widget_10.setObjectName(u"widget_10")
         self.horizontalLayout_10 = QHBoxLayout(self.widget_10)
@@ -62,19 +87,19 @@ class Ui_wg_Playblast(object):
 
         self.l_taskName = QLabel(self.widget_10)
         self.l_taskName.setObjectName(u"l_taskName")
-        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.l_taskName.sizePolicy().hasHeightForWidth())
         self.l_taskName.setSizePolicy(sizePolicy)
-        self.l_taskName.setAlignment(Qt.AlignCenter)
+        self.l_taskName.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.horizontalLayout_10.addWidget(self.l_taskName)
 
         self.b_changeTask = QPushButton(self.widget_10)
         self.b_changeTask.setObjectName(u"b_changeTask")
         self.b_changeTask.setEnabled(True)
-        self.b_changeTask.setFocusPolicy(Qt.NoFocus)
+        self.b_changeTask.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout_10.addWidget(self.b_changeTask)
 
@@ -92,7 +117,7 @@ class Ui_wg_Playblast(object):
 
         self.horizontalLayout.addWidget(self.label_3)
 
-        self.horizontalSpacer_2 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_2 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout.addItem(self.horizontalSpacer_2)
 
@@ -112,7 +137,7 @@ class Ui_wg_Playblast(object):
         self.l_rangeEnd = QLabel(self.f_frameRange_2)
         self.l_rangeEnd.setObjectName(u"l_rangeEnd")
         self.l_rangeEnd.setMinimumSize(QSize(30, 0))
-        self.l_rangeEnd.setAlignment(Qt.AlignRight|Qt.AlignTrailing|Qt.AlignVCenter)
+        self.l_rangeEnd.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
         self.gridLayout.addWidget(self.l_rangeEnd, 1, 5, 1, 1)
 
@@ -133,7 +158,7 @@ class Ui_wg_Playblast(object):
         self.l_rangeStart = QLabel(self.f_frameRange_2)
         self.l_rangeStart.setObjectName(u"l_rangeStart")
         self.l_rangeStart.setMinimumSize(QSize(30, 0))
-        self.l_rangeStart.setAlignment(Qt.AlignRight|Qt.AlignTrailing|Qt.AlignVCenter)
+        self.l_rangeStart.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
 
         self.gridLayout.addWidget(self.l_rangeStart, 0, 5, 1, 1)
 
@@ -142,7 +167,7 @@ class Ui_wg_Playblast(object):
 
         self.gridLayout.addWidget(self.l_rangeStartInfo, 0, 0, 1, 1)
 
-        self.horizontalSpacer_7 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_7 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.gridLayout.addItem(self.horizontalSpacer_7, 0, 4, 1, 1)
 
@@ -164,7 +189,7 @@ class Ui_wg_Playblast(object):
 
         self.horizontalLayout_2.addWidget(self.label)
 
-        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_2.addItem(self.horizontalSpacer)
 
@@ -188,7 +213,7 @@ class Ui_wg_Playblast(object):
 
         self.horizontalLayout_9.addWidget(self.label_6)
 
-        self.horizontalSpacer_13 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_13 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_9.addItem(self.horizontalSpacer_13)
 
@@ -237,7 +262,7 @@ class Ui_wg_Playblast(object):
 
         self.horizontalLayout_11.addWidget(self.label_7)
 
-        self.horizontalSpacer_14 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_14 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_11.addItem(self.horizontalSpacer_14)
 
@@ -261,7 +286,7 @@ class Ui_wg_Playblast(object):
 
         self.horizontalLayout_20.addWidget(self.l_master)
 
-        self.horizontalSpacer_29 = QSpacerItem(113, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_29 = QSpacerItem(113, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_20.addItem(self.horizontalSpacer_29)
 
@@ -285,7 +310,7 @@ class Ui_wg_Playblast(object):
 
         self.horizontalLayout_18.addWidget(self.l_location)
 
-        self.horizontalSpacer_9 = QSpacerItem(113, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_9 = QSpacerItem(113, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_18.addItem(self.horizontalSpacer_9)
 
@@ -309,7 +334,7 @@ class Ui_wg_Playblast(object):
 
         self.horizontalLayout_5.addWidget(self.label_5)
 
-        self.horizontalSpacer_4 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_4 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_5.addItem(self.horizontalSpacer_4)
 
@@ -337,7 +362,7 @@ class Ui_wg_Playblast(object):
         self.scrollArea.setWidgetResizable(True)
         self.scrollAreaWidgetContents = QWidget()
         self.scrollAreaWidgetContents.setObjectName(u"scrollAreaWidgetContents")
-        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 271, 69))
+        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 320, 54))
         self.horizontalLayout_6 = QHBoxLayout(self.scrollAreaWidgetContents)
         self.horizontalLayout_6.setObjectName(u"horizontalLayout_6")
         self.l_pathLast = QLabel(self.scrollAreaWidgetContents)
@@ -352,7 +377,7 @@ class Ui_wg_Playblast(object):
         self.b_pathLast = QToolButton(self.groupBox_3)
         self.b_pathLast.setObjectName(u"b_pathLast")
         self.b_pathLast.setEnabled(True)
-        self.b_pathLast.setArrowType(Qt.DownArrow)
+        self.b_pathLast.setArrowType(Qt.ArrowType.DownArrow)
 
         self.horizontalLayout_3.addWidget(self.b_pathLast)
 
@@ -384,6 +409,7 @@ class Ui_wg_Playblast(object):
         self.l_name.setText(QCoreApplication.translate("wg_Playblast", u"Name:", None))
         self.l_class.setText(QCoreApplication.translate("wg_Playblast", u"Playblast", None))
         self.gb_playblast.setTitle(QCoreApplication.translate("wg_Playblast", u"General", None))
+        self.l_comment.setText(QCoreApplication.translate("wg_Playblast", u"Comment:", None))
         self.label_2.setText(QCoreApplication.translate("wg_Playblast", u"Identifier:", None))
         self.l_taskName.setText("")
         self.b_changeTask.setText(QCoreApplication.translate("wg_Playblast", u"change", None))

@@ -257,11 +257,18 @@ class PlayblastClass(object):
                 "label": "Open in Explorer...",
                 "callback": lambda: self.core.openFolder(path)
             },
-            {
+        ]
+        if os.getenv("PRISM_COPY_FILE_CONTENT", "0") == "1":
+            options.append({
                 "label": "Copy",
                 "callback": lambda: self.core.copyToClipboard(path, file=True)
-            },
-        ]
+            })
+        else:
+            options.append({
+                "label": "Copy Path",
+                "callback": lambda: self.core.copyToClipboard(path, file=False)
+            })
+
         return options
 
     @err_catcher(name=__name__)
@@ -488,6 +495,7 @@ class PlayblastClass(object):
         if not self.core.mediaProducts.getUseMaster():
             self.w_master.setVisible(False)
 
+        self.w_comment.setHidden(not self.stateManager.useStateComments())
         self.refreshSubmitUi()
         self.updateRange()
         self.nameChanged(self.e_name.text())
@@ -555,7 +563,7 @@ class PlayblastClass(object):
             context = self.getCurrentContext()
             if context.get("type") == "shot" and "sequence" in context:
                 frange = self.core.entities.getShotRange(context)
-                if frange:
+                if frange and frange[0] is not None and frange[1] is not None:
                     startFrame, endFrame = frange
                     startFrame -= 1
                     endFrame += 1
@@ -646,7 +654,7 @@ class PlayblastClass(object):
         framePadding = (
             "#"*self.core.framePadding if self.cb_rangeType.currentText() != "Single Frame" else ""
         )
-        comment = self.stateManager.publishComment
+        comment = self.getComment()
 
         if "type" not in context:
             return
@@ -674,6 +682,15 @@ class PlayblastClass(object):
         hVersion = outputPathData["version"]
 
         return outputPath, outputFolder, hVersion
+
+    @err_catcher(name=__name__)
+    def getComment(self):
+        if self.stateManager.useStateComments():
+            comment = self.e_comment.text() or self.stateManager.publishComment
+        else:
+            comment = self.stateManager.publishComment
+
+        return comment
 
     @err_catcher(name=__name__)
     def executeState(self, parent, useVersion="next"):
@@ -753,7 +770,7 @@ class PlayblastClass(object):
         details["version"] = hVersion
         details["sourceScene"] = fileName
         details["identifier"] = self.getIdentifier()
-        details["comment"] = self.stateManager.publishComment
+        details["comment"] = self.getComment()
         details["startframe"] = jobFrames[0]
         details["endframe"] = jobFrames[1]
 

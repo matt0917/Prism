@@ -61,6 +61,7 @@ class ImportFileClass(object):
         importPath=None,
         stateData=None,
         openProductsBrowser=True,
+        settings=None,
     ):
         self.state = state
         self.core = core
@@ -348,7 +349,10 @@ class ImportFileClass(object):
             path = path.replace("\\", "/")
 
         if expand:
-            path = hou.text.expandString(path)
+            try:
+                path = hou.text.expandString(path)
+            except:
+                pass
 
         return path
 
@@ -560,7 +564,11 @@ class ImportFileClass(object):
         nwBox.addNode(node)
         nwBox.fitAroundContents()
 
-        node.setDisplayFlag(False)
+        try:
+            node.setDisplayFlag(False)
+        except Exception as e:
+            logger.debug("failed to unset display flag for %s: %s" % (node.name(), str(e)))
+
         node.setColor(hou.Color(0.451, 0.369, 0.796))
 
     @err_catcher(name=__name__)
@@ -900,7 +908,8 @@ class ImportFileClass(object):
 
     @err_catcher(name=__name__)
     def updateUi(self):
-        if os.path.splitext(self.getImportPath())[1] == ".hda":
+        importPath = self.getImportPath()
+        if importPath and os.path.splitext(importPath)[1] == ".hda":
             self.gb_options.setVisible(False)
             self.b_goTo.setVisible(False)
             self.b_objMerge.setText("Create Node")
@@ -908,8 +917,8 @@ class ImportFileClass(object):
             self.l_status.setToolTip("")
             self.l_status.setStyleSheet("QLabel { background-color : rgb(130,0,0); }")
             status = "error"
-            if os.path.exists(self.getImportPath()):
-                defs = hou.hda.definitionsInFile(self.getImportPath())
+            if os.path.exists(importPath):
+                defs = hou.hda.definitionsInFile(importPath)
                 if len(defs) > 0:
                     if defs[0].isInstalled():
                         self.l_status.setText("installed")
@@ -949,7 +958,7 @@ class ImportFileClass(object):
             curVersion = latestVersion = ""
 
         if curVersion.get("version") == "master":
-            filepath = self.getImportPath()
+            filepath = importPath
             curVersionName = self.core.products.getMasterVersionLabel(filepath)
         else:
             curVersionName = curVersion.get("version")

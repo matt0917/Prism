@@ -41,7 +41,6 @@ import time
 import glob
 import re
 from collections import OrderedDict
-from distutils.dir_util import copy_tree
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -62,6 +61,23 @@ class Projects(object):
         self.environmentVariables = []
         self.previewWidth = 1280
         self.previewHeight = 720
+        self.core.registerProtocolHandler("projects", self.protocolHandler)
+
+    @err_catcher(name=__name__)
+    def protocolHandler(self, path, qs):
+        if path == "/open":
+            # urllib.parse.quote("D:\\projects\\anim")
+            # prism://projects/open?path=D%3A%5Cprojects%5Canim
+            if "path" not in qs:
+                logger.warning("no path provided")
+                return
+
+            path = qs["path"][0]
+            self.changeProject(path)
+            self.core.projectBrowser()
+            if not bool(QEventLoop().isRunning()):
+                qapp = QApplication.instance()
+                qapp.exec_()
 
     @err_catcher(name=__name__)
     def setProject(self, startup=None, openUi=""):
@@ -164,7 +180,7 @@ class Projects(object):
             self.core.popup(msg, parent=parent)
 
     @err_catcher(name=__name__)
-    def changeProject(self, configPath=None, openUi="", settingsTab=None, settingsType=None, unset=False):
+    def changeProject(self, configPath=None, openUi="", settingsTab=None, settingsType=None, unset=False, writeToConfig=None):
         if not unset:
             if configPath is None:
                 return
@@ -356,7 +372,7 @@ class Projects(object):
             QApplication.setQuitOnLastWindowClosed(quitOnLastWindowClosed)
             return
 
-        if configPath != self.core.getConfig("globals", "current project") and self.core.uiAvailable:
+        if configPath != self.core.getConfig("globals", "current project") and (self.core.uiAvailable or writeToConfig):
             self.core.setConfig("globals", "current project", configPath)
 
         self.core.versionPadding = self.core.getConfig(
@@ -628,6 +644,21 @@ class Projects(object):
         return defaultLocalPath
 
     @err_catcher(name=__name__)
+    def setFaroriteProject(self, path, favorite=True):
+        path = self.core.fixPath(path)
+        changed = False
+        projects = self.core.getConfig("recent_projects", config="user", dft=[])
+        for project in projects:
+            if project["configPath"] == path and project.get("favorite", False) != favorite:
+                project["favorite"] = favorite
+                changed = True
+
+        if changed:
+            self.core.setConfig(
+                param="recent_projects", val=projects, config="user"
+            )
+
+    @err_catcher(name=__name__)
     def setRecentPrj(self, path, action="add"):
         path = self.core.fixPath(path)
 
@@ -669,6 +700,7 @@ class Projects(object):
 
     @err_catcher(name=__name__)
     def getRecentProjects(self, includeCurrent=False):
+        favProjects = []
         validProjects = []
         deprecated = False
         projects = self.core.getConfig("recent_projects", config="user", dft=[])
@@ -701,8 +733,12 @@ class Projects(object):
                 if not includeCurrent and project["configPath"] == self.core.prismIni:
                     continue
 
-                validProjects.append(project)
+                if project.get("favorite", False):
+                    favProjects.append(project)
+                else:
+                    validProjects.append(project)
 
+        validProjects = favProjects + validProjects
         if deprecated:
             self.core.setConfig(
                 param="recent_projects", val=validProjects, config="user"
@@ -756,8 +792,8 @@ class Projects(object):
         dftDepsShot = [
             {"name": "Layout", "abbreviation": "lay", "defaultTasks": ["Layout"]},
             {"name": "Animation", "abbreviation": "anm", "defaultTasks": ["Animation"]},
-            {"name": "FX", "abbreviation": "fx", "defaultTasks": ["Effects"]},
             {"name": "CharFX", "abbreviation": "cfx", "defaultTasks": ["CharacterEffects"]},
+            {"name": "FX", "abbreviation": "fx", "defaultTasks": ["Effects"]},
             {"name": "Lighting", "abbreviation": "lgt", "defaultTasks": ["Lighting"]},
             {"name": "Compositing", "abbreviation": "cmp", "defaultTasks": ["Compositing"]},
         ]
@@ -832,7 +868,7 @@ class Projects(object):
         else:
             projectSettings = {}
 
-        projectSettings.update(settings)
+        self.core.configs.updateNestedDicts(projectSettings, settings)
         projectSettings["globals"]["project_name"] = prjName
         projectSettings["globals"]["prism_version"] = self.core.version
 
@@ -936,7 +972,7 @@ class Projects(object):
                 return
         else:
             try:
-                copy_tree(preset["path"], prjPath)
+                self.core.copyFolder(preset["path"], prjPath)
             except Exception as e:
                 logger.debug(e)
                 self.core.popup(
@@ -1295,13 +1331,13 @@ class Projects(object):
         structure["renderFilesAssets"] = {
             "label": "Asset Renderfiles",
             "key": "@renderfile_path@",
-            "value": "[expression,#  available variables:\n#  \"core\" - PrismCore\n#  \"context\" - dict\n\nif context.get(\"mediaType\") == \"2drenders\":\n\ttemplate = \"@aov_path@/@asset@_@identifier@_@version@@.(frame)@@extension@\"\nelse:\n\ttemplate = \"@aov_path@/@asset@_@identifier@_@version@_@aov@@.(frame)@@extension@\"]",
+            "value": "[expression,#  available variables:\n#  \"core\" - PrismCore\n#  \"context\" - dict\n\nif context.get(\"mediaType\") == \"2drenders\":\n\ttemplate = \"@aov_path@/@asset@_@identifier@_@version@@.(frame)@@extension@\"\nelse:\n\ttemplate = \"@aov_path@/@asset@_@identifier@_@version@@._(layer)@_@aov@@.(frame)@@extension@\"]",
             "requires": ["aov_path"],
         }
         structure["renderFilesShots"] = {
             "label": "Shot Renderfiles",
             "key": "@renderfile_path@",
-            "value": "[expression,#  available variables:\n#  \"core\" - PrismCore\n#  \"context\" - dict\n\nif context.get(\"mediaType\") == \"2drenders\":\n\ttemplate = \"@aov_path@/@sequence@-@shot@_@identifier@_@version@@.(frame)@@extension@\"\nelse:\n\ttemplate = \"@aov_path@/@sequence@-@shot@_@identifier@_@version@_@aov@@.(frame)@@extension@\"]",
+            "value": "[expression,#  available variables:\n#  \"core\" - PrismCore\n#  \"context\" - dict\n\nif context.get(\"mediaType\") == \"2drenders\":\n\ttemplate = \"@aov_path@/@sequence@-@shot@_@identifier@_@version@@.(frame)@@extension@\"\nelse:\n\ttemplate = \"@aov_path@/@sequence@-@shot@_@identifier@_@version@@_(layer)@_@aov@@.(frame)@@extension@\"]",
             "requires": ["aov_path"],
         }
         structure["playblasts"] = {
@@ -1355,7 +1391,7 @@ class Projects(object):
                 "value": "@project_path@/03_Workflow/Assets/@asset_path@"
             },
             "sequences": {
-                "value": "@project_path@/03_Workflow/Shots/@sequence@"
+                "value": "@project_path@/03_Workflow/Shots/@sequence@-@shot@"
             }, 
             "shots": {
                 "value": "@project_path@/03_Workflow/Shots/@sequence@-@shot@"
@@ -1540,13 +1576,14 @@ class Projects(object):
     def validateExpression(self, expression):
         context = {}
         core = self.core
+        lcls = locals().copy()
         try:
-            exec(expression, locals(), None)
+            exec(expression, lcls, None)
         except Exception as e:
             result = {"valid": False, "error": str(e)}
             return result
         else:
-            if "template" in locals():
+            if "template" in lcls:
                 result = {"valid": True}
                 return result
 
@@ -1563,18 +1600,21 @@ class Projects(object):
             if expression.endswith("]"):
                 expression = expression[:-1]
 
+        lcls = locals().copy()
         try:
-            exec(expression, locals(), None)
+            exec(expression, lcls, None)
         except Exception as e:
             logger.warning(e)
             return
         else:
-            if "template" in locals():
-                t = locals()["template"]
+            if "template" in lcls:
+                t = lcls["template"]
                 if self.core.isStr(t):
                     t = [t]
 
                 return t
+
+            logger.warning("expression doesn't define any template: %s - context: %s" % (expression, context))
 
     @err_catcher(name=__name__)
     def getTemplatePath(self, key, default=False):
@@ -1703,6 +1743,7 @@ class Projects(object):
                                 newPath = resolvedPath + resolvedPiece
                             except:
                                 logger.warning("couldn't resolve. piece: %s context: %s resolvedPath: %s resolvedPiece %s" % (piece, context, resolvedPath, resolvedPiece))
+                                continue
 
                             newResolvedPaths.append(newPath)
 
@@ -1869,6 +1910,10 @@ class Projects(object):
 
             rePath = rePath.replace(re.escape("@%s@" % key), reval, 1)
             usedKeys.append(key)
+
+        if self.core.prism1Compatibility:
+            if "(?P<sequence>.*)-(?P<shot>.*)" in rePath:
+                rePath = rePath.replace("(?P<sequence>.*)-(?P<shot>.*)", "(?P<sequence>[^-]+)-(?P<shot>.*)")
 
         pathData = []
         for match in matches:
@@ -2275,12 +2320,12 @@ class Projects(object):
                         "tasks": ["Animation"]
                     },
                     {
-                        "name": "FX",
-                        "tasks": ["Effects"]
-                    },
-                    {
                         "name": "CharFX",
                         "tasks": ["CharacterEffects"]
+                    },
+                    {
+                        "name": "FX",
+                        "tasks": ["Effects"]
                     },
                     {
                         "name": "Lighting",
@@ -2442,6 +2487,7 @@ class Projects(object):
             self.allowClose = True
             self.allowDeselect = True
             self.allowMultiSelection = True
+            self.dirty = False
             self.core.parentWindow(self, parent=origin)
             self.setupUi()
             self.refreshUi()
@@ -2453,8 +2499,22 @@ class Projects(object):
 
         @err_catcher(name=__name__)
         def focusOutEvent(self, event):
-            if self.allowClose:
-                self.close()
+            new_focus = QApplication.focusWidget()
+            if new_focus and self.isAncestorOf(new_focus):
+                # Focus moved to a child → do NOT close
+                event.ignore()
+            else:
+                if self.allowClose:
+                    self.close()
+
+        @err_catcher(name=__name__)
+        def eventFilter(self, watched, event):
+            if event.type() == QEvent.FocusOut:
+                new_focus = QApplication.focusWidget()
+                if not (new_focus and self.isAncestorOf(new_focus)):
+                    self.close()
+
+            return super().eventFilter(watched, event)
 
         @err_catcher(name=__name__)
         def showWidget(self):
@@ -2466,20 +2526,55 @@ class Projects(object):
                 if widget.data.get("configPath", None) == self.core.prismIni:
                     widget.select()
 
+            if self.dirty:
+                self.refreshUi()
+                self.dirty = False
+
             self.show()
             QApplication.processEvents()
-            self.setFocus()
+            self.e_search.setFocus()
             self.resize(self.w_projects.width() + self.lo_projects.contentsMargins().left() * 2, self.height())        
 
         @err_catcher(name=__name__)
         def setupUi(self):
             self.setFocusPolicy(Qt.StrongFocus)
 
+            self.w_header = QWidget()
+            self.lo_header = QHBoxLayout(self.w_header)
+            self.e_search = QLineEdit()
+            self.e_search.setPlaceholderText("Search Projects...")
+            self.e_search.setClearButtonEnabled(True)
+            self.e_search.installEventFilter(self)
+            self.e_search.textChanged.connect(lambda text: self.refreshUi())
+            self.b_create = QPushButton()
+            path = os.path.join(self.core.prismRoot, "Scripts", "UserInterfacesPrism", "create.png")
+            icon = self.core.media.getColoredIcon(path)
+            self.b_create.setIcon(icon)
+            self.b_create.setText(" Create")
+            self.b_create.setToolTip("Create New Project...")
+            self.b_create.setFocusPolicy(Qt.NoFocus)
+            self.b_create.clicked.connect(self.preCreate)
+
+            self.b_open = QPushButton()
+            path = os.path.join(self.core.prismRoot, "Scripts", "UserInterfacesPrism", "browse.png")
+            icon = self.core.media.getColoredIcon(path)
+            self.b_open.setIcon(icon)
+            self.b_open.setText(" Open")
+            self.b_open.setToolTip("Browse and Open an existing Project...")
+            self.b_open.setFocusPolicy(Qt.NoFocus)
+            self.b_open.clicked.connect(self.close)
+            self.b_open.clicked.connect(lambda: self.core.projects.openProject(parent=self.origin))
+
+            self.lo_header.addWidget(self.e_search)
+            self.lo_header.addWidget(self.b_create)
+            self.lo_header.addWidget(self.b_open)
+            self.lo_header.setContentsMargins(9, 5, 9, 0)
+
             self.w_projects = QWidget()
             self.w_projects.setFocusProxy(self)
             self.lo_projects = QGridLayout()
             self.lo_projects.setSpacing(10)
-            self.lo_projects.setContentsMargins(15, 9, 15, 9)
+            self.lo_projects.setContentsMargins(0, 9, 20, 9)
             self.w_projects.setLayout(self.lo_projects)
             self.lo_main = QVBoxLayout()
             self.lo_main.setContentsMargins(0, 0, 0, 0)
@@ -2488,6 +2583,7 @@ class Projects(object):
             self.w_scrollParent = QWidget()
             self.w_scrollParent.setFocusProxy(self)
             self.lo_scrollParent = QHBoxLayout()
+            self.lo_scrollParent.setContentsMargins(0, 0, 0, 0)
             self.sa_projects = QScrollArea()
             self.sa_projects.setFocusProxy(self)
             self.sa_projects.setWidgetResizable(True)
@@ -2495,6 +2591,7 @@ class Projects(object):
             self.sa_projects.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             self.w_scrollParent.setLayout(self.lo_scrollParent)
             self.lo_scrollParent.addWidget(self.sa_projects)
+            self.lo_main.addWidget(self.w_header)
             self.lo_main.addWidget(self.w_scrollParent)
 
         @err_catcher(name=__name__)
@@ -2508,6 +2605,10 @@ class Projects(object):
                     w.deleteLater()
 
             self.projects = self.core.projects.getAvailableProjects(includeCurrent=True)
+            searchFilter = self.e_search.text().lower()
+            if searchFilter:
+                self.projects = [p for p in self.projects if searchFilter in p.get("name", "").lower()]
+
             for project in self.projects:
                 w_prj = Projects.ProjectWidget(self, project.copy(), minHeight=1, previewScale=0.5)
                 w_prj.setFocusProxy(self)
@@ -2520,45 +2621,6 @@ class Projects(object):
                     int(self.lo_projects.count() / 3),
                     (self.lo_projects.count() % 3) + 1,
                 )
-
-            path = os.path.join(
-                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "add.png"
-            )
-            data = {"name": "Create New Project", "icon": path}
-            self.w_new = Projects.ProjectWidget(self, data)
-            self.w_new.lo_main.setContentsMargins(0, 10, 0, 0)
-            self.w_new.setFocusProxy(self)
-            self.w_new.signalDoubleClicked.connect(lambda x: self.preCreate())
-            self.w_new.signalSelect.connect(self.itemSelected)
-            self.projectWidgets.append(self.w_new)
-            self.lo_projects.addWidget(
-                self.w_new,
-                int(self.lo_projects.count() / 3),
-                (self.lo_projects.count() % 3) + 1,
-            )
-            sizePolicy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-            sizePolicy.setVerticalStretch(1)
-            self.w_new.setSizePolicy(sizePolicy)
-
-            path = os.path.join(
-                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "browse.png"
-            )
-            data = {"name": "Browse Projects", "icon": path}
-            self.w_open = Projects.ProjectWidget(self, data)
-            self.w_open.lo_main.setContentsMargins(0, 10, 0, 0)
-            self.w_open.setFocusProxy(self)
-            self.w_open.signalDoubleClicked.connect(lambda x: self.close())
-            self.w_open.signalDoubleClicked.connect(lambda x: self.core.projects.openProject(parent=self.origin))
-            self.w_open.signalSelect.connect(self.itemSelected)
-            self.projectWidgets.append(self.w_open)
-            self.lo_projects.addWidget(
-                self.w_open,
-                int(self.lo_projects.count() / 3),
-                (self.lo_projects.count() % 3) + 1,
-            )
-            sizePolicy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-            sizePolicy.setVerticalStretch(1)
-            self.w_open.setSizePolicy(sizePolicy)
 
             self.core.callback(name="onProjectListRefreshed", args=[self])
             self.sp_projectsR = QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -2685,6 +2747,14 @@ class Projects(object):
             font.setPointSizeF(10)
             self.l_name.setFont(font)
             self.l_name.setAlignment(Qt.AlignHCenter)
+            self.l_fav = QLabel()
+            iconPath = os.path.join(
+                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "favorite.png"
+            )
+            icon = self.core.media.getColoredIcon(iconPath, r=240, g=240, b=0)
+            self.l_fav.setPixmap(icon.pixmap(15, 15))
+            self.l_fav.setToolTip("Favorite")
+
             self.l_info = Projects.HelpLabel()
             self.l_info.setMouseTracking(True)
             self.lo_info = QVBoxLayout()
@@ -2731,12 +2801,14 @@ class Projects(object):
                 self.l_info.adjustSize()
                 # self.l_info.move(self.previewWidth - int(30 * self.previewScale), 10)
                 self.lo_footer.addStretch()
+                self.lo_footer.addWidget(self.l_fav)
                 self.lo_footer.addWidget(self.l_info)
                 self.l_info.setParent(self)
                 self.sp_left = QSpacerItem(self.l_info.width(), 0, QSizePolicy.Fixed, QSizePolicy.Fixed)
                 self.lo_footer.insertItem(0, self.sp_left)
             else:
                 self.lo_footer.addStretch()
+                self.lo_footer.addWidget(self.l_fav)
 
         @err_catcher(name=__name__)
         def updatePreview_threaded(self):
@@ -2759,6 +2831,7 @@ class Projects(object):
 
             name = self.getDisplayName()
             self.l_name.setText(name)
+            self.l_fav.setVisible(self.data.get("favorite", False))
 
         @err_catcher(name=__name__)
         def updatePreview(self, load=True):
@@ -2954,6 +3027,12 @@ class Projects(object):
                 expAct.triggered.connect(self.deleteRecent)
                 menu.addAction(expAct)
 
+            favAct = QAction("Favorite", self._parent)
+            favAct.setCheckable(True)
+            favAct.setChecked(self.data.get("favorite", False))
+            favAct.toggled.connect(self.onFavoriteToggled)
+            menu.addAction(favAct)
+
             expAct = QAction("Open in Explorer", self._parent)
             expAct.triggered.connect(self.onOpenExplorerClicked)
             menu.addAction(expAct)
@@ -2967,6 +3046,16 @@ class Projects(object):
                 args=[self, menu],
             )
             return menu
+
+        @err_catcher(name=__name__)
+        def onFavoriteToggled(self, state):
+            items = self._parent.getSelectedItems()
+            for item in items:
+                item.data["favorite"] = state
+                item.core.projects.setFaroriteProject(item.data["configPath"], state)
+                item.refreshUi()
+
+            self._parent.dirty = True
 
         @err_catcher(name=__name__)
         def onOpenExplorerClicked(self):

@@ -43,11 +43,6 @@ from qtpy.QtCore import *
 from qtpy.QtGui import *
 from qtpy.QtWidgets import *
 
-if sys.version[0] == "3":
-    pVersion = 3
-else:
-    pVersion = 2
-
 uiPath = os.path.join(os.path.dirname(__file__), "UserInterfaces")
 if uiPath not in sys.path:
     sys.path.append(uiPath)
@@ -87,6 +82,7 @@ class StateManager(QMainWindow, StateManager_ui.Ui_mw_StateManager):
         self.core.stateManagerInCreation = self
         self.finishedDeletionCallbacks = []
         self.curExecutedState = None
+        self.useCommentsFromStates = False
 
         self.enabledCol = QBrush(
             self.tw_import.palette().color(self.tw_import.foregroundRole())
@@ -236,33 +232,37 @@ class StateManager(QMainWindow, StateManager_ui.Ui_mw_StateManager):
                 except:
                     pass
 
-            try:
-                exec(
-                    """
+            cmd = """
 import %s
 import %s
 class %s(QWidget, %s.%s, %s.%sClass):
     def __init__(self):
         QWidget.__init__(self)
-        self.setupUi(self)"""
-                    % (
-                        stateName,
-                        stateUi,
-                        stateNameBase + "Class",
-                        stateName + "_ui",
-                        "Ui_wg_" + stateNameBase,
-                        stateName,
-                        stateNameBase,
-                    )
-                )
+        self.setupUi(self)""" % (
+                stateName,
+                stateUi,
+                stateNameBase + "Class",
+                stateName + "_ui",
+                "Ui_wg_" + stateNameBase,
+                stateName,
+                stateNameBase,
+            )
+
+            gbls = globals().copy()
+            lcls = locals().copy()
+            try:
+                exec(cmd, gbls, lcls)
                 validState = True
             except:
                 logger.warning(traceback.format_exc())
                 validState = False
 
-            if validState:
-                classDef = eval(stateNameBase + "Class")
+            className = stateNameBase + "Class"
+            if validState and className in lcls:
+                classDef = lcls.get(className)
                 self.loadState(classDef, filename=filename)
+            else:
+                logger.debug("invalid state: %s" % (validState, list(lcls.keys())))
 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -387,6 +387,10 @@ class %s(QWidget, %s.%s, %s.%sClass):
             self.actionRenderSettings.triggered.connect(self.showRenderPresets)
             self.menuAbout.addSeparator()
             self.menuAbout.addAction(self.actionRenderSettings)
+
+        self.actionImportConnectedAssets = QAction("Import Connected Assets", self)
+        self.actionImportConnectedAssets.triggered.connect(self.core.products.importConnectedAssets)
+        self.menuAbout.addAction(self.actionImportConnectedAssets)
 
         self.ImportDelegate = ImportDelegate(self)
         self.tw_import.setItemDelegate(self.ImportDelegate)
@@ -539,6 +543,13 @@ class %s(QWidget, %s.%s, %s.%sClass):
             self.getCurrentItem(self.activeList).ui.updateUi()
 
         self.curUi = widget
+        self.checkStateSettingsWidth()
+
+    @err_catcher(name=__name__)
+    def checkStateSettingsWidth(self):
+        QApplication.processEvents()
+        if self.sa_stateSettings.horizontalScrollBar().isVisible():
+            self.resize(self.width() + self.w_stateUi.width() - self.sa_stateSettings.width() + 18, self.height())
 
     @err_catcher(name=__name__)
     def stateChanged(self, activeList):
@@ -636,6 +647,15 @@ class %s(QWidget, %s.%s, %s.%sClass):
             self.appendChildStates(stateData[len(stateData) - 1][0], stateData)
 
         self.states = [x[0] for x in stateData]
+
+    @err_catcher(name=__name__)
+    def useStateComments(self):
+        if "PRISM_USE_STATE_COMMENTS" in os.environ:
+            useStateComments = os.getenv("PRISM_USE_STATE_COMMENTS", "0") == "1"
+        else:
+            useStateComments = self.useCommentsFromStates
+
+        return useStateComments
 
     @err_catcher(name=__name__)
     def connectEvents(self):
@@ -1419,6 +1439,7 @@ QGroupBox::indicator:checked {
         for state in self.states:
             state.ui.updateUi()
 
+        self.checkStateSettingsWidth()
         self.b_publish.setMinimumWidth(self.b_publish.width())
         self.core.callback("onStateManagerShow", args=[self])
 
@@ -1455,7 +1476,6 @@ QGroupBox::indicator:checked {
                         stateData.append(stateProps)
 
         self.collapsedFolders = []
-
         if stateData:
             loadedStates = []
             for i in stateData:
@@ -1893,6 +1913,8 @@ QGroupBox::indicator:checked {
         sanityChecks=True,
         versionWarning=True,
         currentSceneWaring=True,
+        dependencies=None,
+        comment=None,
     ):
         if self.publishPaused and not continuePublish:
             return
@@ -1970,16 +1992,22 @@ QGroupBox::indicator:checked {
             if saveScene is None:
                 saveScene = self.actionSaveBeforePub.isChecked()
 
+            if comment is None:
+                comment = self.e_comment.text()
+
             if saveScene is None or saveScene is True:
                 if executeState:
                     increment = (False if incrementScene is None else incrementScene) and not incrementAfterPublish
                     sceneSaved = self.core.saveScene(
-                        versionUp=increment, details=details, preview=self.previewImg
+                        comment=comment,
+                        versionUp=increment,
+                        details=details,
+                        preview=self.previewImg,
                     )
                 else:
                     increment = (self.actionVersionUp.isChecked() if incrementScene is None else incrementScene) and not incrementAfterPublish
                     sceneSaved = self.core.saveScene(
-                        comment=self.e_comment.text(),
+                        comment=comment,
                         publish=True,
                         versionUp=increment,
                         details=details,
@@ -2007,11 +2035,11 @@ QGroupBox::indicator:checked {
             self.saveStatesToScene()
 
             self.publishResult = []
-            self.dependencies = []
+            self.dependencies = dependencies or []
             self.reloadScenefile = False
             self.publishInfos = {"updatedExports": {}, "backgroundRender": None}
             self.core.sceneOpenChecksEnabled = False
-            self.publishComment = self.e_comment.text()
+            self.publishComment = comment
 
             getattr(self.core.appPlugin, "sm_preExecute", lambda x: None)(self)
             result = self.core.callback(name="prePublish", args=[self])
@@ -2020,13 +2048,16 @@ QGroupBox::indicator:checked {
                     return
 
         if executeState:
-            for i in range(self.tw_export.topLevelItemCount()):
-                curUi = self.tw_export.topLevelItem(i).ui
-                if curUi.className == "Folder" or id(curUi.state) in set([id(s) for s in self.execStates]):
-                    text = 'Executing "%s" - please wait..' % curUi.state.text(0)
-                    self.pubMsg = self.core.waitPopup(self.core, text)
-                    with self.pubMsg:
-                        QApplication.processEvents()
+            self.pubMsg = self.core.waitPopup(self.core, "")
+            with self.pubMsg as pubMsg:
+                for i in range(self.tw_export.topLevelItemCount()):
+                    curUi = self.tw_export.topLevelItem(i).ui
+                    if curUi.className == "Folder" or id(curUi.state) in set([id(s) for s in self.execStates]):
+                        text = 'Executing "%s" - please wait..' % curUi.state.text(0)
+                        if pubMsg.msg:
+                            pubMsg.msg.setText(text)            
+                            QApplication.processEvents()
+
                         self.curExecutedState = curUi
                         if getattr(curUi, "canSetVersion", False):
                             result = curUi.executeState(
@@ -2053,14 +2084,17 @@ QGroupBox::indicator:checked {
                                 return
 
         else:
-            for i in range(self.tw_export.topLevelItemCount()):
-                curUi = self.tw_export.topLevelItem(i).ui
-                checked = self.tw_export.topLevelItem(i).checkState(0) == Qt.Checked
-                if checked and curUi.state in set(self.execStates):
-                    text = 'Executing "%s" - please wait..' % curUi.state.text(0)
-                    self.pubMsg = self.core.waitPopup(self.core, text)
-                    with self.pubMsg:
-                        QApplication.processEvents()
+            self.pubMsg = self.core.waitPopup(self.core, "")
+            with self.pubMsg as pubMsg:
+                for i in range(self.tw_export.topLevelItemCount()):
+                    curUi = self.tw_export.topLevelItem(i).ui
+                    checked = self.tw_export.topLevelItem(i).checkState(0) == Qt.Checked
+                    if checked and curUi.state in set(self.execStates):
+                        text = 'Executing "%s" - please wait..' % curUi.state.text(0)
+                        if pubMsg.msg:
+                            pubMsg.msg.setText(text)  
+                            QApplication.processEvents()
+
                         self.curExecutedState = curUi
                         exResult = curUi.executeState(parent=self)
                         self.curExecutedState = None
@@ -2107,13 +2141,16 @@ QGroupBox::indicator:checked {
                 increment = False if incrementScene is None else incrementScene
                 if increment:
                     sceneSaved = self.core.saveScene(
-                        versionUp=increment, details=details, preview=self.previewImg
+                        comment=self.publishComment,
+                        versionUp=increment,
+                        details=details,
+                        preview=self.previewImg,
                     )
             else:
                 increment = self.actionVersionUp.isChecked() if incrementScene is None else incrementScene
                 if increment:
                     sceneSaved = self.core.saveScene(
-                        comment=self.e_comment.text(),
+                        comment=self.publishComment,
                         publish=True,
                         versionUp=increment,
                         details=details,
@@ -2225,6 +2262,7 @@ QGroupBox::indicator:checked {
                 not os.path.exists(i)
                 and not i in nonExistend
                 and i != self.core.getCurrentFileName()
+                and not ("#" in i and self.core.media.getFilesFromSequence(i))
             ):
                 exists = getattr(
                     self.core.appPlugin, "sm_existExternalAsset", lambda x, y: False
@@ -2248,7 +2286,7 @@ QGroupBox::indicator:checked {
 
         if len(nonExistend) > 0:
             depTitle = (
-                "The current scene contains dependencies, which does not exist:\n\n"
+                "The current scene contains dependencies, which don't exist:\n\n"
             )
             depwarn = ""
             for i in nonExistend:
@@ -2597,6 +2635,7 @@ class EntityDlg(QDialog):
 
         import EntityWidget
         self.w_entities = EntityWidget.EntityWidget(core=self.core, refresh=True)
+        self.w_entities.editEntitiesOnDclick = False
         self.w_entities.getPage("Assets").tw_tree.itemDoubleClicked.connect(self.itemDoubleClicked)
         self.w_entities.getPage("Shots").tw_tree.itemDoubleClicked.connect(self.itemDoubleClicked)
         self.w_entities.getPage("Assets").setSearchVisible(False)

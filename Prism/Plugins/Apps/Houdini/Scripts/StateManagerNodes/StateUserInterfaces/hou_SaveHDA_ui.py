@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'hou_SaveHDA.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.4.2
+## Created by: Qt User Interface Compiler version 6.9.0
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -16,7 +16,7 @@ class Ui_wg_SaveHDA(object):
     def setupUi(self, wg_SaveHDA):
         if not wg_SaveHDA.objectName():
             wg_SaveHDA.setObjectName(u"wg_SaveHDA")
-        wg_SaveHDA.resize(340, 354)
+        wg_SaveHDA.resize(340, 380)
         self.verticalLayout = QVBoxLayout(wg_SaveHDA)
         self.verticalLayout.setObjectName(u"verticalLayout")
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
@@ -52,6 +52,31 @@ class Ui_wg_SaveHDA(object):
         self.groupBox_2.setObjectName(u"groupBox_2")
         self.verticalLayout_3 = QVBoxLayout(self.groupBox_2)
         self.verticalLayout_3.setObjectName(u"verticalLayout_3")
+        self.w_comment = QWidget(self.groupBox_2)
+        self.w_comment.setObjectName(u"w_comment")
+        self.horizontalLayout_25 = QHBoxLayout(self.w_comment)
+        self.horizontalLayout_25.setSpacing(0)
+        self.horizontalLayout_25.setObjectName(u"horizontalLayout_25")
+        self.horizontalLayout_25.setContentsMargins(9, 0, 9, 0)
+        self.l_comment = QLabel(self.w_comment)
+        self.l_comment.setObjectName(u"l_comment")
+        self.l_comment.setMinimumSize(QSize(40, 0))
+        self.l_comment.setMaximumSize(QSize(95, 16777215))
+
+        self.horizontalLayout_25.addWidget(self.l_comment)
+
+        self.horizontalSpacer_8 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_25.addItem(self.horizontalSpacer_8)
+
+        self.e_comment = QLineEdit(self.w_comment)
+        self.e_comment.setObjectName(u"e_comment")
+
+        self.horizontalLayout_25.addWidget(self.e_comment)
+
+
+        self.verticalLayout_3.addWidget(self.w_comment)
+
         self.f_taskName = QWidget(self.groupBox_2)
         self.f_taskName.setObjectName(u"f_taskName")
         self.horizontalLayout_11 = QHBoxLayout(self.f_taskName)
@@ -64,19 +89,19 @@ class Ui_wg_SaveHDA(object):
 
         self.l_taskName = QLabel(self.f_taskName)
         self.l_taskName.setObjectName(u"l_taskName")
-        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.l_taskName.sizePolicy().hasHeightForWidth())
         self.l_taskName.setSizePolicy(sizePolicy)
-        self.l_taskName.setAlignment(Qt.AlignCenter)
+        self.l_taskName.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.horizontalLayout_11.addWidget(self.l_taskName)
 
         self.b_changeTask = QPushButton(self.f_taskName)
         self.b_changeTask.setObjectName(u"b_changeTask")
         self.b_changeTask.setEnabled(True)
-        self.b_changeTask.setFocusPolicy(Qt.NoFocus)
+        self.b_changeTask.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout_11.addWidget(self.b_changeTask)
 
@@ -94,7 +119,7 @@ class Ui_wg_SaveHDA(object):
 
         self.horizontalLayout_12.addWidget(self.l_outPath)
 
-        self.horizontalSpacer_6 = QSpacerItem(113, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_6 = QSpacerItem(113, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_12.addItem(self.horizontalSpacer_6)
 
@@ -117,7 +142,7 @@ class Ui_wg_SaveHDA(object):
 
         self.horizontalLayout_19.addWidget(self.l_projectHDA)
 
-        self.horizontalSpacer_14 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_14 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_19.addItem(self.horizontalSpacer_14)
 
@@ -139,7 +164,7 @@ class Ui_wg_SaveHDA(object):
 
         self.horizontalLayout_20.addWidget(self.l_externalReferences)
 
-        self.horizontalSpacer_23 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_23 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_20.addItem(self.horizontalSpacer_23)
 
@@ -161,7 +186,7 @@ class Ui_wg_SaveHDA(object):
 
         self.horizontalLayout_18.addWidget(self.l_blackboxHDA)
 
-        self.horizontalSpacer_12 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_12 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_18.addItem(self.horizontalSpacer_12)
 
@@ -187,13 +212,13 @@ class Ui_wg_SaveHDA(object):
 
         self.l_status = QLabel(self.f_status)
         self.l_status.setObjectName(u"l_status")
-        self.l_status.setAlignment(Qt.AlignCenter)
+        self.l_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.horizontalLayout_4.addWidget(self.l_status)
 
         self.b_goTo = QPushButton(self.f_status)
         self.b_goTo.setObjectName(u"b_goTo")
-        self.b_goTo.setFocusPolicy(Qt.NoFocus)
+        self.b_goTo.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout_4.addWidget(self.b_goTo)
 
@@ -207,7 +232,7 @@ class Ui_wg_SaveHDA(object):
         self.horizontalLayout_3.setContentsMargins(-1, 0, -1, 0)
         self.b_connect = QPushButton(self.f_connect)
         self.b_connect.setObjectName(u"b_connect")
-        self.b_connect.setFocusPolicy(Qt.NoFocus)
+        self.b_connect.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout_3.addWidget(self.b_connect)
 
@@ -229,7 +254,7 @@ class Ui_wg_SaveHDA(object):
         self.scrollArea.setWidgetResizable(True)
         self.scrollAreaWidgetContents = QWidget()
         self.scrollAreaWidgetContents.setObjectName(u"scrollAreaWidgetContents")
-        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 271, 69))
+        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 271, 54))
         self.horizontalLayout_5 = QHBoxLayout(self.scrollAreaWidgetContents)
         self.horizontalLayout_5.setObjectName(u"horizontalLayout_5")
         self.l_pathLast = QLabel(self.scrollAreaWidgetContents)
@@ -244,7 +269,7 @@ class Ui_wg_SaveHDA(object):
         self.b_pathLast = QToolButton(self.groupBox)
         self.b_pathLast.setObjectName(u"b_pathLast")
         self.b_pathLast.setEnabled(True)
-        self.b_pathLast.setArrowType(Qt.DownArrow)
+        self.b_pathLast.setArrowType(Qt.ArrowType.DownArrow)
 
         self.horizontalLayout.addWidget(self.b_pathLast)
 
@@ -268,6 +293,7 @@ class Ui_wg_SaveHDA(object):
         self.l_name.setText(QCoreApplication.translate("wg_SaveHDA", u"Name:", None))
         self.l_class.setText(QCoreApplication.translate("wg_SaveHDA", u"Save HDA", None))
         self.groupBox_2.setTitle(QCoreApplication.translate("wg_SaveHDA", u"General", None))
+        self.l_comment.setText(QCoreApplication.translate("wg_SaveHDA", u"Comment:", None))
         self.l_tasklabel.setText(QCoreApplication.translate("wg_SaveHDA", u"Productname:", None))
         self.l_taskName.setText("")
         self.b_changeTask.setText(QCoreApplication.translate("wg_SaveHDA", u"change", None))

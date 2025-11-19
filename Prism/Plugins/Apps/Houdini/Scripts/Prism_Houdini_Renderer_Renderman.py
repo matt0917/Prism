@@ -54,7 +54,12 @@ def getCam(node):
 
 
 def getFormatFromNode(node):
-    ext = os.path.splitext(node.parm("ri_display").eval())[1]
+    if node.parm("ri_display_0"):
+        parmName = "ri_display_0"
+    else:
+        parmName = "ri_display"
+
+    ext = os.path.splitext(node.parm(parmName).eval())[1]
     return ext
 
 
@@ -93,7 +98,12 @@ def setCam(origin, node, val):
 
 def executeAOVs(origin, outputName):
     parmPath = origin.core.appPlugin.getPathRelativeToProject(outputName) if origin.core.appPlugin.getUseRelativePath() else outputName
-    if not origin.core.appPlugin.setNodeParm(origin.node, "ri_display", val=parmPath):
+    if origin.node.parm("ri_display_0"):
+        parmName = "ri_display_0"
+    else:
+        parmName = "ri_display"
+
+    if not origin.core.appPlugin.setNodeParm(origin.node, parmName, val=parmPath):
         return [origin.state.text(0) + ": error - Publish canceled"]
 
     return True

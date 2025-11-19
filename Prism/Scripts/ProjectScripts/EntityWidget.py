@@ -283,6 +283,7 @@ class EntityPage(QWidget):
         self.entityPreviewHeight = 60
         self.itemWidgets = []
         self.dirty = True
+        self.useCounter = False
         self.setObjectName(self.pageName)
         if pageName == self.core.tr("Assets"):
             self.entityType = "asset"
@@ -405,7 +406,7 @@ class EntityPage(QWidget):
         self.e_search.origKeyPressEvent = self.e_search.keyPressEvent
         self.e_search.keyPressEvent = lambda x: self.keyPressed(x, "search")
 
-        self.tw_tree.itemSelectionChanged.connect(self.onItemChanged)
+        self.tw_tree.selectionModel().selectionChanged.connect(self.onItemChanged)
         self.tw_tree.itemExpanded.connect(self.itemExpanded)
         self.tw_tree.itemCollapsed.connect(self.itemCollapsed)
         self.tw_tree.customContextMenuRequested.connect(self.contextMenuTree)
@@ -601,6 +602,13 @@ class EntityPage(QWidget):
                 l_label = QLabel(os.path.basename(path))
                 lo_entity.addWidget(l_preview)
                 lo_entity.addWidget(l_label)
+                if self.useCounter:
+                    curCount = self.getCount(item)
+                    item.l_counter = QLabel("")
+                    lo_entity.addWidget(item.l_counter)
+                    if curCount and curCount > 1:
+                        self.setCount(item, curCount)
+
                 lo_entity.addStretch()
                 if pm:
                     pmap = self.core.media.scalePixmap(pm, self.entityPreviewWidth, self.entityPreviewHeight, fitIntoBounds=False, crop=True)
@@ -647,7 +655,7 @@ class EntityPage(QWidget):
             for childnum in range(item.childCount()):
                 self.refreshAssetItem(item.child(childnum))
         elif self.entityType == "shot":
-            if itemData.get("loaded") is False:
+            if not self.core.isStr(itemData) and itemData.get("loaded") is False:
                 self.refreshShotItemChildren(item)
 
     @err_catcher(name=__name__)
@@ -890,7 +898,24 @@ class EntityPage(QWidget):
             item.child(childIdx).setExpanded(expanded)
 
     @err_catcher(name=__name__)
-    def onItemChanged(self):
+    def onItemChanged(self, selected=None, deselected=None):
+        if self.useCounter:
+            changed = False
+            if selected:
+                for index in selected.indexes():
+                    item = self.tw_tree.itemFromIndex(index)
+                    self.setCount(item, 1)
+                    changed = True
+
+            if deselected:
+                for index in deselected.indexes():
+                    item = self.tw_tree.itemFromIndex(index)
+                    self.setCount(item, None)
+                    changed = True
+
+            if changed:
+                return
+
         items = self.tw_tree.selectedItems()
         if self.tw_tree.selectionMode() == QAbstractItemView.SingleSelection:
             if items:
@@ -1018,6 +1043,19 @@ class EntityPage(QWidget):
 
         if self.dclick:
             self.tw_tree.mouseDClick(event)
+            if self.useCounter:
+                mods = QApplication.keyboardModifiers()
+                if mods == Qt.ControlModifier:
+                    curCount = self.getCount(cItem)
+                    if event.button() == Qt.LeftButton:
+                        self.setCount(cItem, curCount+1)
+                        if cItem.isSelected():
+                            return
+
+                    elif event.button() == Qt.RightButton:
+                        self.setCount(cItem, curCount-1)
+                        if cItem.isSelected():
+                            return
 
         if not self.dclick:
             pos = self.tw_tree.mapFromGlobal(QCursor.pos())
@@ -1027,25 +1065,66 @@ class EntityPage(QWidget):
 
     @err_catcher(name=__name__)
     def mouseClickEvent(self, event):
-        if QEvent:
-            if event.type() == QEvent.MouseButtonRelease:
-                if event.button() == Qt.LeftButton:
-                    index = self.tw_tree.indexAt(event.pos())
-                    if index.data() is None:
-                        self.tw_tree.setCurrentIndex(
-                            self.tw_tree.model().createIndex(-1, 0)
-                        )
+        if not QEvent:
+            return
 
-                    self.tw_tree.mouseClickEvent(event)
-            elif event.type() == QEvent.MouseButtonPress:
-                self.dclick = True
-                item = self.tw_tree.itemAt(event.pos())
-                wasExpanded = item.isExpanded() if item else None
-                self.tw_tree.mousePrEvent(event)
+        if event.type() == QEvent.MouseButtonRelease:
+            if event.button() == Qt.LeftButton:
+                index = self.tw_tree.indexAt(event.pos())
+                if index.data() is None:
+                    self.tw_tree.setCurrentIndex(
+                        self.tw_tree.model().createIndex(-1, 0)
+                    )
 
-                if event.button() == Qt.LeftButton:
-                    if item and item.childCount() and wasExpanded == item.isExpanded():
-                        item.setExpanded(not item.isExpanded())
+                self.tw_tree.mouseClickEvent(event)
+        elif event.type() == QEvent.MouseButtonPress:
+            item = self.tw_tree.itemAt(event.pos())
+            if self.useCounter:
+                mods = QApplication.keyboardModifiers()
+                if mods == Qt.ControlModifier:
+                    curCount = self.getCount(item)
+                    if event.button() == Qt.LeftButton:
+                        self.setCount(item, curCount+1)
+                        if item.isSelected():
+                            return
+
+                    elif event.button() == Qt.RightButton:
+                        self.setCount(item, curCount-1)
+                        if item.isSelected():
+                            return
+
+            self.dclick = True
+            wasExpanded = item.isExpanded() if item else None
+            self.tw_tree.mousePrEvent(event)
+
+            if event.button() == Qt.LeftButton:
+                if item and item.childCount() and wasExpanded == item.isExpanded():
+                    item.setExpanded(not item.isExpanded())
+
+    @err_catcher(name=__name__)
+    def getCount(self, item):
+        if not hasattr(item, "l_counter"):
+            return 0
+
+        return int(item.l_counter.text().strip("x") or "1")
+
+    @err_catcher(name=__name__)
+    def setCount(self, item, count):
+        if not hasattr(item, "l_counter"):
+            return
+
+        if count is None:
+            countStr = ""
+        elif count == 0:
+            countStr = ""
+            item.setSelected(False)
+        else:
+            count = max(count, 1)
+            countStr = "x" + str(count)
+
+        item.l_counter.setText(countStr)
+        item.l_counter.setHidden(False)
+        self.onItemChanged()
 
     @err_catcher(name=__name__)
     def createFolderDlg(self, startText=None):
@@ -1380,6 +1459,11 @@ class EntityPage(QWidget):
                     else:
                         break            
 
+                if hItem.isSelected() and self.useCounter:
+                    curCount = self.getCount(hItem)
+                    if curCount:
+                        self.setCount(hItem, curCount + 1)
+
                 if hItem and not self.tw_tree.selectedItems():
                     self.tw_tree.setCurrentItem(hItem)
 
@@ -1428,7 +1512,14 @@ class EntityPage(QWidget):
                             else:
                                 cItemName = cItem.data(0, Qt.UserRole)["sequence"]
                         else:
-                            cItemName = cItem.data(0, Qt.UserRole)["shot"]
+                            cItemData = cItem.data(0, Qt.UserRole)
+                            if cItemData.get("shot") == "_sequence":
+                                if cItemData.get("sequence") == "_episode":
+                                    cItemName = cItemData["episode"]
+                                else:
+                                    cItemName = cItemData["sequence"]
+                            else:
+                                cItemName = cItemData["shot"]
 
                         if cItemName == seqPart:
                             hItem = cItem
@@ -1455,6 +1546,11 @@ class EntityPage(QWidget):
     def contextMenuTree(self, pos):
         rcmenu = QMenu(self)
         callbackName = ""
+
+        if self.useCounter:
+            mods = QApplication.keyboardModifiers()
+            if mods == Qt.ControlModifier:
+                return
 
         if self.entityType == "asset":
             cItem = self.tw_tree.itemFromIndex(self.tw_tree.indexAt(pos))
@@ -1574,13 +1670,7 @@ class EntityPage(QWidget):
             openex = QAction("Open in Explorer", self)
             openex.triggered.connect(lambda: self.core.openFolder(path))
             rcmenu.addAction(openex)
-            copAct = QAction("Copy", self)
-            iconPath = os.path.join(
-                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "copy.png"
-            )
-            icon = self.core.media.getColoredIcon(iconPath)
-            copAct.setIcon(icon)
-            copAct.triggered.connect(lambda: self.core.copyToClipboard(path, file=True))
+            copAct = self.core.getCopyAction(path, parent=self)
             rcmenu.addAction(copAct)
             if addOmit:
                 rcmenu.addAction(oAct)
@@ -1597,13 +1687,7 @@ class EntityPage(QWidget):
             openex = QAction("Open in Explorer", self)
             openex.triggered.connect(lambda: self.core.openFolder(path))
             rcmenu.addAction(openex)
-            copAct = QAction("Copy", self)
-            iconPath = os.path.join(
-                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "copy.png"
-            )
-            icon = self.core.media.getColoredIcon(iconPath)
-            copAct.setIcon(icon)
-            copAct.triggered.connect(lambda: self.core.copyToClipboard(path, file=True))
+            copAct = self.core.getCopyAction(path, parent=self)
             rcmenu.addAction(copAct)
 
         expAct = QAction("Expand all", self)

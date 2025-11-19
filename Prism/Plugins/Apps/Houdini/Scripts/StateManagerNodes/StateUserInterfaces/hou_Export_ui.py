@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'hou_Export.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.8.1
+## Created by: Qt User Interface Compiler version 6.9.0
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -16,7 +16,7 @@ class Ui_wg_Export(object):
     def setupUi(self, wg_Export):
         if not wg_Export.objectName():
             wg_Export.setObjectName(u"wg_Export")
-        wg_Export.resize(340, 826)
+        wg_Export.resize(340, 853)
         self.verticalLayout = QVBoxLayout(wg_Export)
         self.verticalLayout.setObjectName(u"verticalLayout")
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
@@ -52,6 +52,31 @@ class Ui_wg_Export(object):
         self.gb_general.setObjectName(u"gb_general")
         self.verticalLayout_3 = QVBoxLayout(self.gb_general)
         self.verticalLayout_3.setObjectName(u"verticalLayout_3")
+        self.w_comment = QWidget(self.gb_general)
+        self.w_comment.setObjectName(u"w_comment")
+        self.horizontalLayout_29 = QHBoxLayout(self.w_comment)
+        self.horizontalLayout_29.setSpacing(0)
+        self.horizontalLayout_29.setObjectName(u"horizontalLayout_29")
+        self.horizontalLayout_29.setContentsMargins(9, 0, 9, 0)
+        self.l_comment = QLabel(self.w_comment)
+        self.l_comment.setObjectName(u"l_comment")
+        self.l_comment.setMinimumSize(QSize(40, 0))
+        self.l_comment.setMaximumSize(QSize(95, 16777215))
+
+        self.horizontalLayout_29.addWidget(self.l_comment)
+
+        self.horizontalSpacer_8 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_29.addItem(self.horizontalSpacer_8)
+
+        self.e_comment = QLineEdit(self.w_comment)
+        self.e_comment.setObjectName(u"e_comment")
+
+        self.horizontalLayout_29.addWidget(self.e_comment)
+
+
+        self.verticalLayout_3.addWidget(self.w_comment)
+
         self.f_taskName = QWidget(self.gb_general)
         self.f_taskName.setObjectName(u"f_taskName")
         self.horizontalLayout_11 = QHBoxLayout(self.f_taskName)
@@ -628,6 +653,7 @@ class Ui_wg_Export(object):
         self.l_name.setText(QCoreApplication.translate("wg_Export", u"Name:", None))
         self.l_class.setText(QCoreApplication.translate("wg_Export", u"Export", None))
         self.gb_general.setTitle(QCoreApplication.translate("wg_Export", u"General", None))
+        self.l_comment.setText(QCoreApplication.translate("wg_Export", u"Comment:", None))
         self.l_tasklabel.setText(QCoreApplication.translate("wg_Export", u"Productname:", None))
         self.l_taskName.setText("")
         self.b_changeTask.setText(QCoreApplication.translate("wg_Export", u"change", None))

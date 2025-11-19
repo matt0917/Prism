@@ -463,6 +463,7 @@ class PluginManager(object):
 
     @err_catcher(name=__name__)
     def loadPlugin(self, path=None, name=None, force=True, activate=None, showWarnings=False):
+        # logger.debug("about to load plugin: %s - %s" % (path, name))
         if not path:
             if name:
                 pluginPaths = self.searchPluginPaths(name)
@@ -645,7 +646,7 @@ class PluginManager(object):
                 msg,
                 buttons=["Details", "Close"],
                 icon=QMessageBox.Warning,
-                default="Details",
+                default="Close",
             )
 
             if result == "Details":
@@ -732,7 +733,7 @@ class PluginManager(object):
                 msg,
                 buttons=["Details", "Close"],
                 icon=QMessageBox.Warning,
-                default="Details",
+                default="Close",
             )
             if result == "Details":
                 detailMsg = msg + "\n\n" + traceback.format_exc()
@@ -1412,6 +1413,11 @@ class PLUGINNAME:
             self.core, "Installing Hub - please wait..\n\n\n"
         )
         with self.installHubMsg:
+            setPermissions = False
+            dataDir = self.core.getPrismDataDir()
+            if not os.path.exists(dataDir):
+                setPermissions = True
+
             if not self.core.getPlugin("PrismInternals"):
                 self.installHubMsg.msg.setText("Installing Hub - please wait..\n\nDownloading PrismInternals...")
                 QApplication.processEvents()
@@ -1432,6 +1438,9 @@ class PLUGINNAME:
                 self.installHubMsg.msg.setText("Installing Hub - please wait..\n\nInstalling plugins...")
                 QApplication.processEvents()
                 self.updatePlugins(updates)
+
+            if setPermissions:
+                self.core.grantRwToAllUsers(dataDir)
 
     @err_catcher(name=__name__)
     def downloadPlugin(self, plugin):

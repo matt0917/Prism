@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'default_Playblast.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.8.1
+## Created by: Qt User Interface Compiler version 6.9.0
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -16,7 +16,7 @@ class Ui_wg_Playblast(object):
     def setupUi(self, wg_Playblast):
         if not wg_Playblast.objectName():
             wg_Playblast.setObjectName(u"wg_Playblast")
-        wg_Playblast.resize(389, 822)
+        wg_Playblast.resize(389, 663)
         self.verticalLayout = QVBoxLayout(wg_Playblast)
         self.verticalLayout.setObjectName(u"verticalLayout")
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
@@ -50,6 +50,31 @@ class Ui_wg_Playblast(object):
         self.gb_playblast.setObjectName(u"gb_playblast")
         self.verticalLayout_2 = QVBoxLayout(self.gb_playblast)
         self.verticalLayout_2.setObjectName(u"verticalLayout_2")
+        self.w_comment = QWidget(self.gb_playblast)
+        self.w_comment.setObjectName(u"w_comment")
+        self.horizontalLayout_16 = QHBoxLayout(self.w_comment)
+        self.horizontalLayout_16.setSpacing(0)
+        self.horizontalLayout_16.setObjectName(u"horizontalLayout_16")
+        self.horizontalLayout_16.setContentsMargins(9, 0, 9, 0)
+        self.l_comment = QLabel(self.w_comment)
+        self.l_comment.setObjectName(u"l_comment")
+        self.l_comment.setMinimumSize(QSize(40, 0))
+        self.l_comment.setMaximumSize(QSize(95, 16777215))
+
+        self.horizontalLayout_16.addWidget(self.l_comment)
+
+        self.horizontalSpacer_8 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_16.addItem(self.horizontalSpacer_8)
+
+        self.e_comment = QLineEdit(self.w_comment)
+        self.e_comment.setObjectName(u"e_comment")
+
+        self.horizontalLayout_16.addWidget(self.e_comment)
+
+
+        self.verticalLayout_2.addWidget(self.w_comment)
+
         self.widget_10 = QWidget(self.gb_playblast)
         self.widget_10.setObjectName(u"widget_10")
         self.horizontalLayout_10 = QHBoxLayout(self.widget_10)
@@ -471,7 +496,7 @@ class Ui_wg_Playblast(object):
         self.scrollArea.setWidgetResizable(True)
         self.scrollAreaWidgetContents = QWidget()
         self.scrollAreaWidgetContents.setObjectName(u"scrollAreaWidgetContents")
-        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 338, 240))
+        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 338, 54))
         self.verticalLayout_3 = QVBoxLayout(self.scrollAreaWidgetContents)
         self.verticalLayout_3.setObjectName(u"verticalLayout_3")
         self.l_pathLast = QLabel(self.scrollAreaWidgetContents)
@@ -522,6 +547,7 @@ class Ui_wg_Playblast(object):
         self.l_name.setText(QCoreApplication.translate("wg_Playblast", u"Name:", None))
         self.l_class.setText(QCoreApplication.translate("wg_Playblast", u"Playblast", None))
         self.gb_playblast.setTitle(QCoreApplication.translate("wg_Playblast", u"General", None))
+        self.l_comment.setText(QCoreApplication.translate("wg_Playblast", u"Comment:", None))
         self.label_2.setText(QCoreApplication.translate("wg_Playblast", u"Identifier:", None))
         self.l_taskName.setText("")
         self.b_changeTask.setText(QCoreApplication.translate("wg_Playblast", u"change", None))

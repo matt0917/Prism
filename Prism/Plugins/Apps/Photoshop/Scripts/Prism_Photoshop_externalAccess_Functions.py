@@ -34,6 +34,7 @@
 
 import os
 import subprocess
+import platform
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -46,9 +47,11 @@ class Prism_Photoshop_externalAccess_Functions(object):
     def __init__(self, core, plugin):
         self.core = core
         self.plugin = plugin
-        self.core.registerCallback(
-            "projectBrowser_loadUI", self.projectBrowser_loadUI, plugin=self.plugin
-        )
+        if platform.system() in self.platforms:
+            self.core.registerCallback(
+                "projectBrowser_loadUI", self.projectBrowser_loadUI, plugin=self.plugin
+            )
+
         self.core.registerCallback("getPresetScenes", self.getPresetScenes, plugin=self.plugin)
         ssheetPath = os.path.join(
             self.pluginDirectory,
@@ -97,6 +100,9 @@ class Prism_Photoshop_externalAccess_Functions(object):
 
     @err_catcher(name=__name__)
     def getPresetScenes(self, presetScenes):
+        if os.getenv("PRISM_SHOW_DEFAULT_SCENEFILE_PRESETS", "1") != "1":
+            return
+
         presetDir = os.path.join(self.pluginDirectory, "Presets")
         scenes = self.core.entities.getPresetScenesFromFolder(presetDir)
         presetScenes += scenes

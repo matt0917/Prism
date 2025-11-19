@@ -87,7 +87,6 @@ class Prism_Nuke_Functions(object):
         self.plugin = plugin
 
         self.isRendering = {}
-        self.useVersion = None
         self.core.registerCallback(
             "postSaveScene", self.postSaveScene, plugin=self.plugin
         )
@@ -154,9 +153,10 @@ class Prism_Nuke_Functions(object):
         nuke.menu("Nuke").addCommand("Prism/Save Comment...", self.core.saveWithComment, "Ctrl+Shift+S")
         nuke.menu("Nuke").addCommand("Prism/Project Browser...", self.core.projectBrowser)
         nuke.menu("Nuke").addCommand("Prism/Settings...", self.core.prismSettings)
-        nuke.menu("Nuke").addCommand(
-            "Prism/Update selected read nodes", self.updateNukeNodes
-        )
+        nuke.menu("Nuke").addCommand("Prism/Manage Media Versions...", self.openMediaVersionsDialog)
+        if (nuke.NUKE_VERSION_MAJOR >= 16) or (nuke.NUKE_VERSION_MAJOR == 15 and nuke.NUKE_VERSION_MINOR >= 2) and os.getenv("PRISM_NUKE_ENABLE_MULTISHOT", "0") == "1":
+            nuke.menu("Nuke").addCommand("Prism/Import Shots...", self.onImportShotsTriggered)
+
         nuke.menu("Nuke").addCommand("Prism/Export Nodes...", self.onExportTriggered)
 
         toolbar = nuke.toolbar("Nodes")
@@ -180,6 +180,8 @@ class Prism_Nuke_Functions(object):
         nuke.addFilenameFilter(self.expandEnvVarsInFilepath)
         nuke.addOnScriptSave(self.core.scenefileSaved)
         nuke.addOnUserCreate(self.onUserNodeCreated)
+        if os.getenv("PRISM_NUKE_ENABLE_MULTISHOT", "0") == "1":
+            nuke.addKnobChanged(self.onRootKnobChanged, node=nuke.Root())
 
         import nukescripts
         nukescripts.drop.addDropDataCallback(self.dropHandler)
@@ -189,6 +191,7 @@ class Prism_Nuke_Functions(object):
         if not getattr(self.core, "projectPath", None):
             return
 
+        text = text.replace("\\", "/")
         useRel = self.core.getConfig("nuke", "useRelativePaths", dft=False, config="user")
         if text.startswith(self.core.projectPath.replace("\\", "/")):
             if os.path.isdir(text):
@@ -200,7 +203,7 @@ class Prism_Nuke_Functions(object):
 
             success = False
             for src in srcs:
-                if os.path.splitext(src)[0] not in self.core.media.supportedFormats:
+                if os.path.splitext(src)[1] not in self.core.media.supportedFormats:
                     continue
 
                 if "#"*self.core.framePadding not in src:
@@ -226,7 +229,8 @@ class Prism_Nuke_Functions(object):
     def makePathRelative(self, path):
         path = path.replace("\\", "/")
         prjPath = self.core.projectPath.replace("\\", "/").rstrip("/")
-        if nuke.NUKE_VERSION_MAJOR >= 16:
+        newVars = (nuke.NUKE_VERSION_MAJOR >= 16) or (nuke.NUKE_VERSION_MAJOR == 15 and nuke.NUKE_VERSION_MINOR >= 2)
+        if newVars:
             relPath = path.replace(prjPath, "%PRISM_JOB")
         else:
             relPath = path.replace(prjPath, "%PRISM_JOB%")
@@ -239,8 +243,10 @@ class Prism_Nuke_Functions(object):
             return path
 
         expanded_path = os.path.expandvars(path)
-        prjPath = self.core.projectPath.replace("\\", "/").rstrip("/")
-        expanded_path = expanded_path.replace("%PRISM_JOB", prjPath)
+        if hasattr(self.core, "projectPath"):
+            prjPath = self.core.projectPath.replace("\\", "/").rstrip("/")
+            expanded_path = expanded_path.replace("%PRISM_JOB", prjPath)
+
         return expanded_path
 
     @err_catcher(name=__name__)
@@ -276,6 +282,30 @@ class Prism_Nuke_Functions(object):
     def sceneOpen(self, origin):
         if self.core.shouldAutosaveTimerRun():
             origin.startAutosaveTimer()
+
+        if os.getenv("PRISM_NUKE_CHECK_MEDIA_ON_SCENE_OPEN", "1") == "1":
+            dlg = MediaVersionsDialog(self)
+            if dlg.getOutdatedMedia():
+                msgStr = "There are new media versions available."
+                msg = self.core.popupQuestion(
+                    msgStr,
+                    buttons=["Show Versions...", "Ignore"],
+                    icon=QMessageBox.Information,
+                    escapeButton="Ignore",
+                    default="Ignore",
+                    doExec=False,
+                )
+                if not self.core.isStr(msg):
+                    msg.buttonClicked.connect(self.onShowVersionsClicked)
+                    msg.show()
+
+        self.refreshWriteNodes()
+
+    @err_catcher(name=__name__)
+    def onShowVersionsClicked(self, button):
+        result = button.text()
+        if result == "Show Versions...":
+            self.openMediaVersionsDialog()
 
     @err_catcher(name=__name__)
     def getCurrentFileName(self, origin, path=True):
@@ -377,6 +407,14 @@ class Prism_Nuke_Functions(object):
             version = self.core.mediaProducts.getLatestVersionFromFilepath(curPath)
             if version and version["path"] not in curPath:
                 filepattern = self.core.mediaProducts.getFilePatternFromVersion(version)
+                filepaths = self.core.media.getFilesFromSequence(filepattern)
+                if not filepaths:
+                    sources = self.core.media.getImgSources(os.path.dirname(filepattern))
+                    if not sources:
+                        continue
+
+                    filepattern = sources[0]
+
                 if self.core.getConfig("nuke", "useRelativePaths", dft=False, config="user"):
                     filepattern = self.makePathRelative(filepattern)
 
@@ -487,11 +525,11 @@ class Prism_Nuke_Functions(object):
         return outputName
 
     @err_catcher(name=__name__)
-    def getOutputPath(self, node, group=None, render=False, updateValues=True):
+    def getOutputPath(self, node, group=None, render=False, updateValues=True, force=False):
         if not group:
             group = node
 
-        if not nuke.env.get("gui"):
+        if not nuke.env.get("gui") and not force:
             filename = group.knob("fileName").toScript()
             if render and self.core.getConfig("globals", "backupScenesOnPublish", config="project"):
                 self.core.entities.backupScenefile(os.path.dirname(filename))
@@ -510,10 +548,15 @@ class Prism_Nuke_Functions(object):
         if not bool(location.strip()):
             location = "global"
 
+        version = None
+        if group.knob("autoversion") and not group.knob("autoversion").value():
+            intVersion = group.knob("renderversion").value()
+            version = self.core.versionFormat % intVersion
+
         outputName = self.core.getCompositingOut(
             taskName,
             fileType,
-            self.useVersion,
+            version,
             render,
             location,
             comment=comment,
@@ -528,19 +571,19 @@ class Prism_Nuke_Functions(object):
         return outputName
 
     @err_catcher(name=__name__)
-    def startRender(self, node, group=None, version=None):
+    def startRender(self, node, group=None, start=None, end=None, dependencies=None):
         if not group:
             group = node
 
         if group.knob("submitJob").value():
-            return self.openFarmSubmitter(node, group, version)
+            return self.openFarmSubmitter(node, group, dependencies=dependencies)
 
         taskName = self.getIdentifierFromNode(group)
         if not taskName:
             self.core.popup("Please choose an identifier")
             return
 
-        fileName = self.getOutputPath(node, group)
+        fileName = self.getOutputPath(node, group, force=True)
         if fileName == "FileNotInPipeline":
             self.core.showFileNotInProjectWarning(title="Warning")
             return
@@ -561,16 +604,13 @@ class Prism_Nuke_Functions(object):
                     + " - error - %s" % res.get("details", "preRender hook returned False")
                 ]
 
-        if version:
-            msg = "Are you sure you want to execute this state as version \"%s\"?\nThis may overwrite existing files." % version
-            result = self.core.popupQuestion(msg, buttons=["Continue", "Cancel"], title="Render", icon=QMessageBox.Information)
-            if result != "Continue":
-                return
-
-        self.useVersion = version
         self.core.saveScene(versionUp=False, prismReq=False)
+        if start is None:
+            node.knob("Render").execute()
+        else:
+            nuke.execute(node, start, end)
 
-        node.knob("Render").execute()
+        self.getOutputPath(node)
         kwargs = {
             "state": self,
             "scenefile": scenefile,
@@ -579,10 +619,8 @@ class Prism_Nuke_Functions(object):
 
         self.core.callback("postRender", **kwargs)
 
-        self.useVersion = None
-
     @err_catcher(name=__name__)
-    def renderAsVersion(self, node, group=None):
+    def showPrevVersions(self, node, group=None):
         if not group:
             group = node
 
@@ -590,7 +628,10 @@ class Prism_Nuke_Functions(object):
         if not self.dlg_version.isValid:
             return
 
-        self.dlg_version.versionSelected.connect(lambda x: self.startRender(node, group, x))
+        if group.knob("renderversion"):
+            self.dlg_version.versionSelected.connect(lambda x: group.knob("autoversion").setValue(0))
+            self.dlg_version.versionSelected.connect(group.knob("renderversion").setValue)
+
         self.dlg_version.show()
 
     @err_catcher(name=__name__)
@@ -667,7 +708,7 @@ class Prism_Nuke_Functions(object):
     @err_catcher(name=__name__)
     def importImages(self, filepath=None, mediaBrowser=None, parent=None):
         if mediaBrowser:
-            if mediaBrowser.origin.getCurrentAOV():
+            if mediaBrowser.origin.getCurrentAOV() and mediaBrowser.origin.w_preview.cb_layer.count() > 1:
                 fString = "Please select an import option:"
                 buttons = ["Current AOV", "All AOVs", "Layout all AOVs"]
                 parent = parent or mediaBrowser.origin.projectBrowser
@@ -683,6 +724,29 @@ class Prism_Nuke_Functions(object):
                 self.nukeLayout(mediaBrowser)
             else:
                 return
+
+    @err_catcher(name=__name__)
+    def importMedia(self, filepath, start=None, end=None):
+        if "#"*self.core.framePadding not in filepath:
+            filepath = self.core.media.getSequenceFromFilename(filepath)
+
+        if start is None:
+            if "#"*self.core.framePadding in filepath:
+                files = self.core.media.getFilesFromSequence(filepath)
+                s, e = self.core.media.getFrameRangeFromSequence(files)
+                if s and e and s != "?" and e != "?":
+                    start = s
+                    end = e
+
+        if start is not None:
+            filepath += " %s-%s" % (start, end)
+
+        if self.core.getConfig("nuke", "useRelativePaths", dft=False, config="user"):
+            filepath = self.makePathRelative(filepath)
+
+        read_node = nuke.createNode("Read", inpanel=False)
+        read_node["file"].fromUserText(filepath)
+        return read_node
 
     @err_catcher(name=__name__)
     def nukeImportSource(self, origin):
@@ -1250,6 +1314,9 @@ class Prism_Nuke_Functions(object):
             nodeClass = node.Class()
             if nodeClass == "WritePrism":
                 node.knob("refresh").execute()
+            elif nodeClass == "Write":
+                if node.knob("tab_prism") and node.knob("refresh"):
+                    node.knob("refresh").execute()
 
     @err_catcher(name=__name__)
     def onUserNodeCreated(self):
@@ -1295,8 +1362,16 @@ class Prism_Nuke_Functions(object):
         self.core.callback("onNukeNodeCreated", **kwargs)
 
     @err_catcher(name=__name__)
+    def onRootKnobChanged(self):
+        knob = nuke.thisKnob()
+        if knob.name() != "gsv":
+            return
+
+        self.refreshGSVs()
+
+    @err_catcher(name=__name__)
     def addUiToWriteNode(self, node):
-        knobs = ["identifier", "comment", "location", "fileName", "refresh", "startRender", "startRenderPrevVersion", "submitJob", "prevFileName", "openDir"]
+        knobs = ["identifier", "comment", "location", "fileName", "refresh", "startRender", "showPrevVersions", "submitJob", "prevFileName", "openDir"]
         for knob in knobs:
             k = node.knob(knob)
             if k:
@@ -1311,6 +1386,15 @@ class Prism_Nuke_Functions(object):
         node.addKnob(knobIdf)
         knobComment = nuke.EvalString_Knob("comment", "comment (optional)")
         node.addKnob(knobComment)
+        knobVersion = nuke.Int_Knob("renderversion", "Version")
+        knobVersion.setValue(1)
+        node.addKnob(knobVersion)
+        knobVersion.setEnabled(False)
+        knobAutoVersion = nuke.Boolean_Knob("autoversion", "auto")
+        node.addKnob(knobAutoVersion)
+        knobAutoVersion.setValue(1)
+        knobPrevVersions = nuke.PyScript_Knob("showPrevVersions", "Show Previous Versions...", "pcore.appPlugin.showPrevVersions(nuke.thisNode())")
+        node.addKnob(knobPrevVersions)
         knobLoc = nuke.Enumeration_Knob("location", "location", ["                              "])
         node.addKnob(knobLoc)
         knobDiv = nuke.Text_Knob("")
@@ -1325,8 +1409,6 @@ class Prism_Nuke_Functions(object):
         node.addKnob(knobDiv)
         knobRender = nuke.PyScript_Knob("startRender", "Render", "pcore.appPlugin.startRender(nuke.thisNode())")
         node.addKnob(knobRender)
-        knobRenderPrev = nuke.PyScript_Knob("startRenderPrevVersion", "Render as previous version...", "pcore.appPlugin.renderAsVersion(nuke.thisNode())")
-        node.addKnob(knobRenderPrev)
         knobSubmit = nuke.Boolean_Knob("submitJob", "Submit Job")
         node.addKnob(knobSubmit)
         knobPrev = nuke.Text_Knob("prevFileName", "previous filepath", "-")
@@ -1345,7 +1427,7 @@ class Prism_Nuke_Functions(object):
 
     @err_catcher(name=__name__)
     def addUiToReadNode(self, node):
-        knobs = ["identifier", "comment", "location", "fileName", "refresh", "startRender", "startRenderPrevVersion", "submitJob", "prevFileName", "openDir"]
+        knobs = ["identifier", "comment", "location", "fileName", "refresh", "startRender", "showPrevVersions", "submitJob", "prevFileName", "openDir"]
         for knob in knobs:
             k = node.knob(knob)
             if k:
@@ -1419,6 +1501,13 @@ class Prism_Nuke_Functions(object):
                     except:
                         pass
 
+            knob = nuke.thisKnob()
+            if knob and knob.name() in ["identifier", "location", "renderversion", "autoversion"]:
+                self.getOutputPath(node)
+
+            if knob and knob.name() == "autoversion":
+                nuke.thisNode().knob("renderversion").setEnabled(not knob.value())
+
         elif nodeType in ["read"]:
             try:
                 if node.knob("file"):
@@ -1478,6 +1567,8 @@ class Prism_Nuke_Functions(object):
 
                 readNode.knob('file').fromUserText(filepath)
                 break
+        else:
+            self.core.popup("No media files found.\nMake sure the rendering is completed and try again.")
 
     @err_catcher(name=__name__)
     def sm_render_getDeadlineParams(self, origin, dlParams, homeDir):
@@ -1488,6 +1579,10 @@ class Prism_Nuke_Functions(object):
 
         dlParams["jobInfos"]["Plugin"] = "Nuke"
         dlParams["jobInfos"]["Comment"] = "Prism-Submission-Nuke_ImageRender"
+
+        if hasattr(self, "submitter") and getattr(self.submitter, "useBatchname", False):
+            dlParams["jobInfos"]["BatchName"] = dlParams["jobInfos"]["Name"]
+
         self.core.getPlugin("Deadline").addEnvironmentItem(
             dlParams["jobInfos"],
             "PRISM_NUKE_TERMINAL_FILES",
@@ -1518,7 +1613,7 @@ class Prism_Nuke_Functions(object):
         dlParams["pluginInfos"]["WriteNode"] = origin.node.fullName()
 
     @err_catcher(name=__name__)
-    def openFarmSubmitter(self, node, group=None, version=None):
+    def openFarmSubmitter(self, node, group=None, dependencies=None):
         if not group:
             group = node
 
@@ -1545,15 +1640,19 @@ class Prism_Nuke_Functions(object):
 
         state.ui.node = node
         state.ui.group = group
-        self.submitter = Farm_Submitter(self, state, version=version)
+        self.submitter = Farm_Submitter(self, state, dependencies=dependencies)
         self.submitter.loadSettings()
+        state.ui.chb_version.setChecked(False)
         state.ui.setTaskname(self.getIdentifierFromNode(group))
         fmt = "." + group.knob("file_type").value()
         if state.ui.cb_format.findText(fmt) == -1:
             state.ui.cb_format.addItem(fmt)
 
         state.ui.setFormat(fmt)
-        self.submitter.show()
+        if self.core.uiAvailable:
+            self.submitter.show()
+        else:
+            self.submitter.submit()
 
     @err_catcher(name=__name__)
     def openInClicked(self, node, group=None):
@@ -1579,8 +1678,7 @@ class Prism_Nuke_Functions(object):
         act_open.triggered.connect(lambda: self.core.openFolder(path))
         menu.addAction(act_open)
 
-        act_copy = QAction("Copy")
-        act_copy.triggered.connect(lambda: self.core.copyToClipboard(path, file=True))
+        act_copy = self.core.getCopyAction(path)
         menu.addAction(act_copy)
 
         menu.exec_(QCursor.pos())
@@ -1594,8 +1692,87 @@ class Prism_Nuke_Functions(object):
 
     @err_catcher(name=__name__)
     def sm_getExternalFiles(self, origin):
-        extFiles = []
-        return [extFiles, []]
+        import re
+        from collections import defaultdict
+        prevSelectedNodes = nuke.selectedNodes() or []
+
+        found = defaultdict(set)
+        file_knob_names = {
+            "file", "files", "filename", "proxy", "proxy_input", "root",
+            "clip", "frame", "file0", "file1", "file2", "gizmo", "font", "icon"
+        }
+
+        [n.setSelected(False) for n in nuke.selectedNodes()]
+        if os.getenv("PRISM_NUKE_TRACK_UNCONNECTED_DEPENDENCIES", "1") == "1":
+            nodes = nuke.allNodes(recurseGroups=True)
+        else:
+            for node in nuke.allNodes(recurseGroups=True):
+                if node.Class() == "Write" or node.Class() == "WritePrism":
+                    node.setSelected(True)
+
+            nuke.selectConnectedNodes()
+            nodes = nuke.selectedNodes()
+
+        for node in nodes:
+            for kname, knob in node.knobs().items():
+                if kname.lower() in file_knob_names or knob.Class() in ("File_Knob", "InputFile_Knob"):
+                    try:
+                        val = knob.getValue()
+                    except Exception:
+                        # fallback: try to get as string
+                        try:
+                            val = str(knob)
+                        except Exception:
+                            val = None
+                    if val is None:
+                        continue
+
+                    # knob.getValue may return list/tuple for multi-file knobs
+                    if isinstance(val, (list, tuple)):
+                        vals = val
+                    else:
+                        vals = [val]
+
+                    for v in vals:
+                        if not v:
+                            continue
+                        # try to evaluate/expand expressions: nuke.filename? nuke.toNode?
+                        # nuke.knob(value) may contain expressions. nuke.filename(node) gives filename for Read nodes:
+                        # Try some special cases:
+                        if hasattr(node, "knob") and kname == "file":
+                            # Try nuke.filename for read nodes
+                            try:
+                                resolved = nuke.filename(node)
+                            except Exception:
+                                resolved = v
+                        else:
+                            resolved = nuke.expression(v) if isinstance(v, str) and "$" in v else v
+
+                        resolved = os.path.expanduser(os.path.expandvars(str(resolved)))
+                        resolved = resolved.replace('\\', os.sep)
+                        found['all'].add(resolved)
+
+                        if resolved.endswith(('.gizmo', '.nk')):
+                            found['gizmos'].add(resolved)
+                        elif resolved.endswith(('.py',)):
+                            found['plugins'].add(resolved)
+                        elif resolved.endswith(('.otf', '.ttf')):
+                            found['fonts'].add(resolved)
+                        elif resolved.endswith(('.ocio', '.icc', '.cube', '.3dl')):
+                            found['ocio'].add(resolved)
+                        elif re.search(r'\.exr$|\.dpx$|\.jpg$|\.png$|\.tif$|\.tiff$|\.mov$|\.mp4$|\.cin$', resolved.lower()):
+                            found['files'].add(resolved)
+                        else:
+                            found['others'].add(resolved)
+
+        # existence checking
+        found['absolute'] = {p for p in found['all'] if os.path.isabs(p)}
+        # found['relative'] = {p for p in found['all'] if not os.path.isabs(p)}
+        # found['exists'] = {p for p in found['all'] if os.path.exists(p)}
+        # found['missing'] = found['all'] - found['exists']
+        [n.setSelected(False) for n in nuke.selectedNodes()]
+        [n.setSelected(True) for n in prevSelectedNodes]
+        return [found['absolute'], []]
 
     @err_catcher(name=__name__)
     def sm_render_preExecute(self, origin):
@@ -1625,6 +1802,8 @@ class Prism_Nuke_Functions(object):
         if inputNr is None:
             return
 
+        prevSelectedNodes = nuke.selectedNodes() or []
+
         inputNode = viewer.node().input(inputNr)
         dlg = renderdialog._getFlipbookDialog(inputNode)
         factory = flipbooking.gFlipbookFactory
@@ -1639,7 +1818,150 @@ class Prism_Nuke_Functions(object):
         except:
             pass
 
+        [n.setSelected(False) for n in nuke.selectedNodes()]
+        [n.setSelected(True) for n in prevSelectedNodes]
         return pm
+
+    @err_catcher(name=__name__)
+    def onImportShotsTriggered(self):
+        dlg = ShotListDlg(self)
+        dlg.w_entities.getPage("Shots").tw_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        dlg.entitiesAdded.connect(self.loadShotsIntoNuke)
+        dlg.entitiesInserted.connect(lambda x: callback(x, insert=True))
+        dlg.exec_()
+
+    @err_catcher(name=__name__)
+    def loadShotsIntoNuke(self, data, origin=None, insert=False):
+        node_read = nuke.nodes.Read(name="Shot_Read", xpos=0, ypos=0, file="%{prism.multishot_read}")
+        node_switch = nuke.nodes.VariableSwitch(name="Shot_Switch", xpos=0, ypos=400)
+        node_switch.connectInput(0, node_read)
+        node_write = nuke.nodes.Write(name="Shot_Write", xpos=0, ypos=600, file="%{prism.multishot_write}")
+        node_write.connectInput(0, node_switch)
+
+        gsv_knob = nuke.root()["gsv"]
+
+        curShots = self.getShotsFromScene()
+        newShotNames = [self.core.entities.getShotName(d) for d in data]
+        for newShotName in newShotNames:
+            if newShotName not in curShots:
+                curShots.append(newShotName)
+
+        if gsv_knob.getGsvValue("prism.shot") is None:
+            gsv_knob.setGsvValue("prism.shot", "")
+
+        if gsv_knob.getDataType("prism.shot") != nuke.gsv.DataType.List:
+            gsv_knob.setDataType("prism.shot", nuke.gsv.DataType.List)
+
+        gsv_knob.setListOptions("prism.shot", sorted(curShots))
+        self.refreshGSVs()
+
+    @err_catcher(name=__name__)
+    def refreshGSVs(self):
+        try:
+            gsv_knob = nuke.root()["gsv"]
+        except:
+            return
+
+        curShots = self.getShotsFromScene()
+        val = gsv_knob.value()
+        import copy
+        origVal = copy.deepcopy(val)
+        if "prism" not in val:
+            val["prism"] = {}
+
+        if "shot" not in val["prism"]:
+            val["prism"]["shot"] = ""
+
+        if "identifier" not in val["prism"]:
+            val["prism"]["identifier"] = ""
+
+        if "version" not in val["prism"]:
+            val["prism"]["version"] = ""
+
+        if "aov" not in val["prism"]:
+            val["prism"]["aov"] = ""
+
+        shotData = val["prism"]["shot"].split("-")
+        if len(shotData) != 2:
+            identifiers = []
+        else:
+            entity = {"type": "shot", "sequence": shotData[0], "shot": shotData[1]}
+            identifiers = self.core.mediaProducts.getIdentifierNames(entity)
+
+        if identifiers:
+            ctx = entity.copy()
+            ctx["identifier"] = val["prism"]["identifier"]
+            versions = sorted([version["version"] for version in self.core.mediaProducts.getVersionsFromContext(ctx)], reverse=True)
+        else:
+            versions = []
+
+        if versions:
+            ctx["version"] = val["prism"]["version"]
+            if ctx["version"] == "latest":
+                ctx["version"] = versions[0]
+
+            aovs = [aov["aov"] for aov in self.core.mediaProducts.getAOVsFromVersion(ctx)]
+        else:
+            aovs = []
+
+        readpath = ""
+        if versions:
+            ctx["aov"] = val["prism"]["aov"]
+            mediaFiles = self.core.mediaProducts.getFilesFromContext(ctx)
+            validFiles = self.core.media.filterValidMediaFiles(mediaFiles)
+            if validFiles:
+                validFiles = sorted(validFiles, key=lambda x: x if "cryptomatte" not in os.path.basename(x) else "zzz" + x)
+                seqFiles = self.core.media.detectSequences(validFiles)
+                if seqFiles:
+                    readpath = list(seqFiles)[0].replace("\\", "/")
+
+        writepath = self.core.projectPath + "test_write.exr"
+
+        val["prism"]["multishot_read"] = readpath
+        val["prism"]["multishot_write"] = writepath
+        if val != origVal:
+            gsv_knob.setValue(val)
+
+        changed = False
+        if gsv_knob.getDataType("prism.shot") != nuke.gsv.DataType.List:
+            gsv_knob.setDataType("prism.shot", nuke.gsv.DataType.List)
+            gsv_knob.setFavorite("prism.shot", True)
+
+        if gsv_knob.getListOptions("prism.shot") != curShots:
+            gsv_knob.setListOptions("prism.shot", curShots)
+            changed = True
+
+        if gsv_knob.getDataType("prism.identifier") != nuke.gsv.DataType.List:
+            gsv_knob.setDataType("prism.identifier", nuke.gsv.DataType.List)
+            gsv_knob.setFavorite("prism.identifier", True)
+
+        if gsv_knob.getListOptions("prism.identifier") != sorted(identifiers):
+            gsv_knob.setListOptions("prism.identifier", sorted(identifiers))
+            changed = True
+
+        if gsv_knob.getDataType("prism.version") != nuke.gsv.DataType.List:
+            gsv_knob.setDataType("prism.version", nuke.gsv.DataType.List)
+            gsv_knob.setFavorite("prism.version", True)
+
+        if gsv_knob.getListOptions("prism.version") != ["latest"] + sorted(versions):
+            gsv_knob.setListOptions("prism.version", ["latest"] + sorted(versions))
+            changed = True
+
+        if gsv_knob.getDataType("prism.aov") != nuke.gsv.DataType.List:
+            gsv_knob.setDataType("prism.aov", nuke.gsv.DataType.List)
+            gsv_knob.setFavorite("prism.aov", True)
+
+        if gsv_knob.getListOptions("prism.aov") != sorted(aovs):
+            gsv_knob.setListOptions("prism.aov", sorted(aovs))
+            changed = True
+
+        if changed:
+            self.refreshGSVs()
+
+    @err_catcher(name=__name__)
+    def getShotsFromScene(self):
+        knob = nuke.root()["gsv"]
+        return knob.getListOptions("prism.shot")
 
     @err_catcher(name=__name__)
     def onExportTriggered(self, selectedPaths=None):
@@ -1717,7 +2039,18 @@ class Prism_Nuke_Functions(object):
 
         ext = fileName[1].lower()
         if ext in self.plugin.sceneFormats:
-            result = nuke.nodePaste(impFileName)
+            path = impFileName.replace("\\", "/")
+            msg = "How do you want to import the nuke script?"
+            result = self.core.popupQuestion(msg, buttons=["Paste Nodes", "Livegroup", "Precomp"])
+            if result == "Paste Nodes":
+                result = nuke.nodePaste(path)
+            elif result == "Livegroup":
+                liveGroup = nuke.createNode("LiveGroup")
+                liveGroup.knob("published").fromScript("1")
+                liveGroup.knob("file").setValue(path)
+            elif result == "Precomp":
+                nuke.createNode("Precomp", "file \"%s\"" % path)
+
         elif ext in [".obj", ".fbx", ".abc"]:
             path = impFileName.replace("\\", "/")
             node_read = nuke.nodes.ReadGeo2()
@@ -1763,6 +2096,14 @@ class Prism_Nuke_Functions(object):
                     else:
                         menu.insertAction(0, action)
 
+    @err_catcher(name=__name__)
+    def openMediaVersionsDialog(self):
+        if hasattr(self, "dlg_mediaVersions") and self.core.isObjectValid(self.dlg_mediaVersions) and self.dlg_mediaVersions.isVisible():
+            self.dlg_mediaVersions.close()
+
+        self.dlg_mediaVersions = MediaVersionsDialog(self)
+        self.dlg_mediaVersions.show()
+
 
 if nuke.env.get("gui") and "fnFlipbookRenderer" in globals():
     class PrismRenderedFlipbook(fnFlipbookRenderer.SynchronousRenderedFlipbook):
@@ -1806,18 +2147,14 @@ if nuke.env.get("gui") and "fnFlipbookRenderer" in globals():
 
 
 class Farm_Submitter(QDialog):
-    def __init__(self, plugin, state, version=None):
+    def __init__(self, plugin, state, dependencies=None):
         super(Farm_Submitter, self).__init__()
         self.plugin = plugin
         self.core = self.plugin.core
         self.core.parentWindow(self)
         self.state = state
+        self.dependencies = dependencies
         self.setupUi()
-        if version:
-            self.state.ui.chb_version.setChecked(True)
-            intVersion = self.core.products.getIntVersionFromVersionName(version)
-            if intVersion is not None:
-                self.state.ui.sp_version.setValue(intVersion)
 
     @err_catcher(name=__name__)
     def setupUi(self):
@@ -1833,6 +2170,8 @@ class Farm_Submitter(QDialog):
         self.state.ui.gb_previous.setHidden(True)
         self.state.ui.gb_submit.setChecked(True)
         self.state.ui.gb_submit.setCheckable(False)
+        self.state.ui.w_version.setVisible(False)
+        self.state.ui.chb_version.setChecked(False)
         self.state.ui.f_cam.setVisible(False)
         if self.state.ui.cb_manager.count() == 1:
             self.state.ui.f_manager.setVisible(False)
@@ -1866,12 +2205,20 @@ class Farm_Submitter(QDialog):
         sm = self.core.getStateManager()
         comment = self.state.ui.group.knob("comment").value()
         sm.e_comment.setText(comment)
+        incrementScene = os.getenv("PRISM_NUKE_SUBMISSION_INCREMENT_SCENE", "1") == "1"
+        version = "next"
+        if self.state.ui.group.knob("autoversion") and not self.state.ui.group.knob("autoversion").value():
+            intVersion = self.state.ui.group.knob("renderversion").value()
+            version = self.core.versionFormat % intVersion
+
         result = sm.publish(
             successPopup=False,
             executeState=True,
             states=[self.state],
             saveScene=True,
-            incrementScene=True
+            incrementScene=incrementScene,
+            dependencies=self.dependencies,
+            useVersion=version,
         )
         prevKnob = self.state.ui.group.knob("prevFileName")
         if prevKnob:
@@ -1882,11 +2229,86 @@ class Farm_Submitter(QDialog):
                 prevKnobE.setValue(path)
 
         sm.deleteState(self.state)
+        self.plugin.getOutputPath(self.state.ui.node, self.state.ui.group)
         if result:
             msg = "Job submitted successfully."
             self.core.popup(msg, severity="info")
 
         self.close()
+
+
+class ShotListDlg(QDialog):
+
+    entitiesAdded = Signal(object)
+    entitiesInserted = Signal(object)
+
+    def __init__(self, origin, parent=None):
+        super(ShotListDlg, self).__init__()
+        self.parentDlg = parent
+        self.plugin = origin.plugin
+        self.core = self.plugin.core
+        self.setupUi()
+
+    @err_catcher(name=__name__)
+    def setupUi(self):
+        title = "Choose Shots"
+
+        self.setWindowTitle(title)
+        self.core.parentWindow(self, parent=self.parentDlg)
+
+        import EntityWidget
+        self.w_entities = EntityWidget.EntityWidget(core=self.core, refresh=True, pages=["Shots"])
+        self.w_entities.editEntitiesOnDclick = False
+        self.w_entities.getPage("Shots").tw_tree.itemDoubleClicked.connect(self.itemDoubleClicked)
+        self.w_entities.getPage("Shots").setSearchVisible(False)
+
+        self.lo_main = QVBoxLayout()
+        self.setLayout(self.lo_main)
+
+        self.bb_main = QDialogButtonBox()
+        self.bb_main.addButton("Add", QDialogButtonBox.AcceptRole)
+        if self.plugin.getShotsFromScene():
+            self.bb_main.addButton("Insert", QDialogButtonBox.AcceptRole)
+
+        self.bb_main.addButton("Cancel", QDialogButtonBox.RejectRole)
+        self.bb_main.clicked.connect(self.buttonClicked)
+
+        self.lo_main.addWidget(self.w_entities)
+        self.lo_main.addWidget(self.bb_main)
+
+    @err_catcher(name=__name__)
+    def itemDoubleClicked(self, item, column):
+        self.buttonClicked("add")
+
+    @err_catcher(name=__name__)
+    def buttonClicked(self, button):
+        if button == "add" or button.text() in ["Add", "Insert"]:
+            entities = self.w_entities.getCurrentData(returnOne=False)
+            if isinstance(entities, dict):
+                entities = [entities]
+
+            validEntities = []
+            for entity in entities:
+                if entity.get("type", "") not in ["asset", "shot"]:
+                    continue
+
+                validEntities.append(entity)
+
+            if not validEntities:
+                msg = "Invalid shot selected."
+                self.core.popup(msg, parent=self)
+                return
+
+            if button == "add" or button.text() in ["Add"]:
+                self.entitiesAdded.emit(validEntities)
+            else:
+                self.entitiesInserted.emit(validEntities)
+
+        self.close()
+
+    @err_catcher(name=__name__)
+    def sizeHint(self):
+        return QSize(500, 500)
 
 
 class NukeExport(object):
@@ -1904,6 +2326,7 @@ class NukeExport(object):
         self.w_outType.setVisible(False)
         self.gb_previous.setVisible(False)
         self.cb_context.setVisible(False)
+        self.setRangeType("Single Frame")
 
 
 class ExporterDlg(QDialog):
@@ -2058,7 +2481,7 @@ class VersionDlg(QDialog):
         self.setLayout(self.lo_main)
 
         self.bb_main = QDialogButtonBox()
-        self.bb_main.addButton("Render as selected version", QDialogButtonBox.AcceptRole)
+        self.bb_main.addButton("Use Selected Version", QDialogButtonBox.AcceptRole)
         self.bb_main.addButton("Cancel", QDialogButtonBox.RejectRole)
 
         self.bb_main.clicked.connect(self.buttonClicked)
@@ -2068,7 +2491,7 @@ class VersionDlg(QDialog):
 
         self.w_browser.navigate([entity, identifier + " (2d)"])
         idf = self.w_browser.getCurrentIdentifier()
-        if idf["identifier"] != identifier:
+        if not idf or idf["identifier"] != identifier:
             msg = "The identifier \"%s\" doesn't exist yet." % identifier
             self.core.popup(msg)
             return
@@ -2085,14 +2508,20 @@ class VersionDlg(QDialog):
 
     @err_catcher(name=__name__)
     def buttonClicked(self, button):
-        if button == "select" or button.text() == "Render as selected version":
+        if button == "select" or button.text() == "Use Selected Version":
             version = self.w_browser.getCurrentVersion()
             if not version:
                 msg = "Invalid version selected."
                 self.core.popup(msg, parent=self)
                 return
 
-            self.versionSelected.emit(version["version"])
+            intVersion = self.core.products.getIntVersionFromVersionName(version.get("version") or "")
+            if intVersion is None:
+                msg = "Invalid version selected."
+                self.core.popup(msg, parent=self)
+                return
+
+            self.versionSelected.emit(intVersion)
 
         self.close()
 
@@ -2160,3 +2589,537 @@ class ReadMediaDialog(QDialog):
             self.mediaSelected.emit(data)
 
         self.close()
+
+
+class MediaVersionsDialog(QDialog):
+    """Non-modal dialog for managing media versions in Read nodes"""
+    
+    def __init__(self, plugin):
+        super(MediaVersionsDialog, self).__init__()
+        self.plugin = plugin
+        self.core = plugin.core
+        self.groupByShot = False
+        self.nodeItems = []
+        
+        self.setupUi()
+        self.connectEvents()
+        self.refreshNodes()
+    
+    @err_catcher(name=__name__)
+    def setupUi(self):
+        """Setup the dialog UI"""
+        self.setWindowTitle("Manage Media Versions")
+        self.resize(1200, 600)
+        self.core.parentWindow(self)
+        
+        # Make it non-modal
+        self.setWindowModality(Qt.NonModal)
+        
+        # Main layout
+        layout = QVBoxLayout()
+        
+        # Toolbar
+        toolbar = QHBoxLayout()
+        self.btn_refresh = QPushButton("Refresh")
+        self.btn_refresh.setToolTip("Refresh the list of Read nodes")
+        toolbar.addWidget(self.btn_refresh)
+        toolbar.addStretch()
+        
+        layout.addLayout(toolbar)
+        
+        # Tree widget
+        self.tree = QTreeWidget()
+        self.tree.setAlternatingRowColors(True)
+        self.tree.setSortingEnabled(True)
+        self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        
+        # Setup columns
+        self.setupColumns()
+        
+        layout.addWidget(self.tree)
+        
+        # Status bar
+        self.statusLabel = QLabel("Ready")
+        toolbar.addWidget(self.statusLabel)
+        
+        self.setLayout(layout)
+        
+    @err_catcher(name=__name__)
+    def setupColumns(self):
+        """Setup tree widget columns"""
+        columns = ["Node Name", "Asset/Shot", "Identifier", "Version", "Status", "Filepath"]
+        self.tree.setHeaderLabels(columns)
+        
+        # Set column widths
+        self.tree.setColumnWidth(0, 150)  # Node Name
+        self.tree.setColumnWidth(1, 120)  # Shot
+        self.tree.setColumnWidth(2, 150)  # Identifier
+        self.tree.setColumnWidth(3, 100)  # Version
+        self.tree.setColumnWidth(4, 120)  # Status
+        self.tree.setColumnWidth(5, 400)  # Filepath
+    
+    @err_catcher(name=__name__)
+    def connectEvents(self):
+        """Connect UI events"""
+        self.btn_refresh.clicked.connect(self.refreshNodes)
+        self.tree.customContextMenuRequested.connect(self.showContextMenu)
+        self.tree.itemSelectionChanged.connect(self.onSelectionChanged)
+        self.tree.itemDoubleClicked.connect(self.onItemDoubleClicked)
+
+    @err_catcher(name=__name__)
+    def getOutdatedMedia(self):
+        items = []
+        for item in self.nodeItems:
+            status = item.text(4).lower()
+            if status == "update available":
+                items.append(item)
+
+        return items
+
+    @err_catcher(name=__name__)
+    def refreshNodes(self):
+        """Scan all Read nodes and populate the tree widget"""
+        self.tree.clear()
+        self.nodeItems = []
+        
+        # Get all Read nodes in the script
+        readNodes = [node for node in nuke.allNodes(recurseGroups=True) if node.Class() == "Read"]
+        
+        if not readNodes:
+            self.statusLabel.setText("No Read nodes found in script")
+            return
+            
+        items = []
+        for node in readNodes:
+            item = self.createTreeItem(node)
+            if item:
+                items.append(item)
+        
+        if self.groupByShot:
+            self.groupItemsByShot(items)
+        else:
+            for item in items:
+                self.tree.addTopLevelItem(item)
+
+        for item in items:
+            # Create version combo box
+            self.createVersionComboBox(item)
+
+        self.nodeItems = items
+        self.statusLabel.setText(f"Found {len(items)} Read nodes")
+        self.tree.expandAll()
+        self.tree.resizeColumnToContents(0)
+        self.tree.setColumnWidth(0, self.tree.columnWidth(0) + 20)
+        self.tree.resizeColumnToContents(1)
+        self.tree.setColumnWidth(1, self.tree.columnWidth(1) + 20)
+        self.tree.resizeColumnToContents(2)
+        self.tree.setColumnWidth(2, self.tree.columnWidth(2) + 20)
+        self.tree.resizeColumnToContents(3)
+        self.tree.setColumnWidth(3, self.tree.columnWidth(3) + 20)
+
+    @err_catcher(name=__name__)
+    def createTreeItem(self, node):
+        """Create a tree widget item for a Read node"""
+        filepath = node.knob("file").value() or ""
+        entityName = ""
+        identifier = ""
+        version = ""
+        pathData = {}
+        if filepath:                
+            # Expand environment variables
+            filepath = self.plugin.expandEnvVarsInFilepath(filepath)
+            
+            # Try to get information from Prism path structure
+            pathData = self.getContextFromFilepath(filepath)
+            if pathData:
+                identifier = pathData.get("identifier", "")
+                version = pathData.get("version", "")
+                entityName = self.core.entities.getEntityName(pathData)
+        
+        # Calculate status
+        status, statusColor = self.calculateVersionStatus(filepath, version)
+        
+        # Create the tree item
+        item = QTreeWidgetItem([
+            node.fullName(),
+            entityName,
+            identifier,
+            version,
+            status,
+            filepath
+        ])
+        
+        # Store the node reference and additional data
+        item.setData(0, Qt.UserRole, {"node": node, "context": pathData})
+        item.setData(4, Qt.UserRole + 1, statusColor)  # Store status color
+        item.setToolTip(5, filepath)
+        
+        # Set status column background color
+        if statusColor:
+            item.setBackground(4, QColor(statusColor))
+        
+        return item
+
+    @err_catcher(name=__name__)
+    def getContextFromFilepath(self, filepath):
+        mediaType = self.core.mediaProducts.getMediaTypeFromPath(filepath) or "2drenders"
+        pathData = self.core.paths.getRenderProductData(filepath, mediaType=mediaType)
+        if pathData and not pathData.get("identifier"):
+            entityType = self.core.paths.getEntityTypeFromPath(filepath)
+            key = None
+            if mediaType == "playblasts":
+                if entityType == "asset":
+                    key = "playblastFilesAssets"
+                elif entityType == "shot":
+                    key = "playblastFilesShots"
+            else:
+                if entityType == "asset":
+                    key = "renderFilesAssets"
+                elif entityType == "shot":
+                    key = "renderFilesShots"
+
+            if not key:
+                return pathData
+            
+            context = {
+                "type": entityType,
+                "entityType": entityType,
+            }
+
+            context["mediaType"] = mediaType
+            location = self.core.paths.getLocationFromPath(filepath)
+            if location:
+                context["project_path"] = self.core.paths.getRenderProductBasePaths()[location]
+
+            template = self.core.projects.getResolvedProjectStructurePath(key, context=context)
+            context.update(pathData)
+            pathData = self.core.projects.extractKeysFromPath(os.path.dirname(os.path.normpath(filepath)), os.path.dirname(template), context=context)
+
+        return pathData
+    
+    @err_catcher(name=__name__)
+    def calculateVersionStatus(self, filepath, currentVersion):
+        """Calculate version status for a media file"""
+        if not filepath or not currentVersion:
+            return "unknown", "#636363"  # Gray background
+        
+        try:
+            # Get available versions
+            versions = self.getAvailableVersions(filepath)
+            if not versions:
+                return "unknown", "#636363"  # Gray background
+            
+            # Get the latest version (first in sorted list)
+            latestVersion = versions[0] if versions else None
+            
+            if not latestVersion:
+                return "unknown", "#636363"  # Gray background
+            
+            if currentVersion == latestVersion:
+                return "latest", "#266D26"  # Light green background
+            else:
+                return "update available", "#AF571C"  # Light orange background
+                
+        except Exception as e:
+            logger.warning(f"Failed to calculate version status for {filepath}: {str(e)}")
+            return "unknown", "#636363"  # Gray background
+
+    @err_catcher(name=__name__)
+    def createVersionComboBox(self, item):
+        node = item.data(0, Qt.UserRole)["node"]
+        filepath = node.knob("file").value() or ""
+        filepath = self.plugin.expandEnvVarsInFilepath(filepath)
+        """Create version combo box for the item"""
+        combo = QComboBox()
+        
+        # Get available versions
+        versions = self.getAvailableVersions(filepath)
+        
+        if versions:
+            combo.addItems(versions)
+            
+            # Set current version
+            try:
+                mediaType = self.core.mediaProducts.getMediaTypeFromPath(filepath) or "2drenders"
+                pathData = self.core.paths.getRenderProductData(filepath, mediaType=mediaType)
+                currentVersion = pathData.get("version", "")
+                if currentVersion and currentVersion in versions:
+                    combo.setCurrentText(currentVersion)
+            except:
+                pass
+            
+            # Connect version change signal
+            combo.currentTextChanged.connect(
+                lambda version, n=node: self.onVersionChanged(n, version)
+            )
+        else:
+            combo.addItem("No versions found")
+            combo.setEnabled(False)
+            
+        # Set the combo box in the tree
+        self.tree.setItemWidget(item, 3, combo)
+
+    @err_catcher(name=__name__)
+    def getAvailableVersions(self, filepath):
+        """Get available versions for a media file"""
+        mediaType = self.core.mediaProducts.getMediaTypeFromPath(filepath) or "2drenders"
+        pathData = self.core.paths.getRenderProductData(filepath, mediaType=mediaType)
+        if not pathData:
+            return []
+            
+        # Create context for version lookup
+        ctx = {
+            "type": pathData.get("type"),
+            "identifier": pathData.get("identifier", ""),
+            "mediaType": mediaType,
+        }
+        if ctx["type"] == "asset":
+            ctx["asset_path"] = pathData.get("asset_path", "")
+        elif ctx["type"] == "shot":
+            ctx["sequence"] = pathData.get("sequence", "")
+            ctx["shot"] = pathData.get("shot", "")
+        
+        # Get all versions
+        versions = self.core.mediaProducts.getVersionsFromContext(ctx)
+        versionNames = [v["version"] for v in versions]
+        
+        # Sort versions (latest first)
+        return sorted(versionNames, reverse=True)
+    
+    @err_catcher(name=__name__)
+    def onVersionChanged(self, node, version):
+        """Handle version change in combo box"""
+        # Get current filepath
+        currentPath = node.knob("file").value()
+        currentPath = self.plugin.expandEnvVarsInFilepath(currentPath)
+        
+        # Get path data
+        mediaType = self.core.mediaProducts.getMediaTypeFromPath(currentPath) or "2drenders"
+        pathData = self.core.paths.getRenderProductData(currentPath, mediaType=mediaType)
+        if not pathData:
+            return
+
+        version = self.core.mediaProducts.getVersion(pathData, pathData["identifier"], mediaType=mediaType, version=version)
+        if not version:
+            self.core.popup(f"Version {version} not found.")
+            return
+    
+        aovs = self.core.mediaProducts.getAOVsFromVersion(pathData)
+        if aovs:
+            aosNames = [aov["aov"] for aov in aovs]
+            aov = pathData.get("aov") if pathData.get("aov") and pathData.get("aov") in aosNames else aosNames[0]
+        else:
+            aov = None
+
+        newPath = self.core.mediaProducts.getFileFromVersion(version, aov=aov, findExisting=True)
+        if not newPath:
+            self.core.popup(f"File for version {version} not found.")
+            return
+        
+        # Update the Read node
+        useRel = self.core.getConfig("nuke", "useRelativePaths", dft=False, config="user")
+        if useRel:
+            newPath = self.plugin.makePathRelative(newPath)
+        
+        # Handle frame range
+        if "#" in newPath:
+            files = self.core.media.getFilesFromSequence(newPath)
+            start, end = self.core.media.getFrameRangeFromSequence(files)
+            if start and end and start != "?" and end != "?":
+                newPath += f" {start}-{end}"
+        
+        node.knob("file").fromUserText(newPath)
+        
+        # Refresh the item
+        self.refreshSingleItem(node)
+        return True
+                
+    @err_catcher(name=__name__)
+    def refreshSingleItem(self, node):
+        """Refresh a single tree item"""
+        # Find the item for this node
+        for i in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(i)
+            if item.data(0, Qt.UserRole)["node"] == node:
+                # Update filepath and version info
+                filepath = node.knob("file").value()
+                filepath = self.plugin.expandEnvVarsInFilepath(filepath)
+                item.setText(5, filepath)  # Filepath column is now index 5
+                
+                # Update version
+                try:
+                    pathData = self.getContextFromFilepath(filepath)
+                    version = pathData.get("version", "") if pathData else ""
+                    item.setText(3, version)  # Version column
+                    
+                    # Update status
+                    status, statusColor = self.calculateVersionStatus(filepath, version)
+                    item.setText(4, status)  # Status column
+                    if statusColor:
+                        item.setBackground(4, QColor(statusColor))
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to refresh item for node {node.name()}: {str(e)}")
+                    
+                break
+    
+    @err_catcher(name=__name__)
+    def groupItemsByShot(self, items):
+        """Group tree items by shot"""
+        shotGroups = {}
+        
+        for item in items:
+            shotName = item.text(1)  # Shot column
+            if not shotName:
+                shotName = "Unknown"
+                
+            if shotName not in shotGroups:
+                # Create shot group
+                shotItem = QTreeWidgetItem([shotName, "", "", "", "", ""])  # Added extra column for Status
+                font = shotItem.font(0)
+                font.setBold(True)
+                shotItem.setFont(0, font)
+                shotGroups[shotName] = shotItem
+                self.tree.addTopLevelItem(shotItem)
+            
+            # Add item under shot group
+            shotGroups[shotName].addChild(item)
+
+    @err_catcher(name=__name__)
+    def showContextMenu(self, position):
+        """Show context menu"""
+        menu = QMenu()
+        
+        # Check if any items are selected
+        selectedItems = self.tree.selectedItems()
+        if selectedItems:
+            # Update to latest action
+            updateAction = menu.addAction("Update to Latest")
+            updateAction.triggered.connect(self.updateSelectedToLatest)
+            menu.addSeparator()
+        
+        # Group by shot toggle
+        if self.groupByShot:
+            action = menu.addAction("Ungroup by Shot")
+        else:
+            action = menu.addAction("Group by Shot")
+        action.triggered.connect(self.toggleGroupByShot)
+        
+        menu.addSeparator()
+        
+        # Refresh action
+        refreshAction = menu.addAction("Refresh")
+        refreshAction.triggered.connect(self.refreshNodes)
+        
+        # Show menu at cursor position
+        menu.exec_(self.tree.mapToGlobal(position))
+    
+    @err_catcher(name=__name__)
+    def updateSelectedToLatest(self):
+        """Update all selected nodes to their latest versions"""
+        selectedItems = self.tree.selectedItems()
+        if not selectedItems:
+            return
+        
+        updatedCount = 0
+        failedCount = 0
+        
+        for item in selectedItems:
+            try:
+                node = item.data(0, Qt.UserRole)["node"]
+                if not node or not hasattr(node, 'knob'):
+                    continue
+                
+                # Get current filepath
+                currentPath = node.knob("file").value()
+                if not currentPath:
+                    continue
+                    
+                currentPath = self.plugin.expandEnvVarsInFilepath(currentPath)
+                
+                # Get available versions
+                versions = self.getAvailableVersions(currentPath)
+                if not versions:
+                    failedCount += 1
+                    continue
+                
+                # Get latest version
+                latestVersion = versions[0]
+                currentVersion = item.text(3)  # Version column
+                
+                if currentVersion == latestVersion:
+                    continue  # Already latest
+                
+                # Update to latest version
+                result = self.onVersionChanged(node, latestVersion)
+                if result:
+                    updatedCount += 1
+                else:
+                    failedCount += 1
+                
+            except Exception as e:
+                logger.warning(f"Failed to update node {node.name() if node else 'unknown'}: {str(e)}")
+                failedCount += 1
+        
+        # Show result message
+        if updatedCount > 0 or failedCount > 0:
+            message = f"Updated {updatedCount} nodes"
+            if failedCount > 0:
+                message += f", {failedCount} failed"
+
+            logger.info(message)
+            # self.core.popup(message, severity="info" if failedCount == 0 else "warning")
+        
+        # Refresh the tree to update status indicators
+        self.refreshNodes()
+    
+    @err_catcher(name=__name__)
+    def toggleGroupByShot(self):
+        """Toggle grouping by shot"""
+        self.groupByShot = not self.groupByShot
+        self.refreshNodes()
+    
+    @err_catcher(name=__name__)
+    def onSelectionChanged(self):
+        """Handle tree widget selection change - sync with Nuke node selection"""
+        try:
+            # Get selected tree items
+            selectedItems = self.tree.selectedItems()
+            
+            # Clear current Nuke selection
+            for node in nuke.selectedNodes():
+                node.setSelected(False)
+            
+            # Select corresponding nodes in Nuke
+            for item in selectedItems:
+                node = item.data(0, Qt.UserRole)["node"]
+                if node and hasattr(node, 'setSelected'):
+                    try:
+                        node.setSelected(True)
+                    except:
+                        # Node might have been deleted
+                        pass
+                        
+        except Exception as e:
+            logger.warning(f"Failed to sync selection: {str(e)}")
+    
+    @err_catcher(name=__name__)
+    def onItemDoubleClicked(self, item, column):
+        """Handle double-click on tree item - frame to node in Nuke"""
+        try:
+            node = item.data(0, Qt.UserRole)["node"]
+            if not node or not hasattr(node, 'setSelected'):
+                return
+                
+            # Clear current selection and select only this node
+            for n in nuke.selectedNodes():
+                n.setSelected(False)
+            node.setSelected(True)
+            
+            # Frame to the node in the node graph
+            # This uses Nuke's zoom functionality to frame the selected node
+            nuke.zoom(2, [node.xpos(), node.ypos()])
+            
+        except Exception as e:
+            logger.warning(f"Failed to frame to node: {str(e)}")

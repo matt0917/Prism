@@ -66,7 +66,7 @@ class PathManager(object):
         node=None,
     ):
         fileName = self.core.getCurrentFileName()
-        if self.core.fileInPipeline(filepath=fileName):
+        if self.core.fileInPipeline(filepath=fileName, validateFilename=False):
             fnameData = self.core.getScenefileData(fileName)
             if taskName is None:
                 taskName = ""
@@ -346,12 +346,12 @@ class PathManager(object):
         return cacheData
 
     @err_catcher(name=__name__)
-    def getMediaProductData(self, productPath, isFilepath=True, addPathData=True, mediaType=None, validateModTime=False):
+    def getMediaProductData(self, productPath, isFilepath=True, addPathData=True, mediaType=None, validateModTime=False, isVersionFolder=False):
         mediaType = mediaType or "3drenders"
         if mediaType == "playblasts":
-            return self.getPlayblastProductData(productPath, isFilepath=isFilepath, addPathData=addPathData, validateModTime=validateModTime)
+            return self.getPlayblastProductData(productPath, isFilepath=isFilepath, addPathData=addPathData, validateModTime=validateModTime, isVersionFolder=isVersionFolder)
         else:
-            return self.getRenderProductData(productPath, isFilepath=isFilepath, addPathData=addPathData, mediaType=mediaType, validateModTime=validateModTime)
+            return self.getRenderProductData(productPath, isFilepath=isFilepath, addPathData=addPathData, mediaType=mediaType, validateModTime=validateModTime, isVersionFolder=isVersionFolder)
 
     @err_catcher(name=__name__)
     def getRenderProductData(self, productPath, isFilepath=True, addPathData=True, mediaType=None, validateModTime=False, isVersionFolder=False, allowCache=True):

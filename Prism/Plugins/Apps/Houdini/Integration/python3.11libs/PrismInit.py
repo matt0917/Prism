@@ -23,9 +23,12 @@ def prismInit(prismArgs=[]):
             except:
                 from PySide2.QtWidgets import QApplication
 
-        QApplication.addLibraryPath(
-            os.path.join(hou.text.expandString("$HFS"), "bin", "Qt_plugins")
-        )
+        if platform.system() == "Windows":
+            qtPath = os.path.join(hou.text.expandString("$HFS"), "bin", "Qt_plugins")
+        else:
+            qtPath = os.path.join(hou.text.expandString("$HFS"), "dsolib", "Qt_plugins")
+
+        QApplication.addLibraryPath(qtPath)
         if not QApplication.instance():
             QApplication(sys.argv)
 
@@ -40,6 +43,9 @@ def prismInit(prismArgs=[]):
             QtWidgets.QMessageBox.warning(None, "Prism", "The environment variable \"PRISM_ROOT\" is not defined. Try to setup the Prism Houdini integration again from the DCC apps tab in the Prism User Settings.")
 
         return
+
+    if os.pathsep in root:
+        root = root.split(os.pathsep)[0]
 
     scriptPath = os.path.join(root, "Scripts")
     if scriptPath not in sys.path:

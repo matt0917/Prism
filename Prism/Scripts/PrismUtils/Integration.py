@@ -33,12 +33,16 @@
 
 
 import os
+import logging
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
 from qtpy.QtWidgets import *
 
 from PrismUtils.Decorators import err_catcher
+
+
+logger = logging.getLogger(__name__)
 
 
 class Ingegration(object):
@@ -63,8 +67,12 @@ class Ingegration(object):
             if not os.path.exists(filepath):
                 return True
 
-            with open(filepath, "r") as f:
-                content = f.read()
+            try:
+                with open(filepath, "r") as f:
+                    content = f.read()
+            except Exception as e:
+                logger.warning(e)
+                return False
 
         if not searchStrings:
             searchStrings = [
@@ -145,28 +153,34 @@ class Ingegration(object):
 
     @err_catcher(name=__name__)
     def addIntegration(self, app, path=None, quiet=False):
-        if not path:
-            path = self.requestIntegrationPath(app)
-
-            if not path:
-                return
-
         plugin = self.core.getPlugin(app)
         if not plugin:
             return
 
+        hasIntegrationPath = self.core.getPluginData(app, "hasIntegrationPath")
+        if hasIntegrationPath is None:
+            hasIntegrationPath = True
+
+        if not path and hasIntegrationPath:
+            path = self.requestIntegrationPath(app)
+            if not path:
+                return
+
         result = plugin.addIntegration(path)
-
         if result:
-            self.core.callback("postIntegrationAdded", args=(app, path))
-            path = self.core.fixPath(path)
-            data = self.core.readYaml(path=self.installLocPath)
-            if app not in data:
-                data[app] = []
+            if not hasIntegrationPath:
+                path = result
 
-            if path not in data[app]:
-                data[app].append(path)
-                self.core.writeYaml(path=self.installLocPath, data=data)
+            self.core.callback("postIntegrationAdded", args=(app, path))
+            if path:
+                path = self.core.fixPath(path)
+                data = self.core.readYaml(path=self.installLocPath) or {}
+                if app not in data:
+                    data[app] = []
+
+                if path not in data[app]:
+                    data[app].append(path)
+                    self.core.writeYaml(path=self.installLocPath, data=data)
 
             if not quiet:
                 self.core.popup("Prism integration was added successfully", title="Prism Ingegration", severity="info")

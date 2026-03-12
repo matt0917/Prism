@@ -413,6 +413,27 @@ class SaveHDAClass(hou_Export.ExportClass):
 
         outputName, outputPath, hVersion = result
 
+        kwargs = {
+            "state": self,
+            "scenefile": fileName,
+            "outputpath": outputName,
+            "version": hVersion,
+        }
+
+        result = self.core.callback("preExport", **kwargs)
+        for res in result:
+            if isinstance(res, dict) and res.get("cancel", False):
+                return [
+                    self.state.text(0)
+                    + " - error - %s" % res.get("details", "preExport hook returned False")
+                ]
+
+            if res and "outputName" in res:
+                outputName = res["outputName"]
+
+            if res and "version" in res:
+                hVersion = res["version"]
+
         details = entity.copy()
         del details["filename"]
         del details["extension"]
@@ -435,6 +456,15 @@ class SaveHDAClass(hou_Export.ExportClass):
 
         version = int(hVersion[1:]) if hVersion else None
         result = self.exportHDA(ropNode, outputName, version)
+
+        kwargs = {
+            "state": self,
+            "scenefile": fileName,
+            "result": result,
+            "outputpath": outputName,
+        }
+        self.core.callback("postExport", **kwargs)
+
         if result is True:
             if len(os.listdir(os.path.dirname(outputName))) > 0:
                 result = True

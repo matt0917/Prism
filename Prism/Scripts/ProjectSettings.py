@@ -49,7 +49,7 @@ from qtpy.QtCore import *
 from qtpy.QtGui import *
 from qtpy.QtWidgets import *
 
-from PrismUtils import PrismWidgets
+from PrismUtils import PrismWidgets, ProjectWidgets
 from PrismUtils.Decorators import err_catcher
 from UserInterfacesPrism import ProjectSettings_ui
 
@@ -259,7 +259,72 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
         self.tw_settings.setSizePolicy(policy)
         self.lw_categories.currentItemChanged.connect(self.onCategoryChanged)
         self.selectCategory("General")
+
+        self.w_sceneBuilding = QWidget()
+        self.lo_sceneBuilding = QVBoxLayout(self.w_sceneBuilding)
+
+        sbSettings = self.core.entities.getDefaultSceneBuildingSettings()
+        self.w_framerange = ProjectWidgets.DefaultSettingItem(self, "Apply Shot Framerange:", sbSettings["apply_framerange"])
+        self.lo_sceneBuilding.addWidget(self.w_framerange)
+
+        self.w_handlerange = ProjectWidgets.DefaultSettingItem(self, "Apply Shot Handlerange:", sbSettings["apply_handlerange"])
+        self.lo_sceneBuilding.addWidget(self.w_handlerange)
+
+        self.w_fps = ProjectWidgets.DefaultSettingItem(self, "Apply FPS:", sbSettings["apply_fps"])
+        self.lo_sceneBuilding.addWidget(self.w_fps)
+
+        self.w_resolution = ProjectWidgets.DefaultSettingItem(self, "Apply Resolution:", sbSettings["apply_resolution"])
+        self.lo_sceneBuilding.addWidget(self.w_resolution)
+
+        self.w_importShotcam = ProjectWidgets.DefaultSettingItem(self, "Import Shotcam:", sbSettings["import_shotcam"])
+        self.lo_sceneBuilding.addWidget(self.w_importShotcam)
+
+        self.w_importAssets = ProjectWidgets.DefaultSettingItem(self, "Import Products using Tags:", sbSettings["import_products"])
+        self.lo_sceneBuilding.addWidget(self.w_importAssets)
+
+        self.w_productTags = QWidget()
+        self.lo_productTags = QHBoxLayout(self.w_productTags)
+        self.lo_productTags.addStretch()
+        self.b_productTags = QPushButton("Manage Product Tags...")
+        self.b_productTags.clicked.connect(self.showProductTags)
+        self.lo_productTags.addWidget(self.b_productTags)
+        self.lo_productTags.setContentsMargins(0, 0, 0, 0)
+        self.lo_sceneBuilding.addWidget(self.w_productTags)
+
+        self.lo_sceneBuilding.addStretch()
+        self.addTab(self.w_sceneBuilding, "Scene Building")
+
+        self.w_states = QWidget()
+        self.lo_states = QVBoxLayout(self.w_states)
+
+        self.gb_stateDefaults = ProjectWidgets.StateDefaults(self)
+        self.lo_states.addWidget(self.gb_stateDefaults)
+
+        self.gb_statePresets = ProjectWidgets.StatePresets(self)
+        self.lo_states.addWidget(self.gb_statePresets)
+
+        self.lo_states.addStretch()
+        self.addTab(self.w_states, "States")
+
+        self.w_presetScenes = QWidget()
+        lo_presetScenes = QVBoxLayout()
+        self.w_presetScenes.setLayout(lo_presetScenes)
+
+        self.gb_presetScenes = ProjectWidgets.DefaultPresetScenes(self)
+        lo_presetScenes.addWidget(self.gb_presetScenes)
+
+        lo_presetScenes.addStretch()
+        self.addTab(self.w_presetScenes, "Preset Scenes")
+
         self.core.callback(name="projectSettings_loadUI", args=[self])
+
+    @err_catcher(name=__name__)
+    def showProductTags(self):
+        if hasattr(self, "dlg_productTags") and self.dlg_productTags.isVisible():
+            self.dlg_productTags.close()
+
+        self.dlg_productTags = ProjectWidgets.ProductTagsDlg(self.core, parent=self)
+        self.dlg_productTags.show()
 
     @err_catcher(name=__name__)
     def refreshFolderStructure(self):
@@ -981,6 +1046,26 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
         cData["export_paths"] = self.getExportLocations()
         cData["render_paths"] = self.getRenderLocations()
 
+        if "studio" not in cData:
+            cData["studio"] = {}
+
+        if "globals" not in cData:
+            cData["globals"] = {}
+
+        cData["studio"]["stateDefaults"] = self.gb_stateDefaults.getItemData()
+        cData["studio"]["statePresets"] = self.gb_statePresets.getItemData()
+        cData["globals"]["presetScenes"] = self.gb_presetScenes.getItemData()
+
+        if "sceneBuilding" not in cData:
+            cData["sceneBuilding"] = {}
+
+        cData["sceneBuilding"]["apply_framerange"] = self.w_framerange.dftTasks()
+        cData["sceneBuilding"]["apply_handlerange"] = self.w_handlerange.dftTasks()
+        cData["sceneBuilding"]["apply_fps"] = self.w_fps.dftTasks()
+        cData["sceneBuilding"]["apply_resolution"] = self.w_resolution.dftTasks()
+        cData["sceneBuilding"]["import_products"] = self.w_importAssets.dftTasks()
+        cData["sceneBuilding"]["import_shotcam"] = self.w_importShotcam.dftTasks()
+
         self.tmp_configPath = configPath
         self.tmp_export = export
         self.core.callback(name="preProjectSettingsSave", args=[self, cData])
@@ -997,7 +1082,7 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
                 )
                 self.core.media.savePixmap(image, imagePath)
 
-            self.core.setConfig(data=cData, configPath=configPath, updateNestedData={"exclude": ["environmentVariables", "folder_structure"]})
+            self.core.setConfig(data=cData, configPath=configPath, updateNestedData={"exclude": ["environmentVariables", "folder_structure", "jobEnvVars", "render_paths", "export_paths"]})
 
             if configPath == self.core.prismIni and not export:
                 self.core.projects.refreshLocalFiles()
@@ -1213,6 +1298,42 @@ class ProjectSettings(QDialog, ProjectSettings_ui.Ui_dlg_ProjectSettings):
             "When this option is enabled, Prism checks the resolution of Nuke scripts when they are opened and shows a warning, if they don't match the project resolution."
         )
         self.requirePublishCommentToggled(self.chb_curPRequirePublishComment.isChecked())
+
+        if configData and "studio" in configData:
+            if "stateDefaults" in configData["studio"]:
+                val = configData["studio"]["stateDefaults"]
+                if val:
+                    self.gb_stateDefaults.loadStateData(val)
+
+            if "statePresets" in configData["studio"]:
+                val = configData["studio"]["statePresets"]
+                if val:
+                    self.gb_statePresets.loadPresetData(val)
+
+        if configData and "globals" in configData:
+            if "presetScenes" in configData["globals"]:
+                val = configData["globals"]["presetScenes"]
+                if val:
+                    self.gb_presetScenes.loadPresetData(val)
+
+        sbData = configData.get("sceneBuilding", {}) if configData else {}
+        if "apply_framerange" in sbData:
+            self.w_framerange.setDftTasks(sbData["apply_framerange"])
+
+        if "apply_handlerange" in sbData:
+            self.w_handlerange.setDftTasks(sbData["apply_handlerange"])
+
+        if "apply_fps" in sbData:
+            self.w_fps.setDftTasks(sbData["apply_fps"])
+
+        if "apply_resolution" in sbData:
+            self.w_resolution.setDftTasks(sbData["apply_resolution"])
+
+        if "import_products" in sbData:
+            self.w_importAssets.setDftTasks(sbData["import_products"])
+
+        if "import_shotcam" in sbData:
+            self.w_importShotcam.setDftTasks(sbData["import_shotcam"])
 
         self.core.callback(name="postProjectSettingsLoad", args=[self, configData])
 

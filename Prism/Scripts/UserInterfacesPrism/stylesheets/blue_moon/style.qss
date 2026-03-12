@@ -802,28 +802,28 @@ QTableView {
     selection-color: @white;
     selection-background-color: @selectionBackgroundColor; /* should be similar to QListView::item selected background-color */
     show-decoration-selected: 1; /* make the selection span the entire width of the view */
-    border-radius: 3px;
+    border-radius: 0px;
 }
 
 QListView::item,
 QTreeView::item  {
     background-color: transparent; /* fix to homogenize it on all OSs */
-    border: 1px solid transparent;
-    border-radius: 3px;
+    border: 0px solid transparent;
+    border-radius: 0px;
 }
 
 QListView::item:hover,
 QTreeView::item:hover  {
     background-color: @selectionHoverColor; /* fix to homogenize it on all OSs */
     border: 0px solid @lightgrey;
-    border-radius: 3px;
+    border-radius: 0px;
 }
 
 QListView::item:selected  {
     color: @selectionColor; /* should be similar to QListView selection-color */
     background-color: @selectionBackgroundColor; /* should be similar to QListView selection-background-color */
     show-decoration-selected: 1; /* make the selection span the entire width of the view */
-    border: 1px solid transparent;
+    border: 0px solid transparent;
     border-radius: 3px;
 }
 
@@ -832,7 +832,7 @@ QTreeView::item:selected  {
     background-color: @selectionBackgroundColor; /* should be similar to QListView selection-background-color */
     show-decoration-selected: 1; /* make the selection span the entire width of the view */
     border: 0px solid transparent;
-    border-radius: 3px;
+    border-radius: 0px;
     border-top-left-radius: 0px;
     border-bottom-left-radius: 0px;
 }
@@ -1897,6 +1897,12 @@ QTreeView::indicator {
     width: 11px;
     height: 11px;
     border-radius:2px;
+}
+
+QTreeView::branch:selected,
+QTreeWidget::branch:selected {
+    background: @selectionBackgroundColor;
+    border: 0px solid @borders;
 }
 
 /* fix for QTreeView::indicator loosing its margin */

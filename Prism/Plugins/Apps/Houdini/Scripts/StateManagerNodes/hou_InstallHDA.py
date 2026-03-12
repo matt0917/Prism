@@ -146,6 +146,24 @@ class InstallHDAClass(hou_ImportFile.ImportFileClass):
             self.core.popup(result)
             return
 
+        kwargs = {
+            "state": self,
+            "importfile": impFileName,
+        }
+        result = self.core.callback("preImport", **kwargs)
+        for res in result:
+            if isinstance(res, dict) and res.get("cancel", False):
+                return
+
+            if res and "importfile" in res:
+                impFileName = res["importfile"]
+                if not impFileName:
+                    return
+
+        if not impFileName:
+            self.core.popup("Invalid importpath")
+            return
+
         hou.hda.installFile(impFileName, force_use_assets=True)
         defs = hou.hda.definitionsInFile(impFileName)
         for definition in defs:
@@ -155,6 +173,23 @@ class InstallHDAClass(hou_ImportFile.ImportFileClass):
         self.updateUi()
         self.stateManager.saveStatesToScene()
 
+        create = os.getenv("PRISM_HOUDINI_CREATE_NODE_AFTER_HDA_INSTALL")
+        if create == "1":
+            result = "Yes"
+        elif create == "0":
+            result = "No"
+        else:
+            msg = "The HDA was installed successfully.\n\nDo you want to create a new node from it?"
+            result = self.core.popupQuestion(msg)
+
+        if result == "Yes":
+            self.createNode()
+
+        kwargs = {
+            "state": self,
+            "importfile": impFileName,
+        }
+        self.core.callback("postImport", **kwargs)
         return True
 
     @err_catcher(name=__name__)

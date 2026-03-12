@@ -79,11 +79,16 @@ class Prism_Maya_Functions(object):
             "prePlayblast", self.prePlayblast, plugin=self.plugin
         )
         self.core.registerCallback(
+            "preExport", self.preExport, plugin=self.plugin
+        )
+        self.core.registerCallback(
             "onStateCreated", self.onStateCreated, plugin=self.plugin
         )
         self.core.registerCallback(
             "updatedEnvironmentVars", self.updatedEnvironmentVars, plugin=self.plugin
         )
+        self.core.registerCallback("postBuildScene", self.postBuildScene, plugin=self.plugin)
+        self.core.registerCallback("sm_export_updateUi", self.sm_export_updateUi, plugin=self.plugin)
         if "OCIO" in [item["key"] for item in self.core.users.getUserEnvironment()]:
             self.refreshOcio()
 
@@ -166,7 +171,7 @@ class Prism_Maya_Functions(object):
                 command=lambda x: self.core.saveScene(),
             )
             cmds.menuItem(
-                label="Save Comment...",
+                label="Save with Comment...",
                 annotation="Saves the current file to a new version with a comment",
                 parent=prism_menu,
                 command=lambda x: self.core.saveWithComment(),
@@ -323,11 +328,15 @@ class Prism_Maya_Functions(object):
 
                 # List to store all created cameras
                 created_cameras = []
+                increment = int(os.getenv("PRISM_SHOT_INCREMENT", "10"))
+                shotPrefix = os.getenv("PRISM_SHOT_PREFIX", "sh")
+                shotPadding = os.getenv("PRISM_SHOT_PADDING", "3")
+                camPrefix = os.getenv("PRISM_CAMERA_PREFIX", "cam_")
 
                 for i in range(num_shots):
-                    shot_index = len(existing_shots) + i + 1
-                    shot_name = "shot%03d" % shot_index
-                    cam_name = "Camera%03d" % shot_index
+                    shot_index = len(existing_shots) + (i + 1) * increment
+                    shot_name = ("%s%%0" % shotPrefix + shotPadding + "d") % (shot_index)
+                    cam_name = "%s%s" % (camPrefix, shot_name)
 
                     # Create camera if it doesn't exist
                     if not cmds.objExists(cam_name):
@@ -761,6 +770,23 @@ class Prism_Maya_Functions(object):
             self.dlg_render.show()
 
     @err_catcher(name=__name__)
+    def openBatchExport(self):
+        """Open the batch export dialog for exporting multiple assets at once"""
+        sm = self.core.getStateManager()
+        if not sm:
+            return
+
+        if not self.core.fileInPipeline():
+            self.core.showFileNotInProjectWarning(title="Warning")
+            return False
+
+        if hasattr(self, "dlg_batch_export"):
+            self.dlg_batch_export.close()
+
+        self.dlg_batch_export = BatchExportDlg(self)
+        self.dlg_batch_export.show()
+
+    @err_catcher(name=__name__)
     def getSetPrefix(self):
         return self.core.getConfig("maya", "setPrefix", config="project") or ""
 
@@ -986,16 +1012,52 @@ class Prism_Maya_Functions(object):
         origin.setStyleSheet("QScrollArea { border: 0px solid rgb(150,150,150); }")
 
     @err_catcher(name=__name__)
+    def newScene(self, force=False):
+        if cmds.file(q=True, modified=True) and not force and not cmds.about(batch=True):
+            if cmds.file(q=True, exists=True):
+                scenename = cmds.file(q=True, sceneName=True)
+            else:
+                scenename = "untitled scene"
+
+            option = cmds.confirmDialog(
+                title="Save Changes",
+                message=("Save changes to %s?" % scenename),
+                button=["Save", "Don't Save", "Cancel"],
+                defaultButton="Save",
+                cancelButton="Cancel",
+                dismissString="Cancel",
+            )
+            if option == "Save":
+                if cmds.file(q=True, exists=True):
+                    cmds.file(save=True)
+                else:
+                    cmds.SaveScene()
+
+                if cmds.file(q=True, exists=True):
+                    cmds.file(new=True, force=True)
+
+            elif option == "Don't Save":
+                cmds.file(new=True, force=True)
+            else:
+                return False
+
+        else:
+            cmds.file(new=True, force=True)
+
+        return True
+
+    @err_catcher(name=__name__)
     def openScene(self, origin, filepath, force=False):
         if not filepath.endswith(".ma") and not filepath.endswith(".mb"):
             return False
 
         try:
-            if cmds.file(q=True, modified=True) and not force:
+            if cmds.file(q=True, modified=True) and not force and not cmds.about(batch=True):
                 if cmds.file(q=True, exists=True):
                     scenename = cmds.file(q=True, sceneName=True)
                 else:
                     scenename = "untitled scene"
+
                 option = cmds.confirmDialog(
                     title="Save Changes",
                     message=("Save changes to %s?" % scenename),
@@ -1013,10 +1075,11 @@ class Prism_Maya_Functions(object):
                         cmds.file(filepath, o=True, force=True)
                 elif option == "Don't Save":
                     cmds.file(filepath, o=True, force=True)
+
             else:
                 cmds.file(filepath, o=True, force=True)
-        except:
-            pass
+        except Exception as e:
+            logger.debug("error while opening scene: %s" % e)
         else:
             if not cmds.about(batch=True):
                 if os.path.splitext(filepath)[1] == ".mb":
@@ -1095,7 +1158,7 @@ class Prism_Maya_Functions(object):
 
     @err_catcher(name=__name__)
     def refreshOcio(self):
-        cmds.evalDeferred('cmds.colorManagementPrefs(e=True, configFilePath=os.getenv("OCIO", ""))', lp=True)
+        cmds.evalDeferred('import os;cmds.colorManagementPrefs(e=True, configFilePath=os.getenv("OCIO", ""))', lp=True)
         cmds.evalDeferred('cmds.colorManagementPrefs(refresh=True)', lp=True)
 
     @err_catcher(name=__name__)
@@ -1245,6 +1308,42 @@ class Prism_Maya_Functions(object):
             cmds.select(origin.curCam)
 
     @err_catcher(name=__name__)
+    def getUseRelativePath(self):
+        return self.core.getConfig(
+            "maya", "useRelativePaths", dft=False, config="project"
+        )
+
+    @err_catcher(name=__name__)
+    def getPathRelativeToProject(self, path):
+        if not path:
+            return path
+
+        root = cmds.workspace(q=True, rd=True)
+        try:
+            absolute_path = os.path.normpath(os.path.abspath(path))
+            reference_root = os.path.normpath(os.path.abspath(root))
+
+            if os.name == "nt":
+                abs_drive = os.path.splitdrive(absolute_path)[0].lower()
+                ref_drive = os.path.splitdrive(reference_root)[0].lower()
+                if abs_drive != ref_drive:
+                    return absolute_path.replace("\\", "/")
+
+            try:
+                relative_path = os.path.relpath(absolute_path, reference_root)
+            except ValueError:
+                return absolute_path.replace("\\", "/")
+
+            relative_path = relative_path.replace("\\", "/")
+            if not relative_path.startswith("."):
+                relative_path = "./" + relative_path
+
+        except ValueError as e:
+            logger.warning(str(e) + " - path: %s - start: %s" % (path, self.core.projectPath))
+
+        return relative_path
+
+    @err_catcher(name=__name__)
     def sm_export_startup(self, origin):
         origin.f_objectList.setStyleSheet(
             "QFrame { border: 0px solid rgb(150,150,150); }"
@@ -1265,6 +1364,18 @@ class Prism_Maya_Functions(object):
         origin.lo_fbxSettings.addWidget(origin.l_fbxSettings)
         origin.lo_fbxSettings.addSpacerItem(spacer)
         origin.lo_fbxSettings.addWidget(origin.b_fbxSettings)
+
+        origin.w_asset = QWidget()
+        origin.lo_asset = QHBoxLayout()
+        origin.lo_asset.setContentsMargins(9, 0, 9, 0)
+        origin.w_asset.setLayout(origin.lo_asset)
+        origin.l_asset = QLabel("Asset:")
+        spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Expanding)
+        origin.cb_asset = QComboBox()
+        origin.lo_asset.addWidget(origin.l_asset)
+        origin.lo_asset.addSpacerItem(spacer)
+        origin.lo_asset.addWidget(origin.cb_asset)
+        origin.cb_asset.activated.connect(lambda x=None: self.onAssetChanged(origin))
 
         origin.w_importReferences = QWidget()
         origin.lo_importReferences = QHBoxLayout()
@@ -1319,8 +1430,9 @@ class Prism_Maya_Functions(object):
         if hasattr(origin, "w_wholeScene"):
             idx = layout.indexOf(origin.w_wholeScene)
         else:
-            idx = layout.count()-3
+            idx = layout.count() - 3
 
+        layout.insertWidget(idx, origin.w_asset)
         layout.insertWidget(idx, origin.w_fbxSettings)
         layout.insertWidget(idx, origin.w_importReferences)
         layout.insertWidget(idx, origin.w_preserveReferences)
@@ -1370,6 +1482,9 @@ class Prism_Maya_Functions(object):
             prevSet, inherited=True
         ):
             if create:
+                if prevSet == newSetName:
+                    return newSetName
+
                 if self.isNodeValid(origin, newSetName) and "objectSet" in cmds.nodeType(
                     newSetName, inherited=True
                 ):
@@ -1470,7 +1585,33 @@ class Prism_Maya_Functions(object):
         except:
             pass
 
-        return False        
+        return False
+
+    @err_catcher(name=__name__)
+    def preExport(self, **kwargs):
+        nodes = kwargs["state"].nodes
+        if not nodes:
+            return
+
+        node = nodes[0]
+        if not self.isNodeValid(None, node):
+            return
+
+        if not cmds.referenceQuery(node, isNodeReferenced=True) and cmds.objectType(node) != "reference":
+            return
+
+        refNode = cmds.referenceQuery(
+            node, referenceNode=True, topReference=True
+        )
+        fileName = cmds.referenceQuery(refNode, filename=True)
+        productData = self.core.paths.getCachePathData(fileName)
+        if not productData or not productData.get("asset_path"):
+            return
+
+        extraVersionInfo = {
+            "source_asset_path": productData["asset_path"]
+        }
+        return {"extraVersionInfo": extraVersionInfo}
 
     @err_catcher(name=__name__)
     def sm_export_exportAppObjects(
@@ -1649,6 +1790,7 @@ class Prism_Maya_Functions(object):
                             force=True,
                             exportAll=True,
                             preserveReferences=pr,
+                            exportUnloadedReferences=pr,
                             type=typeStr,
                         )
                     else:
@@ -1657,6 +1799,7 @@ class Prism_Maya_Functions(object):
                             force=True,
                             exportSelected=True,
                             preserveReferences=pr,
+                            exportUnloadedReferences=pr,
                             type=typeStr,
                         )
                 except Exception as e:
@@ -1691,6 +1834,7 @@ class Prism_Maya_Functions(object):
                     exportAll=True,
                     type="Redshift Proxy",
                     preserveReferences=pr,
+                    exportUnloadedReferences=pr,
                     options=opt,
                 )
             else:
@@ -1700,6 +1844,7 @@ class Prism_Maya_Functions(object):
                     exportSelected=True,
                     type="Redshift Proxy",
                     preserveReferences=pr,
+                    exportUnloadedReferences=pr,
                     options=opt,
                 )
 
@@ -1722,6 +1867,7 @@ class Prism_Maya_Functions(object):
                     exportAll=True,
                     type="ASS Export",
                     preserveReferences=pr,
+                    exportUnloadedReferences=pr,
                     options=opt,
                 )
             else:
@@ -1731,6 +1877,7 @@ class Prism_Maya_Functions(object):
                     exportSelected=True,
                     type="ASS Export",
                     preserveReferences=pr,
+                    exportUnloadedReferences=pr,
                     options=opt,
                 )
 
@@ -1830,7 +1977,7 @@ class Prism_Maya_Functions(object):
                 if len([k for k in nodes if x.rsplit("|", 1)[0] == k]) == 0
             ]
             for i in rootNodes:
-                rootString += "-root %s" % i
+                rootString += "-root %s " % i
                 customAttributes += self.getCustomAttributes(i)
                 customAttributes = list(set(customAttributes))
 
@@ -1919,6 +2066,7 @@ class Prism_Maya_Functions(object):
                 exportSelected=not wholeScene,
                 type="atomExport",
                 preserveReferences=True,
+                exportUnloadedReferences=True,
                 options="statics=1;targetTime=3;selected=childrenToo",
             )
         except Exception as e:
@@ -1997,6 +2145,13 @@ class Prism_Maya_Functions(object):
 
     @err_catcher(name=__name__)
     def sm_export_loadData(self, origin, data):
+        if "assetToExport" in data:
+            for idx in range(origin.cb_asset.count()):
+                itemData = origin.cb_asset.itemData(idx)
+                if itemData["objects"] == data["assetToExport"]["objects"] and itemData["entityName"] == data["assetToExport"]["entityName"]:
+                    origin.cb_asset.setCurrentIndex(idx)
+                    break
+
         if "importreferences" in data:
             origin.chb_importReferences.setChecked(eval(data["importreferences"]))
         if "deleteunknownnodes" in data:
@@ -2011,6 +2166,7 @@ class Prism_Maya_Functions(object):
         stateProps.pop("connectednodes")
         stateProps.update(
             {
+                "assetToExport": origin.cb_asset.currentData(),
                 "importreferences": str(origin.chb_importReferences.isChecked()),
                 "deleteunknownnodes": str(origin.chb_deleteUnknownNodes.isChecked()),
                 "deletedisplaylayers": str(origin.chb_deleteDisplayLayers.isChecked()),
@@ -2021,6 +2177,61 @@ class Prism_Maya_Functions(object):
         return stateProps
 
     @err_catcher(name=__name__)
+    def sm_export_updateUi(self, state):
+        if not hasattr(state, "cb_asset"):
+            return
+
+        self.refreshAssets(state)
+
+    @err_catcher(name=__name__)
+    def refreshAssets(self, state):
+        cur = state.cb_asset.currentData()
+        selectFirst = not state.cb_asset.count()
+        state.cb_asset.clear()
+        assets = [{"entityName": "", "objects": []}]
+        assets += self.getAssetsFromScene()
+        if len(assets) > 1:
+            for asset in assets:
+                state.cb_asset.addItem(asset["entityName"], asset)
+
+            state.w_asset.setHidden(False)
+        else:
+            state.w_asset.setHidden(True)
+
+        if cur:
+            for idx in range(state.cb_asset.count()):
+                itemData = state.cb_asset.itemData(idx)
+                if itemData["objects"] == cur["objects"] and itemData["entityName"] == cur["entityName"]:
+                    state.cb_asset.setCurrentIndex(idx)
+                    break
+
+        elif selectFirst and len(assets) > 1:
+            state.cb_asset.setCurrentIndex(1)
+
+        self.onAssetChanged(state)
+
+    @err_catcher(name=__name__)
+    def onAssetChanged(self, state):
+        curAsset = state.cb_asset.currentData()
+        if curAsset and curAsset.get("entityName"):
+            data = state.cb_asset.currentData()
+            state.clearItems()
+            if data.get("objects"):
+                objs = data["objects"]
+            else:
+                objs = data["state"].ui.nodes
+
+            state.addObjects(objects=objs)
+            state.chb_wholeScene.setChecked(False)
+            state.gb_objects.setEnabled(False)
+            state.w_wholeScene.setEnabled(False)
+        else:
+            state.w_wholeScene.setEnabled(True)
+            state.gb_objects.setEnabled(True and not state.chb_wholeScene.isChecked())
+
+        state.stateManager.saveStatesToScene()
+
+    @err_catcher(name=__name__)
     def sm_render_startup(self, origin):
         origin.gb_passes.setCheckable(False)
         origin.sp_rangeStart.setValue(cmds.playbackOptions(q=True, minTime=True))
@@ -2029,6 +2240,11 @@ class Prism_Maya_Functions(object):
         curRender = cmds.getAttr("defaultRenderGlobals.currentRenderer")
         if curRender in ["arnold", "vray", "redshift", "renderman"]:
             if curRender == "arnold":
+                driver = cmds.ls("defaultArnoldDriver")
+                if not driver:
+                    import mtoa.core as core
+                    core.createOptions()
+
                 driver = cmds.ls("defaultArnoldDriver")
             elif curRender == "vray":
                 driver = cmds.ls("vraySettings")
@@ -2360,22 +2576,15 @@ tabLayout -e -sti %s $tabLayout;"""
         if curRenderer == "arnold":
             driver = cmds.ls("defaultArnoldDriver")
             if not driver:
-                mel.eval("RenderGlobalsWindow;")
+                import mtoa.core as core
+                core.createOptions()
+
             rSettings["ar_fileformat"] = cmds.getAttr(
                 "defaultArnoldDriver.ai_translator"
             )
 
             if imgFormat == ".exr":
-                rSettings["ar_exrPixelType"] = cmds.getAttr(
-                    "defaultArnoldDriver.halfPrecision"
-                )
-                rSettings["ar_exrCompression"] = cmds.getAttr(
-                    "defaultArnoldDriver.exrCompression"
-                )
-
                 cmds.setAttr("defaultArnoldDriver.ai_translator", "exr", type="string")
-                cmds.setAttr("defaultArnoldDriver.halfPrecision", 1)  # 16 bit
-                cmds.setAttr("defaultArnoldDriver.exrCompression", 3)  # ZIP compression
             elif imgFormat == ".png":
                 cmds.setAttr("defaultArnoldDriver.ai_translator", "png", type="string")
             elif imgFormat == ".jpg":
@@ -2573,13 +2782,6 @@ tabLayout -e -sti %s $tabLayout;"""
             )
         else:
             rSettings["fileformat"] = cmds.getAttr("defaultRenderGlobals.imageFormat")
-            rSettings["exrPixelType"] = cmds.getAttr(
-                "defaultRenderGlobals.exrPixelType"
-            )
-            rSettings["exrCompression"] = cmds.getAttr(
-                "defaultRenderGlobals.exrCompression"
-            )
-
             if imgFormat == ".exr":
                 if curRenderer in ["mayaSoftware", "mayaHardware", "mayaVector"]:
                     rndFormat = 4  # .tif
@@ -2591,8 +2793,6 @@ tabLayout -e -sti %s $tabLayout;"""
                 rndFormat = 8
 
             cmds.setAttr("defaultRenderGlobals.imageFormat", rndFormat)
-            cmds.setAttr("defaultRenderGlobals.exrPixelType", 1)  # 16 bit
-            cmds.setAttr("defaultRenderGlobals.exrCompression", 3)  # ZIP compression
 
     @err_catcher(name=__name__)
     def getAdditionalRenderContext(self, origin, context=None, identifier=None, layer=None):
@@ -2772,25 +2972,11 @@ tabLayout -e -sti %s $tabLayout;"""
             )
         if "fileformat" in rSettings:
             cmds.setAttr("defaultRenderGlobals.imageFormat", rSettings["fileformat"])
-        if "exrPixelType" in rSettings:
-            cmds.setAttr("defaultRenderGlobals.exrPixelType", rSettings["exrPixelType"])
-        if "exrCompression" in rSettings:
-            cmds.setAttr(
-                "defaultRenderGlobals.exrCompression", rSettings["exrCompression"]
-            )
         if "ar_fileformat" in rSettings:
             cmds.setAttr(
                 "defaultArnoldDriver.ai_translator",
                 rSettings["ar_fileformat"],
                 type="string",
-            )
-        if "ar_exrPixelType" in rSettings:
-            cmds.setAttr(
-                "defaultArnoldDriver.halfPrecision", rSettings["ar_exrPixelType"]
-            )
-        if "ar_exrCompression" in rSettings:
-            cmds.setAttr(
-                "defaultArnoldDriver.exrCompression", rSettings["ar_exrCompression"]
             )
         if "vr_fileformat" in rSettings:
             cmds.setAttr(
@@ -3299,6 +3485,7 @@ print( "READY FOR INPUT\\n" )
                 settings = settings or {}
                 # default settings
                 mode = settings.get("mode", "reference")
+                applyCacheTarget = settings.get("applyCacheTarget", "selection")
                 useNamespace = settings.get("useNamespace", True)
 
                 if "namespace" in settings:
@@ -3329,7 +3516,7 @@ print( "READY FOR INPUT\\n" )
                     namespace = ""
                     useNamespace = False
 
-                if self.core.uiAvailable and settings.get("showGui", True):
+                if self.core.uiAvailable and settings.get("showGui", True) and not settings.get("quiet", False):
                     refDlg = QDialog()
 
                     refDlg.setWindowTitle("Create Reference")
@@ -3369,25 +3556,19 @@ print( "READY FOR INPUT\\n" )
 
                     w_caches.setEnabled(False)
                     w_applyCacheEntities.setEnabled(False)
-                    entities = []
-                    for state in self.core.getStateManager().states:
-                        if state.ui.className == "ImportFile":
-                            entity = None
-                            cacheData = self.core.paths.getCachePathData(state.ui.getImportPath())
-                            if cacheData.get("type") == "asset":
-                                entity = os.path.basename(cacheData.get("asset_path", ""))
-                            elif cacheData.get("type") == "shot":
-                                shotName = self.core.entities.getShotName(cacheData)
-                                if shotName:
-                                    entity = shotName
-
-                            if entity:
-                                entities.append({"entityName": entity, "stateName": state.text(0), "state": state})
-
+                    entities = self.getAssetsFromScene()
                     for entity in entities:
                         name = entity["entityName"]
-                        if len([x["entityName"] for x in entities if x["entityName"] == name]) > 1:
+                        if len([x["entityName"] for x in entities if x["entityName"] == name and x.get("stateName")]) > 1:
                             name = entity["stateName"]
+
+                        if entity.get("objects"):
+                            objs = entity["objects"]
+                        else:
+                            objs = entity["state"].ui.nodes
+
+                        if objs:
+                            name += " (%s)" % objs[0]
 
                         cb_cacheEntities.addItem(name, entity)
 
@@ -3531,6 +3712,7 @@ print( "READY FOR INPUT\\n" )
                     if nSpace == "new":
                         nSpace = fileName[0]
 
+                    impFileName = self.getPathRelativeToProject(impFileName) if self.getUseRelativePath() else impFileName
                     newNodes = cmds.file(
                         impFileName,
                         reference=True,
@@ -3588,13 +3770,19 @@ print( "READY FOR INPUT\\n" )
                     elif applyCacheTarget:
                         prevSel = cmds.ls(selection=True, long=True)
                         cmds.select(clear=True)
+                        if applyCacheTarget.get("objects"):
+                            objs = applyCacheTarget["objects"]
+                        else:
+                            objs = applyCacheTarget["state"].ui.nodes
+
                         try:
                             # the nodes in the set need to be selected to get their long dag path
-                            cmds.select(applyCacheTarget["state"].ui.nodes)
+                            cmds.select(objs)
                         except:
                             pass
 
                         objs = cmds.ls(selection=True, long=True)
+                        cmds.select(clear=True)
                         try:
                             cmds.select(prevSel)
                         except:
@@ -3604,11 +3792,15 @@ print( "READY FOR INPUT\\n" )
                         newObjs = []
                         for obj in objs:
                             if cmds.objectType(obj) == "reference":
-                                newObjs += cmds.referenceQuery(obj, nodes=True, dagPath=True)
+                                newObjs += self.getNodesFromReference(obj)
                             else:
                                 newObjs.append(obj)
 
+                        newObjs = [
+                            x for x in newObjs if "dagNode" in cmds.nodeType(x, inherited=True)
+                        ]
                         objs = newObjs
+                        logger.debug("applying alembic: %s - to objects: %s" % (impFileName, objs))
                         cmds.AbcImport(
                             impFileName,
                             mode="import",
@@ -3757,6 +3949,15 @@ print( "READY FOR INPUT\\n" )
             origin.setName = cmds.sets(name=name)
             for node in origin.nodes:
                 cmds.sets(node, include=origin.setName)
+                if settings and settings.get("lookThroughCam"):
+                    if cmds.objectType(node) == "reference":
+                        snodes = self.getNodesFromReference(node)
+                    else:
+                        snodes = [node]
+
+                    for snode in snodes:
+                        if cmds.nodeType(snode) == "camera":
+                            cmds.lookThru(snode)
 
         result = len(importedNodes) > 0
 
@@ -3764,6 +3965,55 @@ print( "READY FOR INPUT\\n" )
         rDict["mode"] = "ApplyCache" if (applyCache or updateCache) else "ImportFile"
 
         return rDict
+
+    @err_catcher(name=__name__)
+    def getAssetsFromScene(self):
+        entities = []
+        curData = self.core.getCurrentScenefileData()
+        if curData and curData.get("type") == "asset" and curData.get("asset_path"):
+            entity = os.path.basename(curData.get("asset_path", ""))
+            obj = "|" + entity
+            if self.isNodeValid(None, obj):
+                entities.append({"entityName": entity, "objects": [obj]})
+
+        for state in self.core.getStateManager().states:
+            if state.ui.className == "ImportFile":
+                entity = None
+                cacheData = self.core.paths.getCachePathData(state.ui.getImportPath())
+                if cacheData.get("type") == "asset":
+                    entity = os.path.basename(cacheData.get("asset_path", ""))
+                elif cacheData.get("type") == "shot":
+                    shotName = self.core.entities.getShotName(cacheData)
+                    if shotName:
+                        entity = shotName
+
+                if entity:
+                    objs = state.ui.nodes
+                    if len(objs) == 1 and os.getenv("PRISM_MAYA_USE_GEO_FROM_ASSET_REFERENCES", "1") == "1":
+                        if cacheData.get("type") == "asset" and curData.get("type") == "shot" and cmds.objectType(objs[0]) == "reference":
+                            refObjs = self.getNodesFromReference(objs[0])
+                            if not refObjs:
+                                continue
+
+                            geoObjs = cmds.listRelatives(refObjs[0], fullPath=True) or []
+                            for geoObj in geoObjs:
+                                if geoObj.split(":")[-1] == "geo":
+                                    objs = [geoObj]
+
+                    entities.append({"entityName": entity, "stateName": state.text(0), "state": state, "objects": objs})
+
+        return entities
+
+    @err_catcher(name=__name__)
+    def getNodesFromReference(self, node):
+        newObjs = cmds.referenceQuery(node, nodes=True, dagPath=True)
+        subObjs = []
+        for newObj in newObjs:
+            if cmds.objectType(newObj) == "reference":
+                subObjs += self.getNodesFromReference(newObj)
+
+        newObjs += subObjs
+        return newObjs
 
     @err_catcher(name=__name__)
     def basicImport(self, filepath, kwargs=None):
@@ -4112,6 +4362,9 @@ Show only polygon objects, plugin shapes and image planes in viewport.
 
     @err_catcher(name=__name__)
     def captureViewportThumbnail(self):
+        if cmds.about(batch=True):
+            return
+
         path = tempfile.NamedTemporaryFile(suffix=".jpg").name
         curFrame = int(cmds.currentTime(query=True))
         res = self.getViewportResolution()
@@ -4421,6 +4674,97 @@ Show only polygon objects, plugin shapes and image planes in viewport.
         return [extFiles, []]
 
     @err_catcher(name=__name__)
+    def postBuildScene(self, **kwargs):
+        sbData = self.core.getConfig("sceneBuilding", config="project")
+        details = kwargs["entity"].copy()
+        details["department"] = kwargs["department"]
+        details["task"] = kwargs["task"]
+        if "maya_apply_abc_caches" in sbData:
+            if self.core.entities.doesContextMatchTaskFilters(sbData["maya_apply_abc_caches"], details):
+                self.applyAbcCaches(kwargs["entity"], kwargs["department"], quiet=True)
+
+        curRenderer = cmds.getAttr("defaultRenderGlobals.currentRenderer")
+        if curRenderer == "arnold":
+            driver = cmds.ls("defaultArnoldDriver")
+            if not driver:
+                import mtoa.core as core
+                core.createOptions()
+
+            if os.getenv("PRISM_MAYA_ARNOLD_SET_HALF_PRECISION", "1") == "1":
+                cmds.setAttr("defaultArnoldDriver.halfPrecision", 1)  # 16 bit
+
+            if os.getenv("PRISM_MAYA_ARNOLD_SET_EXR_COMPRESSION", "1") == "1":
+                cmds.setAttr("defaultArnoldDriver.exrCompression", 3)  # ZIP compression
+
+        elif curRenderer not in ["vray", "redshift", "renderman"]:
+            if os.getenv("PRISM_MAYA_SET_HALF_PRECISION", "1") == "1":
+                cmds.setAttr("defaultRenderGlobals.exrPixelType", 1)  # 16 bit
+
+            if os.getenv("PRISM_MAYA_SET_EXR_COMPRESSION", "1") == "1":
+                cmds.setAttr("defaultRenderGlobals.exrCompression", 3)  # ZIP compression
+
+    @err_catcher(name=__name__)
+    def applyAbcCaches(self, entity, department, quiet=False):
+        logger.debug("applying abc caches...")
+        tags = [x.strip() for x in os.getenv("PRISM_MAYA_IMPORT_TAGS", "animated").split(",") if x]
+        products = self.core.products.getProductsByTags(entity, tags)
+        productsToImport = products
+        if not productsToImport:
+            msg = "No products to import.\n(checking for tags: \"%s\")" % "\", \"".join(tags)
+            logger.debug(msg)
+            if not quiet:
+                self.core.popup(msg)
+
+            return
+
+        importedProducts = []
+        sm = self.core.getStateManager()
+        for product in productsToImport:
+            productPath = self.core.products.getLatestVersionpathFromProduct(product["product"], entity=product)
+            if not productPath:
+                logger.debug("can't get file of abc product: %s" % product)
+                continue
+
+            if not productPath.endswith(".abc"):
+                logger.debug("abc product is not in .abc format: %s" % productPath)
+                continue
+
+            productData = self.core.paths.getCachePathData(productPath)
+            assetName = productData.get("source_asset_path")
+            if not assetName:
+                logger.debug("can't get source asset from product: %s" % productData)
+                continue
+
+            asset = {"type": "asset", "asset_path": assetName}
+            surfTags = [x.strip() for x in os.getenv("PRISM_MAYA_SURFACED_ASSET_TAGS", "static").split(",") if x]
+            assetProducts = self.core.products.getProductsByTags(asset, surfTags)
+            if not assetProducts:
+                logger.debug("can't get product of source asset: %s, tags: %s" % (asset, surfTags))
+                continue
+
+            assetProduct = assetProducts[0]
+            assetProductPath = self.core.products.getLatestVersionpathFromProduct(assetProduct["product"], entity=assetProduct)
+            if not assetProductPath:
+                logger.debug("can't get file of source asset product: %s" % assetProduct)
+                continue
+
+            state = sm.importFile(assetProductPath, settings={"quiet": True})
+            settings = {
+                "showGui": False,
+                "mode": "applyCache",
+                "applyCacheTarget": {"state": state},
+            }
+            if quiet:
+                settings["quiet"] = True
+
+            logger.debug("found product: %s" % productPath)
+            sm.importFile(productPath, settings=settings)
+            importedProducts.append(productPath)
+
+        if not importedProducts:
+            logger.debug("no products imported: %s" % productsToImport)
+
+    @err_catcher(name=__name__)
     def sm_createRenderPressed(self, origin):
         origin.createPressed("Render")
 
@@ -4456,6 +4800,306 @@ Show only polygon objects, plugin shapes and image planes in viewport.
         prefs.setDefaultPreset()
 
 
+class BatchExportDlg(QDialog):
+    def __init__(self, origin):
+        super(BatchExportDlg, self).__init__()
+        self.origin = origin
+        self.plugin = self.origin.plugin
+        self.core = self.plugin.core
+        self.core.parentWindow(self)
+        self.showSm = False
+        if self.core.sm and self.core.sm.isVisible():
+            self.core.sm.setHidden(True)
+            self.showSm = True
+
+        self.assets = []
+        self.setupUi()
+        self.refreshAssets()
+
+    @err_catcher(name=__name__)
+    def setupUi(self):
+        self.setWindowTitle("Prism - Batch Export")
+        self.setMinimumSize(900, 600)
+        
+        self.lo_main = QVBoxLayout()
+        self.setLayout(self.lo_main)
+
+        # Create table
+        self.tw_assets = QTableWidget()
+        self.tw_assets.setColumnCount(3)
+        self.tw_assets.setHorizontalHeaderLabels(["Enabled", "Asset Name", "Objects"])
+        self.tw_assets.horizontalHeader().setStretchLastSection(True)
+        self.tw_assets.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.tw_assets.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
+        self.tw_assets.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.tw_assets.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tw_assets.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.tw_assets.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tw_assets.customContextMenuRequested.connect(self.showContextMenu)
+        self.tw_assets.setAlternatingRowColors(True)
+        
+        self.lo_main.addWidget(self.tw_assets)
+
+        # Bottom buttons
+        self.lo_buttons = QHBoxLayout()
+        self.lo_buttons.addStretch()
+        
+        self.b_export = QPushButton("Export")
+        self.b_export.clicked.connect(self.exportAssets)
+        self.lo_buttons.addWidget(self.b_export)
+        
+        self.b_cancel = QPushButton("Cancel")
+        self.b_cancel.clicked.connect(self.reject)
+        self.lo_buttons.addWidget(self.b_cancel)
+        
+        self.lo_main.addLayout(self.lo_buttons)
+
+    @err_catcher(name=__name__)
+    def refreshAssets(self):
+        """Refresh the asset list from the scene"""
+        self.assets = self.origin.getAssetsFromScene()
+        self.populateTable()
+
+    @err_catcher(name=__name__)
+    def populateTable(self):
+        """Populate the table with assets"""
+        self.tw_assets.setRowCount(0)
+        
+        for asset in self.assets:
+            row = self.tw_assets.rowCount()
+            self.tw_assets.insertRow(row)
+            
+            # Enabled checkbox
+            chb_enabled = QCheckBox()
+            chb_enabled.setChecked(True)
+            chb_enabled.stateChanged.connect(lambda state, r=row: self.onCheckboxChanged(r, state))
+            w_checkbox = QWidget()
+            lo_checkbox = QHBoxLayout(w_checkbox)
+            lo_checkbox.addWidget(chb_enabled)
+            lo_checkbox.setAlignment(Qt.AlignCenter)
+            lo_checkbox.setContentsMargins(0, 0, 0, 0)
+            self.tw_assets.setCellWidget(row, 0, w_checkbox)
+            
+            # Asset name
+            item_name = QTableWidgetItem(asset["entityName"])
+            item_name.setFlags(item_name.flags() & ~Qt.ItemIsEditable)
+            self.tw_assets.setItem(row, 1, item_name)
+            
+            # Objects list
+            if asset.get("objects"):
+                objects = asset.get("objects", [])
+            else:
+                objects = asset["state"].ui.nodes if hasattr(asset["state"].ui, "nodes") else []
+                
+            objects_text = ", ".join([obj.split("|")[-1] for obj in objects]) if objects else ""
+            item_objects = QTableWidgetItem(objects_text)
+            item_objects.setFlags(item_objects.flags() & ~Qt.ItemIsEditable)
+            item_objects.setToolTip(objects_text)
+            self.tw_assets.setItem(row, 2, item_objects)
+
+    @err_catcher(name=__name__)
+    def onCheckboxChanged(self, row, state):
+        """Handle checkbox state change - if multiple rows selected, apply to all"""
+        selected_rows = set([index.row() for index in self.tw_assets.selectedIndexes()])
+        
+        if row in selected_rows and len(selected_rows) > 1:
+            # Apply the state to all selected rows
+            is_checked = (state == Qt.Checked)
+            for sel_row in selected_rows:
+                checkbox_widget = self.tw_assets.cellWidget(sel_row, 0)
+                if checkbox_widget:
+                    checkbox = checkbox_widget.findChild(QCheckBox)
+                    if checkbox:
+                        checkbox.blockSignals(True)
+                        checkbox.setChecked(is_checked)
+                        checkbox.blockSignals(False)
+
+    @err_catcher(name=__name__)
+    def showContextMenu(self, position):
+        """Show context menu for the table"""
+        menu = QMenu(self)
+        
+        action_refresh = menu.addAction("Refresh")
+        action_open_sm = menu.addAction("Open State Manager")
+        menu.addSeparator()
+        action_create_states = menu.addAction("Create Export States for Selected Assets")
+        
+        action = menu.exec_(self.tw_assets.viewport().mapToGlobal(position))
+        
+        if action == action_refresh:
+            self.refreshAssets()
+        elif action == action_open_sm:
+            self.openStateManager()
+        elif action == action_create_states:
+            self.createExportStates()
+
+    @err_catcher(name=__name__)
+    def openStateManager(self):
+        """Open the State Manager"""
+        if self.core.sm:
+            self.core.sm.setHidden(False)
+            self.core.sm.raise_()
+            self.core.sm.activateWindow()
+        else:
+            self.core.stateManager()
+
+    @err_catcher(name=__name__)
+    def createExportStates(self):
+        """Create export states for selected assets"""
+        selected_rows = set([index.row() for index in self.tw_assets.selectedIndexes()])
+        
+        if not selected_rows:
+            self.core.popup("No assets selected.")
+            return
+        
+        sm = self.core.getStateManager()
+        if not sm:
+            self.core.popup("State Manager not available.")
+            return
+        
+        created_count = 0
+        for row in selected_rows:
+            if row >= len(self.assets):
+                continue
+                
+            asset = self.assets[row]
+
+            # Check if export state already exists for this asset
+            existing_state = self.findExportStateForAsset(asset)
+
+            if not existing_state:
+                # Create new export state
+                state = self.createExportState(asset)
+                if state:
+                    created_count += 1
+        
+        if created_count > 0:
+            self.core.popup(f"Created {created_count} export state(s).", severity="info")
+            self.refreshAssets()
+        else:
+            self.core.popup("All selected assets already have export states.", severity="info")
+
+    @err_catcher(name=__name__)
+    def createExportState(self, asset):
+        asset_name = asset["entityName"]
+        sm = self.core.getStateManager()
+        parent = self.origin.getDftStateParent()
+        prefix = ""
+        applyAnimTag = False
+        curSceneData = self.core.getCurrentScenefileData()
+        inAnim = curSceneData.get("department", "").lower() in ["anm", "anim", "animation"]
+        if inAnim:
+            prefix = os.getenv("PRISM_MAYA_ANIM_PREFIX", "anim_")
+            applyAnimTag = os.getenv("PRISM_MAYA_AUTO_APPLY_ANIM_TAG", "1") == "1"
+
+        productName = prefix + asset_name
+        if applyAnimTag:
+            curSceneData["product"] = productName
+            curTags = self.core.products.getTagsFromProduct(curSceneData)
+            if not curTags:
+                tags = ["animated"]
+                self.core.products.setProductTags(curSceneData, tags)
+
+        state_data = {"stateName": f"Export {asset_name}", "assetToExport": asset, "productname": productName}
+        state = sm.createState("Export", stateData=state_data, parent=parent)
+        return state
+
+    @err_catcher(name=__name__)
+    def findExportStateForAsset(self, asset):
+        """Find existing export state for an asset"""
+        sm = self.core.getStateManager()
+        if not sm:
+            return None
+        
+        for state in sm.states:
+            if state.ui.className == "Export":
+                if hasattr(state.ui, "cb_asset"):
+                    current_asset = state.ui.cb_asset.currentText()
+                    if current_asset == asset["entityName"]:
+                        data = state.ui.cb_asset.currentData()
+                        if data["objects"] == asset["objects"]:
+                            return state
+        
+        return None
+
+    @err_catcher(name=__name__)
+    def exportAssets(self):
+        """Export all enabled assets"""
+        sm = self.core.getStateManager()
+        if not sm:
+            self.core.popup("State Manager not available.")
+            return
+        
+        # Collect enabled assets
+        states_to_export = []
+        not_found_assets = []
+        
+        for row in range(self.tw_assets.rowCount()):
+            checkbox_widget = self.tw_assets.cellWidget(row, 0)
+            if checkbox_widget:
+                checkbox = checkbox_widget.findChild(QCheckBox)
+                if checkbox and checkbox.isChecked():
+                    if row >= len(self.assets):
+                        continue
+                    
+                    asset = self.assets[row]
+                    asset_name = asset["entityName"]
+                    
+                    # Find or create export state for this asset
+                    state = self.findExportStateForAsset(asset)
+                    
+                    if not state:
+                        # Create new export state
+                        state = self.createExportState(asset)
+
+                    if state:
+                        states_to_export.append(state)
+                    else:
+                        not_found_assets.append(asset_name)
+        
+        if not states_to_export:
+            self.core.popup("No enabled assets to export.")
+            return
+        
+        # Execute export for all states
+        self.hide()
+        
+        success_count = 0
+        failed_count = 0
+        
+        for state in states_to_export:
+            result = sm.publish(
+                successPopup=False,
+                executeState=True,
+                states=[state],
+                useVersion=None,
+                saveScene=None,
+                incrementScene=False,
+                sanityChecks=True,
+                versionWarning=False,
+            )
+            
+            if result:
+                success_count += 1
+            else:
+                failed_count += 1
+        
+        # Show results
+        msg = f"Batch export completed.\n\nSuccessful: {success_count}\nFailed: {failed_count}"
+        if not_found_assets:
+            msg += f"\n\nCould not create states for: {', '.join(not_found_assets)}"
+
+        self.core.popup(msg, severity="info")
+        self.close()
+
+    @err_catcher(name=__name__)
+    def closeEvent(self, event):
+        if self.showSm and self.core.sm:
+            self.core.sm.setHidden(False)
+
+        event.accept()
+
+
 class ExporterDlg(QDialog):
     def __init__(self, origin, state):
         super(ExporterDlg, self).__init__()
@@ -4483,6 +5127,8 @@ class ExporterDlg(QDialog):
         self.lo_main = QVBoxLayout()
         self.setLayout(self.lo_main)
         self.lo_main.addWidget(self.state.ui)
+
+        self.lo_main.addStretch()
 
         self.e_comment = QLineEdit()
         self.e_comment.setPlaceholderText("Comment...")

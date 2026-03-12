@@ -71,6 +71,7 @@ class ExportClass(object):
 
         self.cb_context.addItems(["From scenefile", "Custom"])
         self.curCam = None
+        self.chb_master.setChecked(os.getenv("PRISM_ENABLE_MASTER_DFT", "1") == "1")
 
         self.oldPalette = self.b_changeTask.palette()
         self.warnPalette = QPalette()
@@ -500,12 +501,63 @@ class ExportClass(object):
         self.nameWin.setWindowTitle("Change Productname")
         self.nameWin.l_item.setText("Productname:")
         self.nameWin.buttonBox.buttons()[0].setText("Ok")
+        self.nameWin.w_tags = QWidget()
+        self.nameWin.lo_tags = QHBoxLayout(self.nameWin.w_tags)
+        self.nameWin.lo_tags.setContentsMargins(9, 0, 9, 0)
+        self.nameWin.l_tagLabel = QLabel("Tags:               ")
+        self.nameWin.e_tags = QLineEdit()
+        self.nameWin.b_editTags = QPushButton(u"\u25bc")
+        self.nameWin.b_editTags.setToolTip("Recommended Tags")
+        self.nameWin.b_editTags.setMaximumSize(QSize(30, 16777215))
+        self.nameWin.lo_tags.addWidget(self.nameWin.l_tagLabel)
+        self.nameWin.lo_tags.addWidget(self.nameWin.e_tags)
+        self.nameWin.lo_tags.addWidget(self.nameWin.b_editTags)
+        self.nameWin.layout().insertWidget(2, self.nameWin.w_tags)
+        self.nameWin.e_item.textChanged.connect(self.onProductNameChanged)
+        self.nameWin.b_editTags.clicked.connect(self.showRecommendedTags)
+        self.onProductNameChanged()
         self.nameWin.e_item.selectAll()
         result = self.nameWin.exec_()
 
         if result == 1:
-            self.setProductname(self.nameWin.e_item.text())
+            product = self.nameWin.e_item.text()
+            self.setProductname(product)
+            tags = [t.strip() for t in self.nameWin.e_tags.text().split(",")]
+            ctx = self.getCurrentContext().copy()
+            ctx["product"] = product
+            self.core.products.setProductTags(ctx, tags)
             self.stateManager.saveStatesToScene()
+
+    @err_catcher(name=__name__)
+    def onProductNameChanged(self, text=None):
+        product = self.nameWin.e_item.text()
+        ctx = self.getCurrentContext().copy()
+        ctx["product"] = product
+        tags = self.core.products.getTagsFromProduct(ctx)
+        self.nameWin.e_tags.setText(", ".join(tags))
+
+    @err_catcher(name=__name__)
+    def showRecommendedTags(self):
+        tmenu = QMenu(self)
+
+        tags = self.core.products.getRecommendedTags(self.getCurrentContext())
+        for tag in tags:
+            tAct = QAction(tag, self)
+            tAct.triggered.connect(lambda x=None, t=tag: self.toggleTag(t))
+            tmenu.addAction(tAct)
+
+        tmenu.exec_(QCursor.pos())
+
+    @err_catcher(name=__name__)
+    def toggleTag(self, tag):
+        tags = [t.strip() for t in self.nameWin.e_tags.text().split(",")]
+        if tag in tags:
+            tags = [t for t in tags if t != tag]
+        else:
+            tags.append(tag)
+
+        tags = [t for t in tags if t]
+        self.nameWin.e_tags.setText(", ".join(tags))
 
     @err_catcher(name=__name__)
     def preDelete(self, item):
@@ -583,7 +635,6 @@ class ExportClass(object):
             self.stateManager.saveStatesToScene()
 
         if not self.shotCamsInitialized:
-            self.shotCamsInitialized = True
             context = self.getCurrentContext()
             if (
                 context.get("type") == "shot"
@@ -594,6 +645,8 @@ class ExportClass(object):
                 if idx != -1:
                     self.cb_sCamShot.setCurrentIndex(idx)
                     self.stateManager.saveStatesToScene()
+
+            self.shotCamsInitialized = True
 
     @err_catcher(name=__name__)
     def updateUi(self):
@@ -679,7 +732,12 @@ class ExportClass(object):
 
         if not context:
             if self.getOutputType() == "ShotCam":
-                context = self.cb_sCamShot.currentData()
+                if self.shotCamsInitialized:
+                    context = self.cb_sCamShot.currentData()
+                else:
+                    fileName = self.core.getCurrentFileName()
+                    context = self.core.getScenefileData(fileName)
+
                 if context and self.core.getConfig("globals", "productTasks", config="project"):
                     context["department"] = os.getenv("PRISM_SHOTCAM_DEPARTMENT", "Layout")
                     context["task"] = os.getenv("PRISM_SHOTCAM_TASK", "Cameras")
@@ -1135,7 +1193,7 @@ class ExportClass(object):
                 "endframe": endFrame,
                 "outputpath": outputName,
             }
-
+            extraVersionInfo = {}
             result = self.core.callback("preExport", **kwargs)
             for res in result:
                 if isinstance(res, dict) and res.get("cancel", False):
@@ -1146,6 +1204,9 @@ class ExportClass(object):
                 
                 if res and "outputName" in res:
                     outputName = res["outputName"]
+
+                if res and "extraVersionInfo" in res:
+                    extraVersionInfo.update(res["extraVersionInfo"])
 
             outputPath = os.path.dirname(outputName)
             if not os.path.exists(outputPath):
@@ -1166,6 +1227,7 @@ class ExportClass(object):
             if startFrame != endFrame:
                 details["fps"] = self.core.getFPS()
 
+            details.update(extraVersionInfo)
             infoPath = self.core.products.getVersionInfoPathFromProductFilepath(
                 outputName
             )
@@ -1238,7 +1300,7 @@ class ExportClass(object):
 
             if not self.gb_submit.isHidden() and self.gb_submit.isChecked() and "Result=Success" in submitResult:
                 return [self.state.text(0) + " - success"]
-            elif os.path.exists(outputName) or not validateOutput:
+            elif os.path.exists(outputName) or self.core.media.getFilesFromSequence(outputName) or not validateOutput:
                 return [self.state.text(0) + " - success"]
             else:
                 return [self.state.text(0) + " - unknown error (files do not exist)"]

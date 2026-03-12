@@ -69,6 +69,7 @@ class ExportClass(object):
         self.curCam = None
         self.initsim = True
         self.shotCamsInitialized = False
+        self.chb_master.setChecked(os.getenv("PRISM_ENABLE_MASTER_DFT", "1") == "1")
 
         self.setProductname("")
         self.cb_outType.addItems(self.core.appPlugin.outputFormats)
@@ -1365,6 +1366,9 @@ class ExportClass(object):
             fileName = self.core.getCurrentFileName()
             entityData = self.core.getScenefileData(fileName)
 
+        if not entityData:
+            return {}
+
         if "username" in entityData:
             del entityData["username"]
 
@@ -1384,7 +1388,8 @@ class ExportClass(object):
                 self.core.popup("USD plugin is not loaded.")
                 return
 
-            return usdPlug.api.usdExport.getOutputName(self, useVersion)
+            outputPath = usdPlug.api.usdExport.getOutputName(self, useVersion)
+            return outputPath
 
         entity = self.getOutputEntity()
         if not entity:
@@ -1414,7 +1419,15 @@ class ExportClass(object):
                 if self.core.appPlugin.filecache.isSingleFrame(self.node):
                     rangeType = "Single Frame"
 
-            framePadding = ("$F" + str(self.core.framePadding)) if rangeType != "Single Frame" else ""
+            if rangeType == "Single Frame":
+                framePadding = ""
+            else:
+                incr = self.node.parm("f3").eval() / self.node.parm("substeps").eval()
+                if incr < 1:
+                    framePadding = f"`pythonexprs('\"%0{self.core.framePadding}d.%03d\" % (int(hou.timeToFrame(hou.time())), int(round(hou.timeToFrame(hou.time()), 3) * 1000) % 1000)')`"
+                else:
+                    framePadding = "$F" + str(self.core.framePadding)
+
             extension = self.getOutputType()
 
         wedge = self.getCurrentWedgeIndex()
@@ -1682,7 +1695,13 @@ class ExportClass(object):
                     singleFile = not self.node.parm("writeFileSequence").eval()
 
                 if singleFile:
-                    outputName = outputName.replace((".$F" + str(self.core.framePadding)), "")
+                    incr = self.node.parm("f3").eval() / self.node.parm("substeps").eval()
+                    if incr < 1:
+                        framePadding = f"`pythonexprs('\"%0{self.core.framePadding}d.%03d\" % (int(hou.timeToFrame(hou.time())), int(round(hou.timeToFrame(hou.time()), 3) * 1000) % 1000)')`"
+                    else:
+                        framePadding = "$F" + str(self.core.framePadding)
+
+                    outputName = outputName.replace(framePadding, "")
 
             api = self.core.appPlugin.getApiFromNode(self.node)
             isStart = ropNode.parm("f1").eval() == startFrame

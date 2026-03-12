@@ -200,6 +200,16 @@ class MediaProducts(object):
         return names
 
     @err_catcher(name=__name__)
+    def getIdentifiersFromEntity(self, entity):
+        entityIdfs = []
+        idfs = self.getIdentifiersByType(entity)
+        for mtype in idfs:
+            for idf in idfs[mtype]:
+                entityIdfs.append(idf)
+
+        return entityIdfs
+
+    @err_catcher(name=__name__)
     def getIdentifierPathFromEntity(self, entity):
         key = "3drenders"
         context = entity.copy()
@@ -301,20 +311,34 @@ class MediaProducts(object):
 
     @err_catcher(name=__name__)
     def getFileFromVersion(self, version, aov=None, findExisting=False):
+        if not version:
+            return
+
         if aov:
             version["aov"] = aov
+        else:
+            if not version.get("mediaType") or version.get("mediaType") == "3drenders" and "aov" not in version:
+                aovs = self.getAOVsFromVersion(version)
+                if aovs:
+                    version["aov"] = aovs[0]["aov"]
 
         file = self.getFilePatternFromVersion(version)
+        if version.get("locations"):
+            file = self.core.convertPath(file, list(version["locations"].keys())[0])
+
         if findExisting:
             filepaths = self.core.media.getFilesFromSequence(file)
             if not filepaths:
                 sources = self.core.media.getImgSources(os.path.dirname(file))
                 if sources:
-                    file = sources[0]
+                    if sources[0].endswith("preview.jpg") and len(sources) > 1:
+                        file = sources[1]
+                    else:
+                        file = sources[0]
                 else:
                     return
 
-        return file        
+        return file
 
     @err_catcher(name=__name__)
     def getVersionsFromContext(self, context, keys=None, locations=None):
@@ -526,6 +550,7 @@ class MediaProducts(object):
 
     @err_catcher(name=__name__)
     def getFilePatternFromVersion(self, version):
+        key = None
         if version.get("mediaType") == "playblasts":
             if version["type"] == "asset":
                 key = "playblastFilesAssets"
@@ -536,6 +561,9 @@ class MediaProducts(object):
                 key = "renderFilesAssets"
             elif version["type"] == "shot":
                 key = "renderFilesShots"
+
+        if not key:
+            raise Exception("Invalid version: %s" % version)
 
         context = version.copy()
         files = self.getFilesFromContext(version)
@@ -773,6 +801,9 @@ class MediaProducts(object):
 
         if entity["type"] == "asset":
             key = "playblastFilesAssets"
+            if "asset" not in context and "asset_path" in context:
+                context["asset"] = os.path.dirname(context["asset_path"])
+
         elif entity["type"] == "shot":
             key = "playblastFilesShots"
 
@@ -787,7 +818,7 @@ class MediaProducts(object):
 
     @err_catcher(name=__name__)
     def getHighestMediaVersion(self, context, getExisting=False, ignoreEmpty=False, ignoreFolder=False):
-        if not getExisting and not self.core.separateOutputVersionStack:
+        if not getExisting and not self.core.separateOutputVersionStack and not self.core.appPlugin.pluginName == "Standalone":
             fileName = self.core.getCurrentFileName()
             fnameData = self.core.getScenefileData(fileName)
             if fnameData.get("type") in ["asset", "shot"] and "version" in fnameData:
@@ -1279,52 +1310,57 @@ class MediaProducts(object):
         if data and "mediaType" in data:
             return data["mediaType"]
 
+        key = None
         entityType = self.core.paths.getEntityTypeFromPath(path)
         if entityType == "asset":
             key = "renderFilesAssets"
         elif entityType == "shot":
             key = "renderFilesShots"
-        else:
-            return
 
         mediaType = None
-        context = {"type": entityType}
-        context["mediaType"] = "3drenders"
-        location = self.getLocationFromPath(path)
-        if location:
-            context["project_path"] = self.core.paths.getRenderProductBasePaths()[location]
+        if key:
+            context = {"type": entityType}
+            context["mediaType"] = "3drenders"
+            location = self.getLocationFromPath(path)
+            if location:
+                context["project_path"] = self.core.paths.getRenderProductBasePaths()[location]
 
-        template = self.core.projects.getResolvedProjectStructurePath(key, context=context)
-        context = {"entityType": entityType, "project_path": context["project_path"]}
-        data = self.core.projects.extractKeysFromPath(path, template, context=context)
-        if data:
-            mediaType = "3drenders"
-        else:
-            if entityType == "asset":
-                key = "playblastFilesAssets"
-            elif entityType == "shot":
-                key = "playblastFilesShots"
-
-            context = {"entityType": entityType, "project_path": context["project_path"]}
             template = self.core.projects.getResolvedProjectStructurePath(key, context=context)
             context = {"entityType": entityType, "project_path": context["project_path"]}
             data = self.core.projects.extractKeysFromPath(path, template, context=context)
             if data:
-                mediaType = "playblasts"
+                mediaType = "3drenders"
             else:
-                key = "renderVersions"
-                context["mediaType"] = "2drenders"
+                if entityType == "asset":
+                    key = "playblastFilesAssets"
+                elif entityType == "shot":
+                    key = "playblastFilesShots"
+
+                context = {"entityType": entityType, "project_path": context["project_path"]}
                 template = self.core.projects.getResolvedProjectStructurePath(key, context=context)
-                data = self.core.projects.extractKeysFromPath(os.path.dirname(path), template, context=context)
+                context = {"entityType": entityType, "project_path": context["project_path"]}
+                data = self.core.projects.extractKeysFromPath(path, template, context=context)
                 if data:
-                    mediaType = "2drenders"
+                    mediaType = "playblasts"
                 else:
                     key = "renderVersions"
-                    context["mediaType"] = "externalMedia"
+                    context["mediaType"] = "2drenders"
                     template = self.core.projects.getResolvedProjectStructurePath(key, context=context)
-                    data = self.core.projects.extractKeysFromPath(os.path.dirname(os.path.dirname(path)), template, context=context)
+                    data = self.core.projects.extractKeysFromPath(os.path.dirname(path), template, context=context)
                     if data:
-                        mediaType = "externalMedia"
+                        mediaType = "2drenders"
+                    else:
+                        key = "renderVersions"
+                        context["mediaType"] = "externalMedia"
+                        template = self.core.projects.getResolvedProjectStructurePath(key, context=context)
+                        data = self.core.projects.extractKeysFromPath(os.path.dirname(os.path.dirname(path)), template, context=context)
+                        if data:
+                            mediaType = "externalMedia"
+
+        if not mediaType:
+            pathData = self.getDataFromFilepath(path)
+            if pathData and pathData.get("mediaType"):
+                mediaType = pathData["mediaType"]
 
         return mediaType
 

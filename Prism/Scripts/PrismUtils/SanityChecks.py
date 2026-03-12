@@ -49,22 +49,40 @@ class SanityChecks(object):
     def __init__(self, core):
         self.core = core
         self.checksToRun = {
-            "onOpenProjectBrowser": [
-                {"name": "restartRequired", "function": self.checkRestartRequired}
-            ],
-            "onOpenStateManager": [
-                {"name": "restartRequired", "function": self.checkRestartRequired}
-            ],
+            "onOpenProjectBrowser": {
+                "enabled": True,
+                "checks": [
+                    {"name": "restartRequired", "function": self.checkRestartRequired}
+                ],
+            },
+            "onOpenStateManager": {
+                "enabled": True,
+                "checks": [
+                    {"name": "restartRequired", "function": self.checkRestartRequired}
+                ],
+            },
+            "onSceneOpen": {
+                "enabled": True,
+                "checks": [
+                    {"name": "checkImportVersions", "function": self.checkImportVersions},
+                    {"name": "checkFramerange", "function": self.checkFramerange},
+                    {"name": "checkFPS", "function": self.checkFPS},
+                    {"name": "checkResolution", "function": self.checkResolution},
+                ]
+            }
         }
 
     @err_catcher(name=__name__)
-    def runChecks(self, category, quiet=False):
+    def runChecks(self, category, settings=None):
         result = {"passed": True, "checks": []}
         if category not in self.checksToRun:
             return result
 
-        for check in self.checksToRun[category]:
-            checkResult = check["function"](quiet=quiet)
+        if not self.checksToRun[category].get("enabled", True):
+            return result
+
+        for check in self.checksToRun[category]["checks"]:
+            checkResult = check["function"](settings=settings)
             if not checkResult:
                 result["passed"] = False
 
@@ -74,7 +92,8 @@ class SanityChecks(object):
         return result
 
     @err_catcher(name=__name__)
-    def checkRestartRequired(self, quiet=False):
+    def checkRestartRequired(self, settings=None):
+        quiet = (settings or {}).get("quiet", False)
         if self.core.restartRequired and not quiet:
             appName = self.core.appPlugin.pluginName
             if appName == "Standalone":
@@ -84,7 +103,8 @@ class SanityChecks(object):
         return not self.core.restartRequired
 
     @err_catcher(name=__name__)
-    def checkImportVersions(self):
+    def checkImportVersions(self, settings=None):
+        settings = settings or {}
         checkImpVersions = self.core.getConfig("globals", "check_import_versions")
         if checkImpVersions is None:
             self.core.setConfig("globals", "check_import_versions", True)
@@ -101,7 +121,6 @@ class SanityChecks(object):
         paths = getattr(self.core.appPlugin, "getImportPaths", lambda x: None)(
             self.core
         )
-
         if not paths:
             return
 
@@ -109,7 +128,6 @@ class SanityChecks(object):
         paths = [
             [self.core.fixPath(str(x[0])), self.core.fixPath(str(x[1]))] for x in paths
         ]
-
         if len(paths) == 0:
             return
 
@@ -143,21 +161,28 @@ class SanityChecks(object):
         msgString += "Please update the imports in the State Manager."
 
         if updates > 0:
-            msg = self.core.popupQuestion(
-                msgString,
-                title="New versions available",
-                buttons=["Update all", "Open State Manager", "Skip"],
-                escapeButton="Skip",
-                default="Skip",
-                doExec=False,
-            )
-            if not self.core.isStr(msg):
-                msg.buttonClicked.connect(self.onImportVersionsClicked)
-                msg.show()
+            if settings.get("accept", False):
+                self.onImportVersionsClicked(settings.get("value", "Update all"))
+            else:
+                msg = self.core.popupQuestion(
+                    msgString,
+                    title="New versions available",
+                    buttons=["Update all", "Open State Manager", "Skip"],
+                    escapeButton="Skip",
+                    default="Skip",
+                    doExec=False,
+                )
+                if not self.core.isStr(msg):
+                    msg.buttonClicked.connect(self.onImportVersionsClicked)
+                    msg.show()
 
     @err_catcher(name=__name__)
     def onImportVersionsClicked(self, button):
-        result = button.text()
+        if self.core.isStr(button):
+            result = button
+        else:
+            result = button.text()
+
         if result == "Update all":
             sm = self.core.getStateManager()
             sm.updateAllImportStates()
@@ -167,7 +192,8 @@ class SanityChecks(object):
             sm.gb_import.setChecked(True)
 
     @err_catcher(name=__name__)
-    def checkFramerange(self):
+    def checkFramerange(self, settings=None):
+        settings = settings or {}
         if not getattr(self.core.appPlugin, "hasFrameRange", True):
             return
 
@@ -221,32 +247,40 @@ class SanityChecks(object):
         if self.core.forceFramerange:
             self.core.setFrameRange(int(shotRange[0]), int(shotRange[1]))
         else:
-            buttons = ["Set shotrange in scene", "Skip"]
-            if hasHandles:
-                buttons.insert(1, "Set shotrange in scene (with handles)")
+            if settings.get("accept", False):
+                self.onCheckFramerangeClicked(settings.get("value", "Set shotrange in scene"), shotRange, handleRange)
+            else:
+                buttons = ["Set shotrange in scene", "Skip"]
+                if hasHandles:
+                    buttons.insert(1, "Set shotrange in scene (with handles)")
 
-            msg = self.core.popupQuestion(
-                msgString,
-                title="Framerange mismatch",
-                buttons=buttons,
-                escapeButton="Skip",
-                default="Skip",
-                doExec=False,
-            )
-            if not self.core.isStr(msg):
-                msg.buttonClicked.connect(lambda x: self.onCheckFramerangeClicked(x, shotRange, handleRange))
-                msg.show()
+                msg = self.core.popupQuestion(
+                    msgString,
+                    title="Framerange mismatch",
+                    buttons=buttons,
+                    escapeButton="Skip",
+                    default="Skip",
+                    doExec=False,
+                )
+                if not self.core.isStr(msg):
+                    msg.buttonClicked.connect(lambda x: self.onCheckFramerangeClicked(x, shotRange, handleRange))
+                    msg.show()
 
     @err_catcher(name=__name__)
     def onCheckFramerangeClicked(self, button, shotRange, handleRange=None):
-        result = button.text()
+        if self.core.isStr(button):
+            result = button
+        else:
+            result = button.text()
+
         if result == "Set shotrange in scene":
             self.core.setFrameRange(int(shotRange[0]), int(shotRange[1]))
         elif result == "Set shotrange in scene (with handles)":
             self.core.setFrameRange(int(handleRange[0]), int(handleRange[1]))
 
     @err_catcher(name=__name__)
-    def checkFPS(self):
+    def checkFPS(self, settings=None):
+        settings = settings or {}
         forceFPS = self.core.getConfig(
             "globals", "forcefps", configPath=self.core.prismIni
         )
@@ -300,27 +334,35 @@ class SanityChecks(object):
         w_info = QWidget()
         w_info.setLayout(lay_info)
 
-        msg = self.core.popupQuestion(
-            msgString,
-            title="FPS mismatch",
-            buttons=["Set %s FPS in current scene" % fpsDef, "Skip"],
-            widget=w_info,
-            escapeButton="Skip",
-            default="Skip",
-            doExec=False,
-        )
-        if not self.core.isStr(msg):
-            msg.buttonClicked.connect(lambda x: self.onCheckFpsClicked(x, pFps))
-            msg.show()
+        if settings.get("accept", False):
+            self.onCheckFpsClicked(settings.get("value", "Set %s FPS in current scene" % fpsDef), pFps)
+        else:
+            msg = self.core.popupQuestion(
+                msgString,
+                title="FPS mismatch",
+                buttons=["Set %s FPS in current scene" % fpsDef, "Skip"],
+                widget=w_info,
+                escapeButton="Skip",
+                default="Skip",
+                doExec=False,
+            )
+            if not self.core.isStr(msg):
+                msg.buttonClicked.connect(lambda x: self.onCheckFpsClicked(x, pFps))
+                msg.show()
 
     @err_catcher(name=__name__)
     def onCheckFpsClicked(self, button, projectFps):
-        result = button.text()
+        if self.core.isStr(button):
+            result = button
+        else:
+            result = button.text()
+
         if result == "Set project FPS in current scene" or result == "Set entity FPS in current scene":
             self.core.appPlugin.setFPS(self.core, float(projectFps))
 
     @err_catcher(name=__name__)
-    def checkResolution(self):
+    def checkResolution(self, settings=None):
+        settings = settings or {}
         forceRes = self.core.getConfig(
             "globals", "forceResolution", configPath=self.core.prismIni
         )
@@ -395,22 +437,29 @@ class SanityChecks(object):
         if hasattr(self, "dlg_res") and self.core.isObjectValid(self.dlg_res) and self.dlg_res.isVisible():
             self.dlg_res.close()
 
-        self.dlg_res = self.core.popupQuestion(
-            msgString,
-            title="Resolution mismatch",
-            buttons=["Set %s resolution in current scene" % resDef, "Skip"],
-            widget=w_info,
-            escapeButton="Skip",
-            default="Skip",
-            doExec=False,
-        )
-        if not self.core.isStr(self.dlg_res):
-            self.dlg_res.buttonClicked.connect(lambda x: self.onCheckResolutionClicked(x, [resX, resY]))
-            self.dlg_res.show()
+        if settings.get("accept", False):
+            self.onCheckResolutionClicked(settings.get("value", "Set %s resolution in current scene" % resDef), [resX, resY])
+        else:
+            self.dlg_res = self.core.popupQuestion(
+                msgString,
+                title="Resolution mismatch",
+                buttons=["Set %s resolution in current scene" % resDef, "Skip"],
+                widget=w_info,
+                escapeButton="Skip",
+                default="Skip",
+                doExec=False,
+            )
+            if not self.core.isStr(self.dlg_res):
+                self.dlg_res.buttonClicked.connect(lambda x: self.onCheckResolutionClicked(x, [resX, resY]))
+                self.dlg_res.show()
 
     @err_catcher(name=__name__)
     def onCheckResolutionClicked(self, button, projectResolution):
-        result = button.text()
+        if self.core.isStr(button):
+            result = button
+        else:
+            result = button.text()
+
         if result == "Set project resolution in current scene" or result == "Set entity resolution in current scene":
             self.core.appPlugin.setResolution(*projectResolution)
 

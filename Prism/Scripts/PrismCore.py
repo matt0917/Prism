@@ -179,7 +179,7 @@ class PrismCore:
 
         try:
             # set some general variables
-            self.version = "v2.1.0"
+            self.version = "v2.1.1"
             self.requiredLibraries = "v2.0.0"
             self.core = self
             self.preferredExtension = os.getenv("PRISM_CONFIG_EXTENSION", ".json")
@@ -930,7 +930,10 @@ class PrismCore:
             return
 
         parent = parent or getattr(self, "messageParent", None)
-        win.setParent(parent, Qt.Window)
+        if platform.system() == "Linux":
+            win.setParent(parent, Qt.Window | Qt.Tool)
+        else:
+            win.setParent(parent, Qt.Window)
 
         if platform.system() == "Darwin" and self.useOnTop:
             win.setWindowFlags(win.windowFlags() | Qt.WindowStaysOnTopHint)
@@ -962,7 +965,7 @@ class PrismCore:
         astr = """Prism:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;%s<br>
 %s<br>
 <br>
-Copyright (C) 2023-2025 Prism Software GmbH<br>
+Copyright (C) 2023-2026 Prism Software GmbH<br>
 License: GNU LGPL-3.0-or-later<br>
 <br>
 <a href='mailto:contact@prism-pipeline.com' style="color: rgb(150,200,250)">contact@prism-pipeline.com</a><br>
@@ -1317,7 +1320,14 @@ License: GNU LGPL-3.0-or-later<br>
             except:
                 pass
 
-        import PrismInstaller
+        try:
+            import PrismInstaller
+        except:
+            if self.core.appPlugin.pluginName != "Standalone":
+                msg = "Unable to load PrismInstaller module in current environment.\n\nPlease try again in Prism standalone."
+                self.core.popup(msg)
+            else:
+                raise
 
         self.pinst = PrismInstaller.PrismInstaller(core=self, plugins=plugins, parent=parent)
         return self.pinst
@@ -2072,7 +2082,9 @@ License: GNU LGPL-3.0-or-later<br>
             if "locations" in detailData:
                 del detailData["locations"]
         else:
-            detailData = {}
+            detailData = {
+                "comment": comment
+            }
 
         detailData.update(details)
         if prismReq:
@@ -2390,7 +2402,7 @@ License: GNU LGPL-3.0-or-later<br>
         return cdate
 
     @err_catcher(name=__name__)
-    def getFormattedDate(self, stamp=None, datetimeInst=None):
+    def getFormattedDate(self, stamp=None, datetimeInst=None, dateFormat=None):
         if self.isStr(stamp):
             return ""
 
@@ -2400,7 +2412,7 @@ License: GNU LGPL-3.0-or-later<br>
             cdate = datetime.fromtimestamp(stamp)
 
         cdate = cdate.replace(microsecond=0)
-        fmt = "%d.%m.%y,  %H:%M:%S"
+        fmt = dateFormat or "%d.%m.%y,  %H:%M:%S"
         if os.getenv("PRISM_DATE_FORMAT"):
             fmt = os.getenv("PRISM_DATE_FORMAT")
 
@@ -2534,6 +2546,17 @@ License: GNU LGPL-3.0-or-later<br>
         return rawText
 
     @err_catcher(name=__name__)
+    def getFolderFilecount(self, folderpath):
+        filecount = 0
+        try:
+            for root, folders, files in os.walk(folderpath):
+                filecount += len(files)
+        except (OSError, IOError):
+            pass
+
+        return filecount
+
+    @err_catcher(name=__name__)
     def getFolderSize(self, folderpath):
         totalSize = 0
         filecount = 0
@@ -2547,14 +2570,114 @@ License: GNU LGPL-3.0-or-later<br>
         return {"size": totalSize, "filecount": filecount}
 
     @err_catcher(name=__name__)
-    def copyfolder(self, src, dst, thread=None):
+    def copyfolder_robocopy(self, src, dst, thread=None):
+        if thread:
+            thread.updated.emit({"message": "\nStarting robocopy..."})
+        
+        src = src.rstrip('\\')
+        dst = dst.rstrip('\\')
+        
+        # Robocopy arguments for better network performance
+        cmd = [
+            'robocopy', src, dst,
+            '/E',  # Copy subdirectories including empty ones
+            '/COPY:DAT',  # Copy Data, Attributes, and Timestamps only
+            '/R:3',  # Retry 3 times on failed copies
+            '/W:5',  # Wait 5 seconds between retries
+            '/MT:8',  # Multi-threaded (8 threads)
+            '/V',   # Verbose output for progress tracking
+        ]
+        
+        logger.debug("Executing robocopy command: %s" % " ".join(cmd))
+        logger.debug(f"Robocopy: Copying from {src} to {dst}")
+        
+        try:
+            process = subprocess.Popen(
+                cmd, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.STDOUT,  # Combine stderr with stdout
+                text=True,
+                bufsize=1,  # Line buffered
+                universal_newlines=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
+            )
+            
+            # Process output in real-time
+            output_lines = []
+            current_file = ""
+            files_copied = 0
+            total_files = self.getFolderFilecount(src) or 1
+            prevPrc = -1
+
+            while True:
+                if thread and thread.canceled:
+                    process.terminate()
+                    return
+                
+                # Read output line by line
+                line = process.stdout.readline()
+                
+                if line == '' and process.poll() is not None:
+                    break
+                    
+                if line:
+                    line = line.strip()
+                    output_lines.append(line)
+                    
+                    # Print progress to console
+                    if line:
+                        logger.debug(f"Robocopy: {line}")
+                    
+                    # Track file copying progress
+                    if line and not line.startswith('ROBOCOPY') and not line.startswith('Started') and not line.startswith('Source') and not line.startswith('Dest') and not line.startswith('Files') and not line.startswith('Options') and not line.startswith('---'):
+                        # Check if this looks like a file being copied
+                        if '\\' in line or '/' in line:
+                            current_file = line
+                            files_copied += 1
+                            if thread:
+                                prc = int((files_copied / total_files) * 100)
+                                if prc != prevPrc:
+                                    prevPrc = prc
+                                    data = {"percent": prc}
+                                    data["filecount"] = total_files
+                                    data["idx"] = files_copied + 1
+                                    thread.updated.emit(data)
+            
+            # Wait for process to complete
+            process.wait()
+            
+            if process.returncode in [0, 1, 2, 3]:  # Robocopy success codes
+                msg = f"Robocopy completed successfully. Return code: {process.returncode}"
+                logger.debug(msg)
+                logger.debug(msg)
+                return dst
+            else:
+                output = '\n'.join(output_lines)
+                msg = f"Robocopy failed with return code {process.returncode}: {output}"
+                logger.warning(f"ERROR: {msg}")
+                logger.warning(msg)
+                raise Exception(msg)
+                
+        except Exception as e:
+            error_msg = f"Robocopy failed: {str(e)}"
+            logger.warning(f"ERROR: {error_msg}")
+            if thread:
+                thread.warningSent.emit(f"Robocopy failed, falling back to shutil: {str(e)}")
+
+            return self.copyfolder(src, dst, thread, robocopy=False)
+
+    @err_catcher(name=__name__)
+    def copyfolder(self, src, dst, thread=None, robocopy=None):
+        if platform.system() == "Windows" and robocopy is not False:
+            return self.copyfolder_robocopy(src, dst, thread=thread)
+
         if thread:
             thread.updated.emit({"message": "\nCalculating size..."})
 
         folderinfo = self.getFolderSize(src)
         self.copiedFileCount = 0
         self.copiedFileBytes = 0
-        shutil.copytree(src, dst, copy_function=lambda s, d: self.copyfile(s, d, thread=thread, size=folderinfo["size"], filecount=folderinfo["filecount"]), dirs_exist_ok=True)
+        shutil.copytree(src, dst, copy_function=lambda s, d: self.copyfile(s, d, thread=thread, size=folderinfo["size"], filecount=folderinfo["filecount"], robocopy=False), dirs_exist_ok=True)
         if thread and thread.canceled:
             try:
                 shutil.rmtree(dst)
@@ -2564,9 +2687,140 @@ License: GNU LGPL-3.0-or-later<br>
             return
 
         return dst
+    
+    @err_catcher(name=__name__)
+    def copyfile_robocopy(self, src, dst, thread=None):
+        if thread:
+            thread.updated.emit({"message": "\nStarting robocopy for file..."})
+        
+        src_dir = os.path.dirname(src)
+        dst_dir = os.path.dirname(dst)
+        filename = os.path.basename(src)
+        dst_filename = os.path.basename(dst)
+        
+        # Robocopy arguments for better network performance
+        cmd = [
+            'robocopy', src_dir, dst_dir, filename,
+            '/COPY:DAT',  # Copy Data, Attributes, and Timestamps only
+            '/R:3',  # Retry 3 times on failed copies
+            '/W:5',  # Wait 5 seconds between retries
+            '/MT:8',  # Multi-threaded (8 threads)
+            '/V',   # Verbose output for progress tracking
+        ]
+        
+        logger.debug("Executing robocopy command for file: %s" % " ".join(cmd))
+        logger.debug(f"Robocopy: Copying file from {src} to {dst}")
+        
+        try:
+            process = subprocess.Popen(
+                cmd, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.STDOUT,  # Combine stderr with stdout
+                text=True,
+                bufsize=1,  # Line buffered
+                universal_newlines=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
+            )
+            
+            # Process output in real-time
+            output_lines = []
+            prevPrc = -1
+            copy_started = False
+
+            # Initial progress
+            if thread:
+                data = {"percent": 0}
+                thread.updated.emit(data)
+
+            import re
+            while True:
+                if thread and thread.canceled:
+                    process.terminate()
+                    return
+                
+                # Read output line by line
+                line = process.stdout.readline()
+                
+                if line == '' and process.poll() is not None:
+                    break
+                    
+                if line:
+                    line = line.strip()
+                    output_lines.append(line)
+                    
+                    # Print progress to console
+                    if line:
+                        logger.debug(f"Robocopy: {line}")
+                    
+                    # Parse robocopy progress from output
+                    if thread:
+                        prc = prevPrc
+                        
+                        # Look for percentage in robocopy output (e.g., "5.2%" or "100%")
+                        percent_match = re.search(r'(\d+(?:\.\d+)?)%', line)
+                        if percent_match:
+                            try:
+                                prc = int(float(percent_match.group(1)))
+                                prc = min(100, max(0, prc))  # Clamp between 0-100
+                            except (ValueError, IndexError):
+                                pass
+                        
+                        # Starting copy process
+                        elif not copy_started and ('Started :' in line or 'Source :' in line):
+                            copy_started = True
+                            if prc == prevPrc:  # Only set if no percentage found
+                                prc = 5
+                        
+                        # File being copied
+                        elif copy_started and filename in line and not line.startswith('Files :'):
+                            if prc == prevPrc:  # Only set if no percentage found
+                                prc = 50
+                        
+                        # Copy operation completing
+                        elif 'Files :' in line and 'Copied :' in line:
+                            if prc == prevPrc:  # Only set if no percentage found
+                                prc = 95
+                        
+                        # Process finishing
+                        elif 'Ended :' in line or process.poll() is not None:
+                            prc = 100
+                        
+                        # Update progress if changed
+                        if prc != prevPrc and prc >= 0:
+                            prevPrc = prc
+                            data = {"percent": prc}
+                            thread.updated.emit(data)
+            
+            # Wait for process to complete
+            process.wait()
+            
+            if process.returncode in [0, 1, 2, 3]:  # Robocopy success codes
+                msg = f"Robocopy file copy completed successfully. Return code: {process.returncode}"
+                logger.debug(msg)
+                if filename != dst_filename:
+                    curpath = os.path.join(dst_dir, filename)
+                    newpath = os.path.join(dst_dir, dst_filename)
+                    logger.debug("renaming file: %s to %s" % (curpath, newpath))
+                    os.rename(curpath, newpath)
+                return dst
+            else:
+                output = '\n'.join(output_lines)
+                msg = f"Robocopy file copy failed with return code {process.returncode}: {output}"
+                logger.warning(f"ERROR: {msg}")
+                logger.warning(msg)
+                raise Exception(msg)
+                
+        except Exception as e:
+            error_msg = f"Robocopy file copy failed: {str(e)}"
+            logger.warning(f"ERROR: {error_msg}")
+            if thread:
+                thread.warningSent.emit(f"Robocopy failed, falling back to shutil: {str(e)}")
+
+            # Re-raise the exception to trigger fallback to shutil method
+            raise
 
     @err_catcher(name=__name__)
-    def copyfile(self, src, dst, thread=None, follow_symlinks=True, size=None, filecount=None):
+    def copyfile(self, src, dst, thread=None, follow_symlinks=True, size=None, filecount=None, robocopy=None):
         """Copy data from src to dst.
 
         If follow_symlinks is not set and src is a symbolic link, a new
@@ -2592,32 +2846,38 @@ License: GNU LGPL-3.0-or-later<br>
         if not follow_symlinks and os.path.islink(src):
             os.symlink(os.readlink(src), dst)
         else:
-            size = size or os.stat(src).st_size
-            # thread.updated.emit("Getting source hash")
-            # vSourceHash = hashlib.md5(open(src, "rb").read()).hexdigest()
-            # vDestinationHash = ""
-            # while vSourceHash != vDestinationHash:
-            with open(src, "rb") as fsrc:
-                with open(dst, "wb") as fdst:
-                    result = self.copyfileobj(fsrc, fdst, total=size, thread=thread, path=dst, filecount=filecount)
+            with self.timeMeasure:
+                if platform.system() == "Windows" and robocopy is not False:
+                    result = self.copyfile_robocopy(src, dst, thread=thread)
+                    if result:
+                        return result
 
-            if filecount is not None:
-                self.copiedFileCount += 1
+                size = size or os.stat(src).st_size
+                # thread.updated.emit("Getting source hash")
+                # vSourceHash = hashlib.md5(open(src, "rb").read()).hexdigest()
+                # vDestinationHash = ""
+                # while vSourceHash != vDestinationHash:
+                with open(src, "rb") as fsrc:
+                    with open(dst, "wb") as fdst:
+                        result = self.copyfileobj(fsrc, fdst, total=size, thread=thread, path=dst, filecount=filecount)
 
-            if not result:
-                return
+                if filecount is not None:
+                    self.copiedFileCount += 1
 
-            if thread and thread.canceled:
-                try:
-                    os.remove(dst)
-                except:
-                    pass
-                return
+                if not result:
+                    return
 
-                # thread.updated.emit("Validating copied file")
-                # vDestinationHash = hashlib.md5(open(dst, "rb").read()).hexdigest()
+                if thread and thread.canceled:
+                    try:
+                        os.remove(dst)
+                    except:
+                        pass
+                    return
 
-        shutil.copymode(src, dst)
+                    # thread.updated.emit("Validating copied file")
+                    # vDestinationHash = hashlib.md5(open(dst, "rb").read()).hexdigest()
+
+            shutil.copymode(src, dst)
         return dst
 
     @err_catcher(name=__name__)
@@ -2709,7 +2969,10 @@ License: GNU LGPL-3.0-or-later<br>
         if "percent" in progress:
             updatedText = text + str(progress["percent"]) + "%\n"
             if files:
-                updatedText += "File: %s/%s %s\n" % (progress["idx"], progress["filecount"], progress["filename"])
+                if "filename" in progress:
+                    updatedText += "File: %s/%s %s\n" % (progress["idx"], progress["filecount"], progress["filename"])
+                else:
+                    updatedText += "File: %s/%s\n" % (progress["idx"], progress["filecount"])
         else:
             updatedText = text + progress["message"]
 
@@ -2809,7 +3072,7 @@ License: GNU LGPL-3.0-or-later<br>
                 dccEnv[envVar["key"]] = envVar["value"]
 
             self.core.callback(name="preLaunchApp", args=[args, dccEnv])
-
+            logger.debug("launching app: args: %s - env: %s" % (args, dccEnv))
             try:
                 subprocess.Popen(args, env=dccEnv)
             except:
@@ -3066,13 +3329,12 @@ License: GNU LGPL-3.0-or-later<br>
 
         # trigger auto imports
         if os.path.exists(self.prismIni):
-            self.stateManager(openUi=openSm, reload_module=True)
+            sm = self.stateManager(openUi=openSm, reload_module=True)
+            if not sm or not sm.states:
+                sm.loadDefaultStates(quiet=True)
 
         self.openSm = False
-        self.sanities.checkImportVersions()
-        self.sanities.checkFramerange()
-        self.sanities.checkFPS()
-        self.sanities.checkResolution()
+        self.sanities.runChecks("onSceneOpen")
         self.updateEnvironment()
         self.core.callback(name="onSceneOpen", args=[filepath])
 
@@ -3521,14 +3783,17 @@ License: GNU LGPL-3.0-or-later<br>
         if "silent" not in self.prismArgs and self.uiAvailable and isGuiThread:
             parent = parent or getattr(self, "messageParent", None)
             msg = QMessageBox(parent)
+            if "<a href=" in text or "<br>" in text:
+                msg.setTextFormat(Qt.RichText)
+            else:
+                text = text.replace("\n", "  \n")
+                msg.setTextFormat(Qt.TextFormat.MarkdownText)
+
             if self.isPopupTooLong(text):
                 text = self.shortenPopupMsg(text)
             msg.setText(text)
             msg.setWindowTitle(title)
             msg.setModal(modal)
-
-            if "<a href=" in text:
-                msg.setTextFormat(Qt.RichText);
 
             if severity == "warning":
                 msg.setIcon(QMessageBox.Icon.Warning)
@@ -4237,6 +4502,7 @@ If this plugin is an official Prism plugin, please submit this error to the supp
 
     @err_catcher(name=__name__)
     def runFileCommand(self, command):
+        logger.debug("run file command: %s" % command)
         if command["type"] == "copyFolder":
             result = self.core.copyFolder(*command["args"], adminFallback=False)
         elif command["type"] == "copyFile":
@@ -4628,39 +4894,24 @@ class PythonHighlighter (QSyntaxHighlighter):
         r'\{', r'\}', r'\(', r'\)', r'\[', r'\]',
     ]
 
-    def format(color, style=''):
-        """Return a QTextCharFormat with the given attributes.
-        """
-        if API_NAME == "PySide2":
-            _color = QColor()
-            _color.setNamedColor(color)
-        else:
-            _color = QColor.fromString(color)
-
-        _format = QTextCharFormat()
-        _format.setForeground(_color)
-        if 'bold' in style:
-            _format.setFontWeight(QFont.Bold)
-        if 'italic' in style:
-            _format.setFontItalic(True)
-
-        return _format
-
-    # Syntax styles that can be shared by all languages
-    STYLES = {
-        'keyword': (format('#66d9ef')),
-        'operator': (format('#ff4689')),
-        'brace': (format('darkGray')),
-        'defclass': (format('#a6e22e', 'bold')),
-        'string': (format('#e6db74')),
-        'string2': (format('#e6db74')),
-        'comment': (format('#959077', 'italic')),
-        'self': (format('#66d9ef', 'italic')),
-        'numbers': (format('#ae81ff')),
-    }
-
     def __init__(self, parent: QTextDocument) -> None:
         super().__init__(parent)
+        self.setup()
+
+    @err_catcher(name=__name__)
+    def setup(self):
+        # Syntax styles that can be shared by all languages
+        self.STYLES = {
+            'keyword': (self.formatColor('#66d9ef')),
+            'operator': (self.formatColor('#ff4689')),
+            'brace': (self.formatColor('darkGray')),
+            'defclass': (self.formatColor('#a6e22e', 'bold')),
+            'string': (self.formatColor('#e6db74')),
+            'string2': (self.formatColor('#e6db74')),
+            'comment': (self.formatColor('#959077', 'italic')),
+            'self': (self.formatColor('#66d9ef', 'italic')),
+            'numbers': (self.formatColor('#ae81ff')),
+        }
 
         # Multi-line strings (expression, flag, style)
         self.tri_single = (QRegularExpression("'''"), 1, self.STYLES['string2'])
@@ -4709,7 +4960,7 @@ class PythonHighlighter (QSyntaxHighlighter):
         """
         self.tripleQuoutesWithinStrings = []
         # Do other syntax formatting
-        for expression, nth, format in self.rules:
+        for expression, nth, _format in self.rules:
             match_iter = index = expression.globalMatch(text)
             while match_iter.hasNext():
                 match = match_iter.next()
@@ -4732,7 +4983,7 @@ class PythonHighlighter (QSyntaxHighlighter):
                 if index in self.tripleQuoutesWithinStrings:
                     continue
 
-                self.setFormat(index, length, format)
+                self.setFormat(index, length, _format)
 
         self.setCurrentBlockState(0)
 
@@ -4740,6 +4991,27 @@ class PythonHighlighter (QSyntaxHighlighter):
         in_multiline = self.match_multiline(text, *self.tri_single)
         if not in_multiline:
             in_multiline = self.match_multiline(text, *self.tri_double)
+
+    def formatColor(self, color, style=''):
+        """Return a QTextCharFormat with the given attributes.
+        """
+        if API_NAME == "PySide2":
+            _color = QColor()
+            _color.setNamedColor(color)
+        else:
+            if not hasattr(QColor, "fromString"):
+                return
+
+            _color = QColor.fromString(color)
+
+        _format = QTextCharFormat()
+        _format.setForeground(_color)
+        if 'bold' in style:
+            _format.setFontWeight(QFont.Bold)
+        if 'italic' in style:
+            _format.setFontItalic(True)
+
+        return _format
 
     def match_multiline(self, text, delimiter, in_state, style):
         """Do highlighting of multi-line strings. ``delimiter`` should be a

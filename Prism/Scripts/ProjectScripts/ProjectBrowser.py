@@ -216,7 +216,7 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
 
         self.act_clearConfigCache = QAction("Clear config cache on refresh", self)
         self.act_clearConfigCache.setCheckable(True)
-        self.act_clearConfigCache.setChecked(False)
+        self.act_clearConfigCache.setChecked(True)
         self.menuTools.insertAction(self.actionAutoplay, self.act_clearConfigCache)
 
         path = os.path.join(self.core.prismRoot, "Scripts", "UserInterfacesPrism", "configure.png")

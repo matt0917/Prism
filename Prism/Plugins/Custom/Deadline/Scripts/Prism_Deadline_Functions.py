@@ -363,11 +363,12 @@ template = base + "_@product@@identifier@_@version@@_(layer)@@_(comment)@"]"""
     def preProjectSettingsSave(self, origin, settings):
         if "deadline" not in settings:
             settings["deadline"] = {}
-            settings["deadline"]["submitScenes"] = origin.chb_submitScenes.isChecked()
-            settings["deadline"]["useScriptDependencies"] = origin.chb_scriptDeps.isChecked()
-            settings["deadline"]["usePoolPresets"] = origin.gb_dlPoolPresets.isChecked()
-            settings["deadline"]["poolPresets"] = origin.gb_dlPoolPresets.getPresetData()
-            settings["deadline"]["jobEnvVars"] = origin.tw_dlenvs.getEnvironmentVariables()
+
+        settings["deadline"]["submitScenes"] = origin.chb_submitScenes.isChecked()
+        settings["deadline"]["useScriptDependencies"] = origin.chb_scriptDeps.isChecked()
+        settings["deadline"]["usePoolPresets"] = origin.gb_dlPoolPresets.isChecked()
+        settings["deadline"]["poolPresets"] = origin.gb_dlPoolPresets.getPresetData()
+        settings["deadline"]["jobEnvVars"] = origin.tw_dlenvs.getEnvironmentVariables()
 
     @err_catcher(name=__name__)
     def useScriptDependencies(self):
@@ -3021,7 +3022,7 @@ path = r\"%s\"
         lines = result.split("\n")
         for line in lines:
             if line.startswith("JobID"):
-                jobId = line.split("=")[1]
+                jobId = line.split("=")[1].strip("\r")
                 return jobId
 
     @err_catcher(name=__name__)
@@ -3399,6 +3400,196 @@ path = r\"%s\"
         return result
 
     @err_catcher(name=__name__)
+    def submitNukeJob(
+        self,
+        jobName=None,
+        jobOutput=None,
+        jobPool="None",
+        jobSndPool="None",
+        jobGroup="None",
+        jobPrio=50,
+        jobTimeOut=180,
+        jobMachineLimit=0,
+        jobFramesPerTask=1,
+        jobConcurrentTasks=None,
+        jobComment=None,
+        jobBatchName=None,
+        frames="1",
+        suspended=False,
+        dependencies=None,
+        jobDependencies=None,
+        environment=None,
+        args=None,
+        state=None,
+        version=None,
+        script=None,
+        extraFiles=None,
+        writeNode=None,
+        userName=None,
+        scenefile=None,
+    ):
+        homeDir = (
+            self.CallDeadlineCommand(["-GetCurrentUserHomeDirectory"])
+        )
+
+        if homeDir is False:
+            return "Execute Canceled: Deadline is not installed"
+
+        homeDir = homeDir.replace("\r", "").replace("\n", "")
+
+        if not jobName:
+            jobName = os.path.splitext(self.core.getCurrentFileName(path=False))[
+                0
+            ].strip("_")
+
+        environment = environment or []
+        environment.insert(0, ["prism_project", self.core.prismIni.replace("\\", "/")])
+
+        # Create submission info file
+
+        jobInfos = {}
+        pluginInfos = {}
+
+        jobInfos["Name"] = jobName
+        jobInfos["Pool"] = jobPool
+        jobInfos["SecondaryPool"] = jobSndPool
+        jobInfos["Group"] = jobGroup
+        jobInfos["Priority"] = jobPrio
+        jobInfos["TaskTimeoutMinutes"] = jobTimeOut
+        jobInfos["MachineLimit"] = jobMachineLimit
+        jobInfos["Frames"] = frames
+        jobInfos["ChunkSize"] = jobFramesPerTask
+        if userName:
+            jobInfos["UserName"] = userName
+
+        for idx, env in enumerate(environment):
+            self.addEnvironmentItem(jobInfos, env[0], env[1])
+
+        if os.getenv("PRISM_LAUNCH_ENV"):
+            envData = self.core.configs.readJson(data=os.getenv("PRISM_LAUNCH_ENV"))
+            for item in envData.items():
+                self.addEnvironmentItem(jobInfos, item[0], item[1])
+
+        jobInfos["Plugin"] = "Nuke"
+        jobInfos["Comment"] = jobComment or "Prism-Submission-Nuke"
+
+        if jobOutput:
+            jobInfos["OutputFilename0"] = jobOutput
+            pluginInfos["OutputFilePath"] = os.path.split(
+                jobInfos["OutputFilename0"]
+            )[0]
+            pluginInfos["OutputFilePrefix"] = os.path.splitext(
+                os.path.basename(jobInfos["OutputFilename0"])
+            )[0].strip("#.")
+
+            import maya.app.renderSetup.model.renderSetup as renderSetup
+
+            render_setup = renderSetup.instance()
+            rlayers = render_setup.getRenderLayers()
+
+            if rlayers:
+                prefixBase = os.path.splitext(
+                    os.path.basename(jobInfos["OutputFilename0"])
+                )[0].strip("#.")
+                passName = prefixBase.split("_")[-1]
+                pluginInfos["OutputFilePrefix"] = os.path.join(
+                    "..", "..", passName, prefixBase
+                )
+
+        if suspended:
+            jobInfos["InitialStatus"] = "Suspended"
+
+        if jobConcurrentTasks:
+            jobInfos["ConcurrentTasks"] = jobConcurrentTasks
+
+        if jobBatchName:
+            jobInfos["BatchName"] = jobBatchName
+
+        if dependencies:
+            depType = dependencies[0]["type"]
+            jobInfos["IsFrameDependent"] = "false" if depType == "job" else "true"
+            if depType in ["job", "frame"]:
+                jobids = []
+                for dep in dependencies:
+                    jobids += dep["jobids"]
+
+                jobInfos["JobDependencies"] = ",".join(jobids)
+            elif depType == "file":
+                jobInfos["ScriptDependencies"] = os.path.abspath(
+                    os.path.join(os.path.dirname(__file__), "DeadlineDependency.py")
+                )
+
+        if jobDependencies:
+            jobInfos["JobDependencies"] = ",".join(jobDependencies)
+
+        # Create plugin info file
+    
+        pluginInfos["IgnoreInputs"] = "False"
+        if not version and self.core.appPlugin.pluginName == "Nuke":
+            version = self.core.appPlugin.getProgramVersion()
+
+        if version:
+            pluginInfos["Version"] = str(version)
+    
+        pluginInfos["Arguments"] = "<STARTFRAME> <ENDFRAME>"
+        if args:
+            pluginInfos["Arguments"] += " " + " ".join(args)
+
+        if writeNode:
+            pluginInfos["WriteNode"] = writeNode
+
+        dlParams = {
+            "jobInfos": jobInfos,
+            "pluginInfos": pluginInfos,
+            "jobInfoFile": os.path.join(homeDir, "temp", "nuke_job_info.job"),
+            "pluginInfoFile": os.path.join(homeDir, "temp", "nuke_plugin_info.job"),
+        }
+
+        if dependencies and dependencies[0]["type"] == "file":
+            dependencyFile = os.path.join(homeDir, "temp", "dependencies.txt")
+            fileHandle = open(dependencyFile, "w")
+
+            for dependency in dependencies:
+                fileHandle.write(str(dependency["offset"]) + "\n")
+                fileHandle.write(str(dependency["filepath"]) + "\n")
+
+            fileHandle.close()
+
+        arguments = []
+        arguments.append(dlParams["jobInfoFile"])
+        arguments.append(dlParams["pluginInfoFile"])
+        for i in getattr(self.core.appPlugin, "getCurrentSceneFiles", self.getCurrentSceneFiles)(self):
+            arguments.append(i)
+
+        if script:
+            pluginInfos["BatchMode"] = True
+            pluginInfos["ScriptJob"] = True
+            scriptPath = os.path.join(homeDir, "temp", "nukeScriptJob.py")
+            with open(scriptPath, "w") as f:
+                f.write(script)
+
+            if self.core.appPlugin.pluginName == "Nuke":
+                pluginInfos["SceneFile"] = arguments[-1]
+
+            arguments.append(scriptPath)
+            pluginInfos["ScriptFilename"] = "nukeScriptJob.py"
+
+        if scenefile:
+            pluginInfos["SceneFile"] = scenefile
+
+        if "dependencyFile" in locals():
+            arguments.append(dependencyFile)
+
+        if extraFiles:
+            arguments += extraFiles
+
+        result = self.deadlineSubmitJob(jobInfos, pluginInfos, arguments)
+        if state:
+            self.registerSubmittedJob(state, result, dlParams)
+
+        return result
+
+    @err_catcher(name=__name__)
     def submitKarmaJob(
         self,
         jobName=None,
@@ -3567,10 +3758,13 @@ path = r\"%s\"
             for key in envVars:
                 self.addEnvironmentItem(jobInfos, key, envVars[key])
 
-        self.core.callback(
+        result = self.core.callback(
             name="preSubmit_Deadline",
             args=[self, jobInfos, pluginInfos, arguments],
         )
+        for res in result:
+            if isinstance(res, dict) and res.get("cancel", False):
+                return "Execute Canceled: preSubmit_Deadline callback return False."
 
         with open(arguments[0], "w") as fileHandle:
             for i in jobInfos:

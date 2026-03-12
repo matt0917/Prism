@@ -72,6 +72,10 @@ class Lockfile(object):
                     msg = "Permission denied to create file:\n\n%s" % self.lockPath
                     self.core.popup(msg)
                     raise LockfileException(msg)
+                elif e.errno == errno.ENOENT: 
+                    msg = "The directory doesn't exist or can't be accessed:\n\n%s" % os.path.dirname(self.lockPath)
+                    self.core.popup(msg)
+                    raise LockfileException(msg)
                 elif not os.path.exists(os.path.dirname(self.lockPath)) and not triedCreate:
                     triedCreate = True
                     os.makedirs(os.path.dirname(self.lockPath))

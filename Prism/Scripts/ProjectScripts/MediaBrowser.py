@@ -463,7 +463,6 @@ class MediaBrowser(QWidget, MediaBrowser_ui.Ui_w_mediaBrowser):
             self.tw_identifier.blockSignals(False)
             self.updateVersions(restoreSelection=True)
 
-
     @err_catcher(name=__name__)
     def createGroupItems(self, identifiers):
         idfs = []
@@ -596,7 +595,7 @@ class MediaBrowser(QWidget, MediaBrowser_ui.Ui_w_mediaBrowser):
         if len(self.tw_identifier.selectedItems()) > 1:
             items = self.tw_identifier.selectedItems()
             for item in items:
-                contexts.append(item.data(Qt.UserRole))
+                contexts.append(item.data(0, Qt.UserRole))
 
         elif len(self.lw_version.selectedItems()) > 1:
             items = self.lw_version.selectedItems()
@@ -1542,7 +1541,7 @@ class MediaBrowser(QWidget, MediaBrowser_ui.Ui_w_mediaBrowser):
 
                     if aovs:
                         for aov in aovs:
-                            if aov["aov"] in ["beauty", "rgb", "rgba"]:
+                            if aov["aov"].lower() in ["beauty", "rgb", "rgba"]:
                                 context = aov
                                 break
                         else:
@@ -1558,7 +1557,7 @@ class MediaBrowser(QWidget, MediaBrowser_ui.Ui_w_mediaBrowser):
 
                 if aovs:
                     for aov in aovs:
-                        if aov["aov"] in ["beauty", "rgb", "rgba"]:
+                        if aov["aov"].lower() in ["beauty", "rgb", "rgba"]:
                             context = aov
                             break
                     else:
@@ -1684,13 +1683,19 @@ class MediaVersionPlayer(QWidget):
                 selectFirst = False
 
         if selectFirst:
-            bIdx = self.cb_layer.findText("beauty")
-            if bIdx != -1:
-                self.cb_layer.setCurrentIndex(bIdx)
+            for idx in range(self.cb_layer.count()):
+                aovPass = self.cb_layer.itemText(idx).lower()
+                if aovPass == "beauty":
+                    self.cb_layer.setCurrentIndex(idx)
+                    break
+
             else:
-                bIdx = self.cb_layer.findText("rgba")
-                if bIdx != -1:
-                    self.cb_layer.setCurrentIndex(bIdx)
+                for idx in range(self.cb_layer.count()):
+                    aovPass = self.cb_layer.itemText(idx).lower()
+                    if aovPass in ["rgb", "rgba"]:
+                        self.cb_layer.setCurrentIndex(idx)
+                        break
+
                 else:
                     self.cb_layer.setCurrentIndex(0)
 
@@ -2788,7 +2793,7 @@ class MediaPlayer(QWidget):
                                     self.vidPrw = self.core.media.getVideoReader(fileName)
                                     vidFile = self.vidPrw
                                     if self.core.isStr(vidFile):
-                                        logger.warning(vidFile)
+                                        logger.warning("failed to read video file: %s" % vidFile)
 
                                     self.videoReaders[fileName] = vidFile
 
@@ -3242,7 +3247,7 @@ class MediaPlayer(QWidget):
 
             self.core.callback(name="preLaunchApp", args=[comd, mpEnv])
             with open(os.devnull, "w") as f:
-                logger.debug("launching: %s" % comd)
+                logger.debug("launching: %s - %s" % (comd, mpEnv))
                 try:
                     subprocess.Popen(comd, stdin=subprocess.PIPE, stdout=f, stderr=f, env=mpEnv)
                 except:

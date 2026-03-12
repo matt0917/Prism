@@ -128,7 +128,6 @@ class StateManager(QMainWindow, StateManager_ui.Ui_mw_StateManager):
         self.entityDlg = EntityDlg
         self.applyChangesToSelection = True
         self.collapsedFolders = []
-        self.importConnectedTags = ["usd", "assembly"]
 
         stateFiles = []
         pluginUiPath = os.path.join(
@@ -159,6 +158,15 @@ class StateManager(QMainWindow, StateManager_ui.Ui_mw_StateManager):
 
         for file in stateFiles:
             self.loadStateTypeFromFile(file)
+
+        exp = QAction("Load Default State Preset", self)
+        exp.triggered.connect(self.loadDefaultStates)
+        for idx, act in enumerate(self.menuAbout.actions()):
+            if act.text() == "Remove All States":
+                self.menuAbout.insertAction(self.menuAbout.actions()[idx + 1], exp)
+                break
+        else:
+            self.menuAbout.addAction(exp)
 
         self.core.callback(name="onStateManagerOpen", args=[self])
 
@@ -262,7 +270,7 @@ class %s(QWidget, %s.%s, %s.%sClass):
                 classDef = lcls.get(className)
                 self.loadState(classDef, filename=filename)
             else:
-                logger.debug("invalid state: %s" % (validState, list(lcls.keys())))
+                logger.debug("invalid state: %s, %s" % (validState, list(lcls.keys())))
 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -715,7 +723,7 @@ class %s(QWidget, %s.%s, %s.%sClass):
         self.b_createExport.clicked.connect(lambda: self.createPressed("Export"))
         self.b_createRender.clicked.connect(lambda: self.createPressed("Render"))
         self.b_createPlayblast.clicked.connect(lambda: self.createPressed("Playblast"))
-        self.b_shotCam.clicked.connect(self.shotCam)
+        self.b_shotCam.clicked.connect(self.importShotCam)
         self.b_showImportStates.clicked.connect(
             lambda: self.showStateMenu("Import", useSelection=True)
         )
@@ -871,8 +879,43 @@ QGroupBox::indicator:checked {
                 self, createMenu
             )
 
+        presets = self.getStatePresets()
+        pmenu = QMenu("Presets", self)
+        for preset in presets:
+            exp = QAction(preset["name"], self)
+            exp.triggered.connect(lambda p=preset: self.loadStatePreset(p))
+            pmenu.addAction(exp)
+
+        exp = QAction("< Save current states as preset >", self)
+        exp.triggered.connect(lambda x=None: self.saveStatePresetFromCurrent())
+        pmenu.addAction(exp)
+
+        createMenu.addMenu(pmenu)
+
         self.core.callback("getStateMenu", args=[self, createMenu])
         return createMenu
+
+    @err_catcher(name=__name__)
+    def loadStatePreset(self, preset):
+        if self.states:
+            msg = "Delete all existing states?"
+            result = self.core.popupQuestion(msg, buttons=["Yes", "No", "Cancel"])
+            if result == "Yes":
+                self = self.removeAllStates(quiet=True)
+            elif result == "Cancel":
+                return
+
+        self.loadStates(preset.get("states"))
+
+    @err_catcher(name=__name__)
+    def saveStatePresetFromCurrent(self):
+        dlg = self.core.prismSettings(tab="States", settingsType="Project")
+        states = self.getStateSettings()
+        name = "preset_%s" % (len(dlg.w_project.gb_statePresets.items) + 1)
+        item = dlg.w_project.gb_statePresets.addItem(name=name, states=states)
+        item.e_name.selectAll()
+        QApplication.processEvents()
+        item.e_name.setFocus()
 
     @err_catcher(name=__name__)
     def getCurrentItem(self, widget):
@@ -1089,6 +1132,9 @@ QGroupBox::indicator:checked {
         if statetype != "Folder":
             item.setFlags(item.flags() & ~Qt.ItemIsDropEnabled)
 
+        if not stateData:
+            self.applyDefaultStateSettings(item.ui)
+
         self.core.callback(
             name="onStateCreated", args=[self, item.ui], **{"stateData": stateData}
         )
@@ -1105,6 +1151,55 @@ QGroupBox::indicator:checked {
 
         self.saveStatesToScene()
         return item
+
+    @err_catcher(name=__name__)
+    def applyDefaultStateSettings(self, state):
+        filepath = self.core.getCurrentFileName()
+        data = self.core.getScenefileData(filepath)
+        settings = self.getDefaultStateSettingsForContext(state.className, data)
+        if settings and settings.get("stateData"):
+            state.loadData(settings["stateData"])
+            return True
+
+        return False
+
+    @err_catcher(name=__name__)
+    def getDefaultStateSettingsForContext(self, typeName, context):
+        defaults = self.getStateDefaults(typeName)
+        return self.core.entities.getItemMatchingContext(defaults, context)
+
+    @err_catcher(name=__name__)
+    def getStateDefaults(self, typeName=None):
+        presets = self.core.getConfig("studio", "stateDefaults", config="project") or []
+        presets = [p for p in presets if p.get("name") == typeName or not typeName]
+        return presets
+
+    @err_catcher(name=__name__)
+    def getStatePresets(self):
+        presets = self.core.getConfig("studio", "statePresets", config="project") or []
+        presets = [p for p in presets if p.get("name")]
+        return presets
+
+    @err_catcher(name=__name__)
+    def loadDefaultStates(self, quiet=False):
+        filepath = self.core.getCurrentFileName()
+        data = self.core.getScenefileData(filepath)
+        preset = self.getDefaultStatePresetForContext(data)
+        if not preset:
+            if not quiet:
+                msg = "No default state preset is defined for the current context"
+                result = self.core.popupQuestion(msg, buttons=["Ok", "Configure presets..."], icon=QMessageBox.Warning, escapeButton="Ok", default="Ok")
+                if result == "Configure presets...":
+                    self.core.prismSettings(tab="States", settingsType="Project")
+
+            return
+
+        self.loadStatePreset(self.core.getStateManager(), preset)
+
+    @err_catcher(name=__name__)
+    def getDefaultStatePresetForContext(self, context):
+        presets = self.getStatePresets()
+        return self.core.entities.getItemMatchingContext(presets, context)
 
     @err_catcher(name=__name__)
     def copyAllStates(self):
@@ -1382,7 +1477,7 @@ QGroupBox::indicator:checked {
         self.activeList.setFocus()
 
     @err_catcher(name=__name__)
-    def shotCam(self):
+    def importShotCam(self, shot=None, quiet=False):
         self.saveEnabled = False
         for i in self.states:
             if i.ui.className == "ImportFile" and i.ui.taskName == "ShotCam":
@@ -1393,35 +1488,49 @@ QGroupBox::indicator:checked {
             mCamState.importLatest()
             self.selectState(camState)
         else:
-            fileName = self.core.getCurrentFileName()
-            fnameData = self.core.getScenefileData(fileName)
-            if not (
-                os.path.exists(fileName)
-                and self.core.fileInPipeline(fileName)
-            ):
-                self.core.showFileNotInProjectWarning(title="Warning")
-                self.saveEnabled = True
-                return False
+            if not shot:
+                fileName = self.core.getCurrentFileName()
+                fnameData = self.core.getScenefileData(fileName)
+                if not (
+                    os.path.exists(fileName)
+                    and self.core.fileInPipeline(fileName)
+                ):
+                    self.core.showFileNotInProjectWarning(title="Warning")
+                    self.saveEnabled = True
+                    return False
 
-            if fnameData.get("type") != "shot":
-                msgStr = "Shotcams are not supported for assets."
-                self.core.popup(msgStr)
-                self.saveEnabled = True
-                return False
+                if fnameData.get("type") != "shot":
+                    msgStr = "Shotcams are not supported for assets."
+                    if not quiet:
+                        self.core.popup(msgStr)
+
+                    self.saveEnabled = True
+                    return False
 
             if self.core.getConfig("globals", "productTasks", config="project"):
                 fnameData["department"] = os.getenv("PRISM_SHOTCAM_DEPARTMENT", "Layout")
                 fnameData["task"] = os.getenv("PRISM_SHOTCAM_TASK", "Cameras")
 
             filepath = self.core.products.getLatestVersionpathFromProduct(
-                "_ShotCam", entity=fnameData
+                "_ShotCam", entity=shot
             )
             if not filepath:
-                self.core.popup("Could not find a shotcam for the current shot.")
+                if not quiet:
+                    self.core.popup("Could not find a shotcam for the current shot.")
+
                 self.saveEnabled = True
                 return False
 
-            self.createState("ImportFile", importPath=filepath, setActive=True)
+            logger.debug("importing shotcam: %s" % filepath)
+            settings = {}
+            if quiet:
+                settings["quiet"] = True
+                settings["lookThroughCam"] = True
+                if self.core.appPlugin.pluginName == "Maya":
+                    settings["useNamespace"] = False
+                    settings["mode"] = "import"
+
+            self.createState("ImportFile", importPath=filepath, setActive=True, settings=settings)
 
         self.setListActive(self.tw_import)
         self.activateWindow()
@@ -1661,7 +1770,7 @@ QGroupBox::indicator:checked {
         menu.addAction(actSet)
 
         actSet = QAction("Import Connected Assets", self)
-        actSet.triggered.connect(self.importConnectedAssets)
+        actSet.triggered.connect(self.core.products.importConnectedAssets)
         menu.addAction(actSet)
 
         menu.exec_(pos)
@@ -2501,54 +2610,6 @@ No frame will be rendered twice. This makes it easier to spot problems in the se
             self.activateWindow()
 
         return state
-
-    @err_catcher(name=__name__)
-    def importConnectedAssets(self):
-        productPaths = []
-        filepath = self.core.getCurrentFileName()
-        entity = self.core.getScenefileData(filepath)
-        if not entity or entity.get("type") != "shot":
-            msg = "Importing connected assets is possible in shot scenefiles only."
-            self.core.popup(msg)
-            return
-
-        productsToImport = []
-        entities = self.core.entities.getConnectedEntities(entity)
-        if not entities:
-            result = self.core.popupQuestion("No assets are connected to the current shot.", buttons=["Connect Assets...", "Close"], icon=QMessageBox.Information)
-            if result == "Connect Assets...":
-                self.core.entities.connectEntityDlg(entities=[entity])
-
-            return
-
-        tags = []
-        curDep = entity.get("department")
-        if curDep:
-            tags.append("to_%s" % curDep.lower())
-
-        tags += self.importConnectedTags
-        for centity in entities:
-            products = self.core.products.getProductsByTags(centity, tags)
-            productsToImport += products
-
-        if not productsToImport:
-            msg = "No products to import.\n(checking for tags: \"%s\")" % "\", \"".join(tags)
-            self.core.popup(msg)
-            return
-
-        for product in productsToImport:
-            if "asset_path" not in product:
-                continue
-
-            productPath = self.core.products.getLatestVersionpathFromProduct(product["product"], entity=product)
-            if not productPath:
-                continue
-
-            productPaths.append(productPath)
-
-        for productPath in productPaths:
-            self.importFile(productPath)
-            logger.debug("imported product: %s" % (productPath))
 
 
 class ImportDelegate(QStyledItemDelegate):

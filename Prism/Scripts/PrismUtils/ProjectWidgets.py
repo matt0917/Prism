@@ -35,6 +35,7 @@
 import os
 import sys
 import copy
+import re
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -2588,3 +2589,1701 @@ class IngestMediaDlg(QDialog):
 class VersionSpinBox(QSpinBox):
     def textFromValue(self, value):
         return self.core.versionFormat % value
+
+
+class StateDefaults(QGroupBox):
+    def __init__(self, origin, data=None):
+        super(StateDefaults, self).__init__()
+        self.origin = origin
+        self.core = self.origin.core
+        self.core.parentWindow(self)
+        self.items = []
+
+        self.loadLayout()
+        self.connectEvents()
+        if data:
+            self.loadStateData(data)
+
+    @err_catcher(name=__name__)
+    def loadLayout(self):
+        self.w_add = QWidget()
+        self.b_add = QToolButton()
+        self.lo_add = QHBoxLayout()
+        self.w_add.setLayout(self.lo_add)
+        self.lo_add.addStretch()
+        self.lo_add.addWidget(self.b_add)
+
+        path = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "add.png"
+        )
+        icon = self.core.media.getColoredIcon(path)
+        self.b_add.setIcon(icon)
+        self.b_add.setIconSize(QSize(20, 20))
+        self.b_add.setToolTip("Add State Type")
+        if self.core.appPlugin.pluginName != "Standalone":
+            self.b_add.setStyleSheet(
+                "QWidget{padding: 0; border-width: 0px;background-color: transparent} QWidget:hover{border-width: 1px; }"
+            )
+
+        path = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "reset.png"
+        )
+        icon = self.core.media.getColoredIcon(path)
+
+        self.lo_items = QVBoxLayout()
+        self.lo_main = QVBoxLayout()
+        self.setLayout(self.lo_main)
+        self.lo_main.addLayout(self.lo_items)
+        self.lo_main.addWidget(self.w_add)
+        self.setTitle("State Defaults")
+
+    @err_catcher(name=__name__)
+    def connectEvents(self):
+        self.b_add.clicked.connect(self.onAddClicked)
+
+    @err_catcher(name=__name__)
+    def onAddClicked(self):
+        pos = QCursor.pos()
+        sm = self.core.getStateManager()
+        if not sm:
+            return
+
+        menu = QMenu(self)
+        typeNames = sm.getStateTypes()
+
+        for typeName in typeNames:
+            act = menu.addAction(typeName)
+            act.triggered.connect(
+                lambda x=None, typeName=typeName: self.addItem(
+                    typeName
+                )
+            )
+
+        if not menu.isEmpty():
+            menu.exec_(pos)
+
+    @err_catcher(name=__name__)
+    def loadStateData(self, data):
+        self.clearItems()
+        for data in data:
+            self.addItem(
+                name=data["name"],
+                dftTasks=data["dftTasks"],
+                stateData=data["stateData"],
+            )
+
+    @err_catcher(name=__name__)
+    def addItem(self, name=None, dftTasks=None, stateData=None):
+        item = StateDefaultItem(self.origin, name)
+        self.items.append(item)
+        item.removed.connect(self.removeItem)
+        item.signalItemDropped.connect(self.itemDropped)
+
+        if name:
+            item.setName(name)
+
+        if dftTasks:
+            item.setDftTasks(dftTasks)
+
+        if stateData:
+            item.setStateData(stateData)
+
+        self.lo_items.addWidget(item)
+        return item
+
+    @err_catcher(name=__name__)
+    def itemDropped(self, item):
+        pos = QCursor.pos()
+        targetItem = None
+        for sitem in self.items:
+            if sitem == item:
+                continue
+
+            rect = sitem.geometry()
+            rpos = sitem.parent().mapFromGlobal(pos)
+            if rect.contains(rpos):
+                targetItem = sitem
+
+        if targetItem:
+            idx = self.lo_items.indexOf(item)
+            targetIdx = self.lo_items.indexOf(targetItem)
+            data = self.getItemData()
+            itemData = data.pop(idx)
+            data.insert(targetIdx, itemData)
+            self.loadStateData(data)
+        else:
+            lo = self.lo_items
+            widgets = [lo.itemAt(idx).widget() for idx in range(lo.count()) if lo.itemAt(idx).widget()]
+            order = sorted(widgets, key=lambda i: i.pos().y())
+            for idx, widget in enumerate(order):
+                lo.takeAt(idx)
+                lo.insertWidget(idx, widget)
+
+    @err_catcher(name=__name__)
+    def removeItem(self, item):
+        self.items.remove(item)
+        idx = self.lo_items.indexOf(item)
+        if idx != -1:
+            w = self.lo_items.takeAt(idx)
+            if w.widget():
+                w.widget().deleteLater()
+
+    @err_catcher(name=__name__)
+    def clearItems(self):
+        for idx in reversed(range(self.lo_items.count())):
+            item = self.lo_items.takeAt(idx)
+            w = item.widget()
+            if w:
+                w.setVisible(False)
+                w.deleteLater()
+
+        self.items = []
+
+    @err_catcher(name=__name__)
+    def getItemData(self):
+        itemData = []
+        for idx in range(self.lo_items.count()):
+            w = self.lo_items.itemAt(idx)
+            widget = w.widget()
+            if widget:
+                if isinstance(widget, StateDefaultItem):
+                    sdata = {
+                        "name": widget.name(),
+                        "dftTasks": widget.dftTasks(),
+                        "stateData": widget.stateData(),
+                    }
+                    itemData.append(sdata)
+
+        return itemData
+
+
+class StateDefaultItem(QWidget):
+
+    removed = Signal(object)
+    signalItemDropped = Signal(object)
+
+    def __init__(self, origin, typename):
+        super(StateDefaultItem, self).__init__()
+        self.origin = origin
+        self.core = self.origin.core
+        self.typename = typename
+        self.drag_start_pos = None
+        self.loadLayout()
+        self.setDftTasks({
+            "entities": ["*"],
+            "departments": ["*"],
+            "tasks": ["*"],
+            "useExpression": False,
+            "expression": "# set the variable \"result\" to True or False to decide when the state settings should get applied.\n# Example:\n#\n# context = core.getScenefileData(core.getCurrentFileName())\n# if context.get(\"department\") == \"rig\":\n#     result = True\n# else:\n#     result = False",
+        })
+
+    @err_catcher(name=__name__)
+    def loadLayout(self):
+        self.l_reorder = QLabel()
+        self.l_reorder.setToolTip("Reorder")
+        self.l_typeName = QLabel(self.typename)
+        self.l_typeName.setToolTip("State Type")
+        self.l_default = QLabel("Default for:")
+        self.l_defaultEntity = QLabel()
+        self.b_editDft = QToolButton()
+        self.b_editDft.clicked.connect(self.editDefaultsClicked)
+        self.b_editDft.setToolTip("Select for which tasks this state settings will be used as a default...")
+        iconPath = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "edit.png"
+        )
+        icon = self.core.media.getColoredIcon(iconPath)
+        self.b_editDft.setIcon(icon)
+        self.b_states = QToolButton()
+        self.b_states.setToolTip("Configure state settings...")
+        self.b_states.clicked.connect(self.configureStates)
+
+        iconPath = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "reorder.png"
+        )
+        icon = self.core.media.getColoredIcon(iconPath)
+        self.l_reorder.setPixmap(icon.pixmap(20, 20))
+
+        iconPath = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "configure.png"
+        )
+        icon = self.core.media.getColoredIcon(iconPath)
+        self.b_states.setIcon(icon)
+
+        self.b_remove = QToolButton()
+        self.b_remove.clicked.connect(lambda: self.removed.emit(self))
+
+        self.lo_dft = QHBoxLayout()
+        self.lo_dft.addWidget(self.l_default)
+        self.lo_dft.addWidget(self.l_defaultEntity)
+        self.lo_dft.addWidget(self.b_editDft)
+        self.lo_dft.addStretch()
+        self.lo_dft.setContentsMargins(0, 0, 0, 0)
+
+        self.lo_main = QHBoxLayout()
+        self.lo_main.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(self.lo_main)
+        self.lo_main.addWidget(self.l_reorder)
+
+        self.lo_main.addWidget(self.l_typeName, 10)
+        self.lo_main.addWidget(self.b_states)
+        self.lo_main.addLayout(self.lo_dft, 20)
+        
+        self.lo_main.addWidget(self.b_remove)
+
+        path = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "delete.png"
+        )
+        icon = self.core.media.getColoredIcon(path)
+        self.b_remove.setIcon(icon)
+        self.b_remove.setIconSize(QSize(20, 20))
+        self.b_remove.setToolTip("Delete")
+        if self.core.appPlugin.pluginName != "Standalone":
+            self.b_remove.setStyleSheet(
+                "QWidget{padding: 0; border-width: 0px;background-color: transparent} QWidget:hover{border-width: 1px; }"
+            )
+
+    @err_catcher(name=__name__)
+    def editDefaultsClicked(self):
+        self.dlg_defaults = DefaultTasksWindow(self)
+        self.dlg_defaults.signalSaved.connect(self.setDftTasks)
+        self.dlg_defaults.show()
+
+    @err_catcher(name=__name__)
+    def configureStates(self):
+        stateType = self.name()
+        import StateManager
+        settings = self.stateData()
+        dlg = StateManager.getStateWindow(self.core, stateType, settings=settings, connectBBox=False, parent=self)
+        dlg.setWindowTitle("Default State Settings - %s" % stateType)
+        dlg.bb_settings.buttons()[0].setText("Save")
+        dlg.adjustSize()
+        dlg.resize(dlg.width(), dlg.height() + 20)
+        dlg.bb_settings.accepted.connect(lambda d=dlg: self.onStateSaveClicked(d))
+        dlg.bb_settings.rejected.connect(dlg.reject)
+        dlg.show()
+
+    @err_catcher(name=__name__)
+    def onStateSaveClicked(self, dlg):
+        self.setStateData(dlg.stateItem.ui.getStateProps())
+        dlg.close()
+
+    @err_catcher(name=__name__)
+    def name(self):
+        return self.l_typeName.text()
+
+    @err_catcher(name=__name__)
+    def setName(self, name):
+        return self.l_typeName.setText(name)
+
+    @err_catcher(name=__name__)
+    def dftTasks(self):
+        return self._dftTasks
+
+    @err_catcher(name=__name__)
+    def setDftTasks(self, tasks):
+        self._dftTasks = tasks
+        entities = ", ".join(self._dftTasks["entities"])
+        departments = ", ".join(self._dftTasks["departments"])
+        tasks = ", ".join(self._dftTasks["tasks"])
+        if len(self._dftTasks["entities"]) > 1:
+            dataStr = "%s\n%s\n%s" % (entities, departments, tasks)
+        else:
+            dataStr = "%s - %s - %s" % (entities, departments, tasks)
+
+        if dataStr == " -  - ":
+            dataStr = "-"
+
+        if self._dftTasks.get("useExpression") and self._dftTasks.get("expression"):
+            dataStr += " + expression"
+
+        self.l_defaultEntity.setText(dataStr)
+
+    @err_catcher(name=__name__)
+    def stateData(self):
+        return getattr(self, "_stateData", None)
+
+    @err_catcher(name=__name__)
+    def setStateData(self, stateData):
+        self._stateData = stateData
+
+    def mouseMoveEvent(self, event):
+        if self.drag_start_pos is not None:
+            # While left button is clicked the widget will move along with the mouse
+            self.move(self.pos() + event.pos() - self.drag_start_pos)
+        super(StateDefaultItem, self).mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self.drag_start_pos is None:
+            return
+
+        self.setCursor(Qt.ArrowCursor)
+        super(StateDefaultItem, self).mouseReleaseEvent(event)
+        if (self.pos() + self.drag_start_pos) != QCursor.pos():
+            self.signalItemDropped.emit(self)
+        self.drag_start_pos = None
+
+    @err_catcher(name=__name__)
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.setCursor(Qt.ClosedHandCursor)
+            self.drag_start_pos = event.pos()
+            self.raise_()
+
+        super(StateDefaultItem, self).mousePressEvent(event)
+
+
+class StatePresets(QGroupBox):
+    def __init__(self, origin, data=None):
+        super(StatePresets, self).__init__()
+        self.origin = origin
+        self.core = self.origin.core
+        self.core.parentWindow(self)
+        self.items = []
+
+        self.loadLayout()
+        self.connectEvents()
+        if data:
+            self.loadPresetData(data)
+
+    @err_catcher(name=__name__)
+    def loadLayout(self):
+        self.w_add = QWidget()
+        self.b_add = QToolButton()
+        self.lo_add = QHBoxLayout()
+        self.w_add.setLayout(self.lo_add)
+        self.lo_add.addStretch()
+        self.lo_add.addWidget(self.b_add)
+
+        path = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "add.png"
+        )
+        icon = self.core.media.getColoredIcon(path)
+        self.b_add.setIcon(icon)
+        self.b_add.setIconSize(QSize(20, 20))
+        self.b_add.setToolTip("Add Preset")
+        if self.core.appPlugin.pluginName != "Standalone":
+            self.b_add.setStyleSheet(
+                "QWidget{padding: 0; border-width: 0px;background-color: transparent} QWidget:hover{border-width: 1px; }"
+            )
+
+        path = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "reset.png"
+        )
+        icon = self.core.media.getColoredIcon(path)
+
+        self.lo_items = QVBoxLayout()
+        self.lo_main = QVBoxLayout()
+        self.setLayout(self.lo_main)
+        self.lo_main.addLayout(self.lo_items)
+        self.lo_main.addWidget(self.w_add)
+        self.setTitle("State Presets")
+
+    @err_catcher(name=__name__)
+    def connectEvents(self):
+        self.b_add.clicked.connect(self.addItem)
+
+    @err_catcher(name=__name__)
+    def loadPresetData(self, data):
+        self.clearItems()
+        for data in data:
+            self.addItem(
+                name=data["name"],
+                dftTasks=data["dftTasks"],
+                states=data["states"],
+            )
+
+    @err_catcher(name=__name__)
+    def addItem(self, name=None, dftTasks=None, states=None):
+        item = PresetItem(self.origin)
+        self.items.append(item)
+        item.removed.connect(self.removeItem)
+        item.signalItemDropped.connect(self.itemDropped)
+
+        if name:
+            item.setName(name)
+
+        if dftTasks:
+            item.setDftTasks(dftTasks)
+
+        if states:
+            item.setStates(states)
+
+        self.lo_items.addWidget(item)
+        return item
+
+    @err_catcher(name=__name__)
+    def itemDropped(self, item):
+        pos = QCursor.pos()
+        targetItem = None
+        for sitem in self.items:
+            if sitem == item:
+                continue
+
+            rect = sitem.geometry()
+            rpos = sitem.parent().mapFromGlobal(pos)
+            if rect.contains(rpos):
+                targetItem = sitem
+
+        if targetItem:
+            idx = self.lo_items.indexOf(item)
+            targetIdx = self.lo_items.indexOf(targetItem)
+            data = self.getItemData()
+            itemData = data.pop(idx)
+            data.insert(targetIdx, itemData)
+            self.loadPresetData(data)
+        else:
+            lo = self.lo_items
+            widgets = [lo.itemAt(idx).widget() for idx in range(lo.count()) if lo.itemAt(idx).widget()]
+            order = sorted(widgets, key=lambda i: i.pos().y())
+            for idx, widget in enumerate(order):
+                lo.takeAt(idx)
+                lo.insertWidget(idx, widget)
+
+    @err_catcher(name=__name__)
+    def removeItem(self, item):
+        self.items.remove(item)
+        idx = self.lo_items.indexOf(item)
+        if idx != -1:
+            w = self.lo_items.takeAt(idx)
+            if w.widget():
+                w.widget().deleteLater()
+
+    @err_catcher(name=__name__)
+    def clearItems(self):
+        for idx in reversed(range(self.lo_items.count())):
+            item = self.lo_items.takeAt(idx)
+            w = item.widget()
+            if w:
+                w.setVisible(False)
+                w.deleteLater()
+
+        self.items = []
+
+    @err_catcher(name=__name__)
+    def getItemData(self):
+        itemData = []
+        for idx in range(self.lo_items.count()):
+            w = self.lo_items.itemAt(idx)
+            widget = w.widget()
+            if widget:
+                if isinstance(widget, PresetItem):
+                    sdata = {
+                        "name": widget.name(),
+                        "dftTasks": widget.dftTasks(),
+                        "states": widget.states(),
+                    }
+                    itemData.append(sdata)
+
+        return itemData
+
+
+class PresetItem(QWidget):
+
+    removed = Signal(object)
+    signalItemDropped = Signal(object)
+
+    def __init__(self, origin):
+        super(PresetItem, self).__init__()
+        self.origin = origin
+        self.core = self.origin.core
+        self.drag_start_pos = None
+        self.loadLayout()
+        self.setDftTasks({
+            "entities": [],
+            "departments": [],
+            "tasks": [],
+            "useExpression": False,
+            "expression": "# set the variable \"result\" to True or False to decide when the preset should get applied.\n# Example:\n#\n# context = core.getScenefileData(core.getCurrentFileName())\n# if context.get(\"department\") == \"rig\":\n#     result = True\n# else:\n#     result = False",
+        })
+
+    @err_catcher(name=__name__)
+    def loadLayout(self):
+        self.l_reorder = QLabel()
+        self.l_reorder.setToolTip("Reorder")
+        self.l_name = QLabel("    Name:")
+        self.e_name = QLineEdit()
+        self.e_name.setPlaceholderText("Name")
+        self.e_name.setToolTip("Name")
+        self.l_default = QLabel("Default for:")
+        self.l_defaultEntity = QLabel()
+        self.b_editDft = QToolButton()
+        self.b_editDft.clicked.connect(self.editDefaultsClicked)
+        self.b_editDft.setToolTip("Select for which tasks this preset will be used as a default...")
+        iconPath = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "edit.png"
+        )
+        icon = self.core.media.getColoredIcon(iconPath)
+        self.b_editDft.setIcon(icon)
+        self.l_states = QLabel("    States:")
+        self.b_states = QToolButton()
+        self.b_states.setToolTip("Configure states...")
+        self.b_states.clicked.connect(self.configureStates)
+
+        iconPath = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "reorder.png"
+        )
+        icon = self.core.media.getColoredIcon(iconPath)
+        self.l_reorder.setPixmap(icon.pixmap(20, 20))
+
+        iconPath = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "configure.png"
+        )
+        icon = self.core.media.getColoredIcon(iconPath)
+        self.b_states.setIcon(icon)
+
+        self.b_remove = QToolButton()
+        self.b_remove.clicked.connect(lambda: self.removed.emit(self))
+
+        self.lo_dft = QHBoxLayout()
+        self.lo_dft.addWidget(self.l_default)
+        self.lo_dft.addWidget(self.l_defaultEntity)
+        self.lo_dft.addWidget(self.b_editDft)
+        self.lo_dft.addStretch()
+        self.lo_dft.setContentsMargins(0, 0, 0, 0)
+
+        self.lo_main = QHBoxLayout()
+        self.lo_main.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(self.lo_main)
+        self.lo_main.addWidget(self.l_reorder)
+
+        # self.lo_main.addWidget(self.l_name)
+        self.lo_main.addWidget(self.e_name, 10)
+        # self.lo_main.addWidget(self.l_states)
+        self.lo_main.addWidget(self.b_states)
+        self.lo_main.addLayout(self.lo_dft, 20)
+        
+        self.lo_main.addWidget(self.b_remove)
+
+        path = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "delete.png"
+        )
+        icon = self.core.media.getColoredIcon(path)
+        self.b_remove.setIcon(icon)
+        self.b_remove.setIconSize(QSize(20, 20))
+        self.b_remove.setToolTip("Delete")
+        if self.core.appPlugin.pluginName != "Standalone":
+            self.b_remove.setStyleSheet(
+                "QWidget{padding: 0; border-width: 0px;background-color: transparent} QWidget:hover{border-width: 1px; }"
+            )
+
+    @err_catcher(name=__name__)
+    def editDefaultsClicked(self):
+        self.dlg_defaults = DefaultTasksWindow(self)
+        self.dlg_defaults.signalSaved.connect(self.setDftTasks)
+        self.dlg_defaults.show()
+
+    @err_catcher(name=__name__)
+    def configureStates(self):
+        if hasattr(self, "smPreset") and self.smPreset.isVisible():
+            self.smPreset.close()
+
+        windowTitle = "State Preset - %s" % self.name()
+        self.smPreset = self.core.stateManager(openUi=False, new_instance=True, standalone=True)
+        self.smPreset.setWindowTitle(windowTitle)
+        self.smPreset.gb_publish.setHidden(True)
+        self.smPreset.bb_main = QDialogButtonBox()
+        self.smPreset.bb_main.addButton("Save", QDialogButtonBox.AcceptRole)
+        self.smPreset.bb_main.addButton("Cancel", QDialogButtonBox.RejectRole)
+        self.smPreset.bb_main.accepted.connect(lambda: self.onStateManagerSaveClicked(self.smPreset))
+        self.smPreset.bb_main.rejected.connect(self.smPreset.close)
+        self.smPreset.centralwidget.layout().addWidget(self.smPreset.bb_main)
+        self.smPreset.centralwidget.layout().setContentsMargins(0, 9, 9, 9)
+        if self.states():
+            self.smPreset.loadStates(self.states())
+
+        self.smPreset.show()
+
+    @err_catcher(name=__name__)
+    def onStateManagerSaveClicked(self, sm):
+        self.setStates(sm.getStateSettings())
+        sm.close()
+
+    @err_catcher(name=__name__)
+    def name(self):
+        return self.e_name.text()
+
+    @err_catcher(name=__name__)
+    def setName(self, name):
+        return self.e_name.setText(name)
+
+    @err_catcher(name=__name__)
+    def dftTasks(self):
+        return self._dftTasks
+
+    @err_catcher(name=__name__)
+    def setDftTasks(self, tasks):
+        self._dftTasks = tasks
+        entities = ", ".join(self._dftTasks["entities"])
+        departments = ", ".join(self._dftTasks["departments"])
+        tasks = ", ".join(self._dftTasks["tasks"])
+        if len(self._dftTasks["entities"]) > 1:
+            dataStr = "%s\n%s\n%s" % (entities, departments, tasks)
+        else:
+            dataStr = "%s - %s - %s" % (entities, departments, tasks)
+
+        if dataStr == " -  - ":
+            dataStr = "-"
+
+        if self._dftTasks.get("useExpression") and self._dftTasks.get("expression"):
+            dataStr += " + expression"
+
+        self.l_defaultEntity.setText(dataStr)
+
+    @err_catcher(name=__name__)
+    def states(self):
+        return getattr(self, "_states", None)
+
+    @err_catcher(name=__name__)
+    def setStates(self, states):
+        self._states = states
+
+    def mouseMoveEvent(self, event):
+        if self.drag_start_pos is not None:
+            # While left button is clicked the widget will move along with the mouse
+            self.move(self.pos() + event.pos() - self.drag_start_pos)
+        super(PresetItem, self).mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self.drag_start_pos is None:
+            return
+
+        self.setCursor(Qt.ArrowCursor)
+        super(PresetItem, self).mouseReleaseEvent(event)
+        if (self.pos() + self.drag_start_pos) != QCursor.pos():
+            self.signalItemDropped.emit(self)
+        self.drag_start_pos = None
+
+    @err_catcher(name=__name__)
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.setCursor(Qt.ClosedHandCursor)
+            self.drag_start_pos = event.pos()
+            self.raise_()
+
+        super(PresetItem, self).mousePressEvent(event)
+
+
+class DefaultPresetScenes(QGroupBox):
+    def __init__(self, origin, data=None):
+        super(DefaultPresetScenes, self).__init__()
+        self.origin = origin
+        self.core = self.origin.core
+        self.core.parentWindow(self)
+        self.items = []
+
+        self.loadLayout()
+        self.connectEvents()
+        if data:
+            self.loadPresetData(data)
+
+    @err_catcher(name=__name__)
+    def loadLayout(self):
+        self.w_add = QWidget()
+        self.b_add = QToolButton()
+        self.lo_add = QHBoxLayout()
+        self.w_add.setLayout(self.lo_add)
+        self.lo_add.addStretch()
+        self.lo_add.addWidget(self.b_add)
+
+        path = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "add.png"
+        )
+        icon = self.core.media.getColoredIcon(path)
+        self.b_add.setIcon(icon)
+        self.b_add.setIconSize(QSize(20, 20))
+        self.b_add.setToolTip("Add Preset")
+        if self.core.appPlugin.pluginName != "Standalone":
+            self.b_add.setStyleSheet(
+                "QWidget{padding: 0; border-width: 0px;background-color: transparent} QWidget:hover{border-width: 1px; }"
+            )
+
+        path = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "reset.png"
+        )
+        icon = self.core.media.getColoredIcon(path)
+
+        self.lo_items = QVBoxLayout()
+        self.lo_main = QVBoxLayout()
+        self.setLayout(self.lo_main)
+        self.lo_main.addLayout(self.lo_items)
+        self.lo_main.addWidget(self.w_add)
+        self.setTitle("Default Preset Scenefiles")
+
+    @err_catcher(name=__name__)
+    def connectEvents(self):
+        self.b_add.clicked.connect(self.addItem)
+
+    @err_catcher(name=__name__)
+    def loadPresetData(self, data):
+        self.clearItems()
+        for data in data:
+            self.addItem(
+                name=data["name"],
+                dftTasks=data["dftTasks"],
+            )
+
+    @err_catcher(name=__name__)
+    def addItem(self, name=None, dftTasks=None):
+        item = DefaultPresetScenesItem(self.origin)
+        self.items.append(item)
+        item.removed.connect(self.removeItem)
+        item.signalItemDropped.connect(self.itemDropped)
+
+        if name:
+            item.setName(name)
+
+        if dftTasks:
+            item.setDftTasks(dftTasks)
+
+        self.lo_items.addWidget(item)
+        return item
+
+    @err_catcher(name=__name__)
+    def itemDropped(self, item):
+        pos = QCursor.pos()
+        targetItem = None
+        for sitem in self.items:
+            if sitem == item:
+                continue
+
+            rect = sitem.geometry()
+            rpos = sitem.parent().mapFromGlobal(pos)
+            if rect.contains(rpos):
+                targetItem = sitem
+
+        if targetItem:
+            idx = self.lo_items.indexOf(item)
+            targetIdx = self.lo_items.indexOf(targetItem)
+            data = self.getItemData()
+            itemData = data.pop(idx)
+            data.insert(targetIdx, itemData)
+            self.loadPresetData(data)
+        else:
+            lo = self.lo_items
+            widgets = [lo.itemAt(idx).widget() for idx in range(lo.count()) if lo.itemAt(idx).widget()]
+            order = sorted(widgets, key=lambda i: i.pos().y())
+            for idx, widget in enumerate(order):
+                lo.takeAt(idx)
+                lo.insertWidget(idx, widget)
+
+    @err_catcher(name=__name__)
+    def removeItem(self, item):
+        self.items.remove(item)
+        idx = self.lo_items.indexOf(item)
+        if idx != -1:
+            w = self.lo_items.takeAt(idx)
+            if w.widget():
+                w.widget().deleteLater()
+
+    @err_catcher(name=__name__)
+    def clearItems(self):
+        for idx in reversed(range(self.lo_items.count())):
+            item = self.lo_items.takeAt(idx)
+            w = item.widget()
+            if w:
+                w.setVisible(False)
+                w.deleteLater()
+
+        self.items = []
+
+    @err_catcher(name=__name__)
+    def getItemData(self):
+        itemData = []
+        for idx in range(self.lo_items.count()):
+            w = self.lo_items.itemAt(idx)
+            widget = w.widget()
+            if widget:
+                if isinstance(widget, DefaultPresetScenesItem):
+                    sdata = {
+                        "name": widget.name(),
+                        "dftTasks": widget.dftTasks(),
+                    }
+                    itemData.append(sdata)
+
+        return itemData
+
+
+class DefaultPresetScenesItem(QWidget):
+
+    removed = Signal(object)
+    signalItemDropped = Signal(object)
+
+    def __init__(self, origin):
+        super(DefaultPresetScenesItem, self).__init__()
+        self.origin = origin
+        self.core = self.origin.core
+        self.drag_start_pos = None
+        self.loadLayout()
+        self.setDftTasks({
+            "entities": ["*"],
+            "departments": ["*"],
+            "tasks": ["*"],
+            "useExpression": False,
+            "expression": "# set the variable \"result\" to True or False to decide when the default preset scenefile should get applied.\n# Example:\n#\n# context = core.getScenefileData(core.getCurrentFileName())\n# if context.get(\"department\") == \"rig\":\n#     result = True\n# else:\n#     result = False",
+        })
+
+    @err_catcher(name=__name__)
+    def loadLayout(self):
+        self.l_reorder = QLabel()
+        self.l_reorder.setToolTip("Reorder")
+        self.e_name = QLineEdit()
+        self.e_name.setPlaceholderText("Preset Scenefile")
+        self.e_name.setToolTip("Preset Scenefile")
+        self.l_default = QLabel("Default for:")
+        self.l_defaultEntity = QLabel()
+        self.b_editDft = QToolButton()
+        self.b_editDft.clicked.connect(self.editDefaultsClicked)
+        self.b_editDft.setToolTip("Select for which tasks this preset will be used as a default...")
+        iconPath = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "edit.png"
+        )
+        icon = self.core.media.getColoredIcon(iconPath)
+        self.b_editDft.setIcon(icon)
+        self.b_presets = QToolButton()
+        self.b_presets.setToolTip("Select available preset...")
+        self.b_presets.clicked.connect(self.showPresets)
+
+        iconPath = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "reorder.png"
+        )
+        icon = self.core.media.getColoredIcon(iconPath)
+        self.l_reorder.setPixmap(icon.pixmap(20, 20))
+        self.b_presets.setArrowType(Qt.DownArrow)
+
+        self.b_remove = QToolButton()
+        self.b_remove.clicked.connect(lambda: self.removed.emit(self))
+
+        self.lo_dft = QHBoxLayout()
+        self.lo_dft.addWidget(self.l_default)
+        self.lo_dft.addWidget(self.l_defaultEntity)
+        self.lo_dft.addWidget(self.b_editDft)
+        self.lo_dft.addStretch()
+        self.lo_dft.setContentsMargins(0, 0, 0, 0)
+
+        self.lo_main = QHBoxLayout()
+        self.lo_main.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(self.lo_main)
+        self.lo_main.addWidget(self.l_reorder)
+
+        self.lo_main.addWidget(self.e_name, 10)
+        self.lo_main.addWidget(self.b_presets)
+        self.lo_main.addLayout(self.lo_dft, 20)
+        
+        self.lo_main.addWidget(self.b_remove)
+
+        path = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "delete.png"
+        )
+        icon = self.core.media.getColoredIcon(path)
+        self.b_remove.setIcon(icon)
+        self.b_remove.setIconSize(QSize(20, 20))
+        self.b_remove.setToolTip("Delete")
+        if self.core.appPlugin.pluginName != "Standalone":
+            self.b_remove.setStyleSheet(
+                "QWidget{padding: 0; border-width: 0px;background-color: transparent} QWidget:hover{border-width: 1px; }"
+            )
+
+    @err_catcher(name=__name__)
+    def editDefaultsClicked(self):
+        self.dlg_defaults = DefaultTasksWindow(self)
+        self.dlg_defaults.signalSaved.connect(self.setDftTasks)
+        self.dlg_defaults.show()
+
+    @err_catcher(name=__name__)
+    def showPresets(self):
+        pos = QCursor.pos()
+        emp = QMenu(self)
+        scenes = self.core.entities.getPresetScenes()
+        dirMenus = {}
+        for scene in sorted(scenes, key=lambda x: os.path.basename(x["label"]).lower()):
+            folders = scene["label"].split("/")
+            curPath = ""
+            for idx, folder in enumerate(folders):
+                if idx == (len(folders) - 1):
+                    empAct = QAction(folder, self)
+                    empAct.triggered.connect(
+                        lambda y=None, fname=scene: self.e_name.setText(fname["label"])
+                    )
+                    dirMenus.get(curPath, emp).addAction(empAct)
+                else:
+                    curMenu = dirMenus.get(curPath, emp)
+                    curPath = os.path.join(curPath, folder)
+                    if curPath not in dirMenus:
+                        dirMenus[curPath] = QMenu(folder, self)
+                        curMenu.addMenu(dirMenus[curPath])
+
+        if not emp.isEmpty():
+            emp.exec_(pos)
+
+    @err_catcher(name=__name__)
+    def name(self):
+        return self.e_name.text()
+
+    @err_catcher(name=__name__)
+    def setName(self, name):
+        return self.e_name.setText(name)
+
+    @err_catcher(name=__name__)
+    def dftTasks(self):
+        return self._dftTasks
+
+    @err_catcher(name=__name__)
+    def setDftTasks(self, tasks):
+        self._dftTasks = tasks
+        entities = ", ".join(self._dftTasks["entities"])
+        departments = ", ".join(self._dftTasks["departments"])
+        tasks = ", ".join(self._dftTasks["tasks"])
+        if len(self._dftTasks["entities"]) > 1:
+            dataStr = "%s\n%s\n%s" % (entities, departments, tasks)
+        else:
+            dataStr = "%s - %s - %s" % (entities, departments, tasks)
+
+        if dataStr == " -  - ":
+            dataStr = "-"
+
+        if self._dftTasks.get("useExpression") and self._dftTasks.get("expression"):
+            dataStr += " + expression"
+
+        self.l_defaultEntity.setText(dataStr)
+
+    def mouseMoveEvent(self, event):
+        if self.drag_start_pos is not None:
+            # While left button is clicked the widget will move along with the mouse
+            self.move(self.pos() + event.pos() - self.drag_start_pos)
+        super(DefaultPresetScenesItem, self).mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self.drag_start_pos is None:
+            return
+
+        self.setCursor(Qt.ArrowCursor)
+        super(DefaultPresetScenesItem, self).mouseReleaseEvent(event)
+        if (self.pos() + self.drag_start_pos) != QCursor.pos():
+            self.signalItemDropped.emit(self)
+        self.drag_start_pos = None
+
+    @err_catcher(name=__name__)
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.setCursor(Qt.ClosedHandCursor)
+            self.drag_start_pos = event.pos()
+            self.raise_()
+
+        super(DefaultPresetScenesItem, self).mousePressEvent(event)
+
+
+class DefaultTasksWindow(QDialog):
+
+    signalSaved = Signal(object)
+
+    def __init__(self, origin):
+        super(DefaultTasksWindow, self).__init__()
+        self.origin = origin
+        self.core = self.origin.core
+        self.core.parentWindow(self, parent=origin)
+
+        self.setupUi()
+        self.loadData()
+
+    @err_catcher(name=__name__)
+    def sizeHint(self):
+        return QSize(800, 200)
+
+    @err_catcher(name=__name__)
+    def setupUi(self):
+        self.setWindowTitle("Edit Tasks - %s" % self.origin.name())
+        self.lo_main = QVBoxLayout()
+        self.setLayout(self.lo_main)
+
+        self.lo_widgets = QGridLayout()
+        self.l_entities = QLabel("Entities:")
+        self.e_entities = QLineEdit()
+        self.e_entities.setToolTip("Comma separated list of entities, e.g. \"asset:char/John, shot:seq1-shot010\", use \"*\" to select entities using a wildcard")
+        self.b_entities = QToolButton()
+        self.b_entities.setArrowType(Qt.DownArrow)
+        self.b_entities.setToolTip("Select entities...")
+        self.b_entities.clicked.connect(self.onEntitiesClicked)
+        iconPath = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "help.png"
+        )
+        icon = self.core.media.getColoredIcon(iconPath)
+        pixmap = icon.pixmap(20, 20)
+        self.l_previewEntity = HelpLabel(self)
+        self.l_previewEntity.setPixmap(pixmap)
+        self.l_previewEntity.setMouseTracking(True)
+        self.l_previewEntity.getToolTip = self.getEntityToolTip
+
+        self.l_departments = QLabel("Departments:")
+        self.e_departments = QLineEdit()
+        self.e_departments.setToolTip("Comma separated list of department names, e.g. \"anm, fx\", use \"*\" to select departments using a wildcard")
+        self.b_departments = QToolButton()
+        self.b_departments.setArrowType(Qt.DownArrow)
+        self.b_departments.setToolTip("Select departments")
+        self.b_departments.clicked.connect(self.onDepartmentsClicked)
+        self.l_previewDepartment = HelpLabel(self)
+        self.l_previewDepartment.setPixmap(pixmap)
+        self.l_previewDepartment.setMouseTracking(True)
+        self.l_previewDepartment.getToolTip = self.getDepartmentToolTip
+
+        self.l_tasks = QLabel("Tasks:")
+        self.e_tasks = QLineEdit()
+        self.e_tasks.setToolTip("Comma separated list of task names, e.g. \"Animation, Lighting\", use \"*\" to select tasks using a wildcard")
+        self.b_tasks = QToolButton()
+        self.b_tasks.setArrowType(Qt.DownArrow)
+        self.b_tasks.setToolTip("Select tasks")
+        self.b_tasks.clicked.connect(self.onTasksClicked)
+        self.l_previewTasks = HelpLabel(self)
+        self.l_previewTasks.setPixmap(pixmap)
+        self.l_previewTasks.setMouseTracking(True)
+        self.l_previewTasks.getToolTip = self.getTaskToolTip
+
+        self.chb_expression = QCheckBox("Python Expression")
+        self.chb_expression.toggled.connect(self.expressionToggled)
+        self.te_expression = QTextEdit()
+        self.te_expression.setVisible(False)
+
+        self.lo_widgets.addWidget(self.l_entities, 0, 0)
+        self.lo_widgets.addWidget(self.e_entities, 0, 1)
+        self.lo_widgets.addWidget(self.b_entities, 0, 2)
+        self.lo_widgets.addWidget(self.l_previewEntity, 0, 3)
+        self.lo_widgets.addWidget(self.l_departments, 1, 0)
+        self.lo_widgets.addWidget(self.e_departments, 1, 1)
+        self.lo_widgets.addWidget(self.b_departments, 1, 2)
+        self.lo_widgets.addWidget(self.l_previewDepartment, 1, 3)
+        self.lo_widgets.addWidget(self.l_tasks, 2, 0)
+        self.lo_widgets.addWidget(self.e_tasks, 2, 1)
+        self.lo_widgets.addWidget(self.b_tasks, 2, 2)
+        self.lo_widgets.addWidget(self.l_previewTasks, 2, 3)
+        self.lo_widgets.addWidget(self.chb_expression, 3, 1, 1, 3)
+        self.lo_widgets.addWidget(self.te_expression, 4, 1, 1, 3)
+
+        self.lo_main.addLayout(self.lo_widgets)
+        self.lo_main.addStretch()
+
+        self.bb_main = QDialogButtonBox()
+        self.bb_main.addButton("Save", QDialogButtonBox.AcceptRole)
+        self.bb_main.addButton("Cancel", QDialogButtonBox.RejectRole)
+
+        self.bb_main.accepted.connect(self.onSaveClicked)
+        self.bb_main.rejected.connect(self.reject)
+        self.lo_main.addWidget(self.bb_main)
+
+    @err_catcher(name=__name__)
+    def expressionToggled(self, state):
+        self.te_expression.setVisible(state)
+        if state:
+            self.resize(self.width(), self.height()+200)
+        else:
+            self.resize(self.width(), 0)
+
+    @property
+    def projectEntities(self):
+        if not hasattr(self, "_prjEntities"):
+            assets = self.core.entities.getAssets()
+            shots = self.core.entities.getShots()
+            self._prjEntities = assets + shots
+
+        return self._prjEntities
+
+    @err_catcher(name=__name__)
+    def getValidEntities(self):
+        entities = [x.strip() for x in self.e_entities.text().split(",")]
+        validEntities = []
+        prjEntities = self.projectEntities
+        addedEntityNames = []
+        for entity in entities:
+            for prjEntity in prjEntities:
+                if entity != "*":
+                    entityData = entity.split(":")
+                    if entityData[0] != "*" and prjEntity.get("type") != entityData[0]:
+                        continue
+
+                    entityName = re.escape(entityData[1]).replace("\\*", ".*")
+                    if prjEntity["type"] == "asset":
+                        if not re.match("^%s$" % entityName, prjEntity.get("asset_path")):
+                            continue
+
+                    elif prjEntity["type"] == "shot":
+                        if not re.match("^%s$" % entityName, self.core.entities.getShotName(prjEntity)):
+                            continue
+
+                entityName = self.core.entities.getEntityName(prjEntity)
+                if entityName not in addedEntityNames:
+                    validEntities.append(prjEntity)
+                    addedEntityNames.append(entityName)
+
+        return validEntities
+
+    @err_catcher(name=__name__)
+    def getEntityToolTip(self):
+        entities = self.getValidEntities()
+        tooltip = ""
+        entityNames = {"assets": [], "shots": []}
+        for entity in entities:
+            if entity.get("type") == "asset":
+                if entity.get("asset_path"):
+                    entityNames["assets"].append(entity["asset_path"])
+            elif entity.get("type") == "shot":
+                if entity.get("shot"):
+                    entityNames["shots"].append(self.core.entities.getShotName(entity))
+
+        tooltip = "Assets:\n"
+        for asset in entityNames["assets"]:
+            tooltip += asset + "\n"
+
+        tooltip += "\nShots:\n"
+        for shot in entityNames["shots"]:
+            tooltip += shot + "\n"
+
+        return tooltip
+
+    @err_catcher(name=__name__)
+    def onEntitiesClicked(self):
+        dlg = EntityDlg(self)
+        dlg.entitiesSelected.connect(self.setEntities)
+        validEntities = self.getValidEntities()
+        if validEntities:
+            dlg.w_entities.navigate(validEntities)
+
+        dlg.exec_()
+
+    @err_catcher(name=__name__)
+    def setEntities(self, entities):
+        entityNames = []
+        for entity in entities:
+            if entity["type"] == "asset":
+                if not entity.get("asset_path"):
+                    continue
+                
+                entityName = "asset:%s" % entity["asset_path"]
+            elif entity["type"] == "shot":
+                if not entity.get("shot"):
+                    continue
+
+                entityName = "shot:%s" % self.core.entities.getShotName(entity)
+            
+            entityNames.append(entityName)
+
+        entityStr = ", ".join(entityNames)
+        self.e_entities.setText(entityStr)
+
+    @err_catcher(name=__name__)
+    def getAvailableDepartments(self):
+        validEntities = self.getValidEntities()
+        departments = []
+        for entity in validEntities:
+            departments += self.core.entities.getSteps(entity)
+
+        departments = sorted(set(departments))
+        return departments
+
+    @err_catcher(name=__name__)
+    def getValidDepartments(self):
+        validDeps = []
+        deps = [p.strip() for p in self.e_departments.text().split(",") if p]
+        prjDeps = self.getAvailableDepartments()
+        for dep in deps:
+            for prjDep in prjDeps:
+                if dep != "*":
+                    depName = re.escape(dep).replace("\\*", ".*")
+                    if not re.match("^%s$" % depName, prjDep):
+                        continue
+
+                if prjDep not in validDeps:
+                    validDeps.append(prjDep)
+
+        return validDeps
+
+    @err_catcher(name=__name__)
+    def getDepartmentToolTip(self):
+        deps = self.getValidDepartments()
+        tooltip = ""
+        for dep in deps:
+            tooltip += dep + "\n"
+
+        return tooltip
+
+    @err_catcher(name=__name__)
+    def onDepartmentsClicked(self):
+        pos = QCursor.pos()
+        menu = QMenu(self)
+
+        deps = self.getAvailableDepartments()
+        for dep in deps:
+            exp = QAction(dep, self)
+            exp.triggered.connect(lambda x=None, d=dep: self.toggleDepartment(d))
+            menu.addAction(exp)
+
+        if not menu.isEmpty():
+            menu.exec_(pos)
+
+    @err_catcher(name=__name__)
+    def toggleDepartment(self, dep):
+        deps = self.getValidDepartments()
+        if dep in deps:
+            deps.remove(dep)
+        else:
+            deps.append(dep)
+
+        self.e_departments.setText(", ".join(deps))
+
+    @err_catcher(name=__name__)
+    def getAvailableTasks(self):
+        validEntities = self.getValidEntities()
+        departments = self.getValidDepartments()
+        tasks = []
+        for entity in validEntities:
+            for department in departments:
+                tasks += self.core.entities.getCategories(entity, step=department)
+
+        tasks = sorted(set(tasks))
+        return tasks
+
+    @err_catcher(name=__name__)
+    def getValidTasks(self):
+        validTasks = []
+        tasks = [p.strip() for p in self.e_tasks.text().split(",") if p]
+        prjTasks = self.getAvailableTasks()
+        for task in tasks:
+            for prjTask in prjTasks:
+                if task != "*":
+                    taskName = re.escape(task).replace("\\*", ".*")
+                    if not re.match("^%s$" % taskName, prjTask):
+                        continue
+
+                if prjTask not in validTasks:
+                    validTasks.append(prjTask)
+
+        return validTasks
+
+    @err_catcher(name=__name__)
+    def getTaskToolTip(self):
+        tasks = self.getValidTasks()
+        tooltip = ""
+        for task in tasks:
+            tooltip += task + "\n"
+
+        return tooltip
+
+    @err_catcher(name=__name__)
+    def onTasksClicked(self):
+        pos = QCursor.pos()
+        menu = QMenu(self)
+
+        tasks = self.getAvailableTasks()
+        for task in tasks:
+            exp = QAction(task, self)
+            exp.triggered.connect(lambda x=None, t=task: self.toggleTasks(t))
+            menu.addAction(exp)
+
+        if not menu.isEmpty():
+            menu.exec_(pos)
+
+    @err_catcher(name=__name__)
+    def toggleTasks(self, task):
+        tasks = [t.strip() for t in self.e_tasks.text().split(",") if t]
+        if task in tasks:
+            tasks.remove(task)
+        else:
+            tasks.append(task)
+
+        self.e_tasks.setText(", ".join(tasks))
+
+    @err_catcher(name=__name__)
+    def loadData(self):
+        entities = ", ".join(self.origin.dftTasks()["entities"])
+        departments = ", ".join(self.origin.dftTasks()["departments"])
+        tasks = ", ".join(self.origin.dftTasks()["tasks"])
+        useExpression = self.origin.dftTasks().get("useExpression", False)
+        expression = self.origin.dftTasks().get("expression", "")
+
+        self.e_entities.setText(entities)
+        self.e_departments.setText(departments)
+        self.e_tasks.setText(tasks)
+        self.chb_expression.setChecked(useExpression)
+        self.te_expression.setPlainText(expression)
+
+    @err_catcher(name=__name__)
+    def getData(self):
+        data = {}
+        data["entities"] = [x.strip() for x in self.e_entities.text().split(",")]
+        data["departments"] = [x.strip() for x in self.e_departments.text().split(",")]
+        data["tasks"] = [x.strip() for x in self.e_tasks.text().split(",")]
+        data["useExpression"] = self.chb_expression.isChecked()
+        data["expression"] = self.te_expression.toPlainText()
+        return data
+
+    @err_catcher(name=__name__)
+    def onSaveClicked(self):
+        data = self.getData()
+        if data["useExpression"]:
+            result = self.core.entities.validateExpression(data["expression"])
+            if not result or not result["valid"]:
+                msg = "Invalid expression."
+                if result and result.get("error"):
+                    msg += "\n\n%s" % result["error"]
+
+                self.core.popup(msg)
+                return
+
+        self.signalSaved.emit(data)
+        self.accept()
+
+
+class HelpLabel(QLabel):
+
+    signalEntered = Signal(object)
+
+    def __init__(self, parent):
+        super(HelpLabel, self).__init__()
+        self.parent = parent
+
+    def enterEvent(self, event):
+        self.signalEntered.emit(self)
+
+    def mouseMoveEvent(self, event):
+        QToolTip.showText(QCursor.pos(), self.getToolTip())
+
+
+class EntityDlg(QDialog):
+
+    entitiesSelected = Signal(object)
+
+    def __init__(self, origin, parent=None):
+        super(EntityDlg, self).__init__()
+        self.origin = origin
+        self.parentDlg = parent
+        self.core = self.origin.core
+        self.setupUi()
+
+    @err_catcher(name=__name__)
+    def setupUi(self):
+        title = "Select entity"
+
+        self.setWindowTitle(title)
+        self.core.parentWindow(self, parent=self.parentDlg)
+
+        import EntityWidget
+        self.w_entities = EntityWidget.EntityWidget(core=self.core, refresh=True)
+        self.w_entities.editEntitiesOnDclick = False
+        self.w_entities.getPage("Assets").tw_tree.itemDoubleClicked.connect(self.itemDoubleClicked)
+        self.w_entities.getPage("Shots").tw_tree.itemDoubleClicked.connect(self.itemDoubleClicked)
+        self.w_entities.getPage("Assets").setSearchVisible(False)
+        self.w_entities.getPage("Shots").setSearchVisible(False)
+
+        self.lo_main = QVBoxLayout()
+        self.setLayout(self.lo_main)
+
+        self.bb_main = QDialogButtonBox()
+        self.bb_main.addButton("Select", QDialogButtonBox.AcceptRole)
+        self.bb_main.addButton("Close", QDialogButtonBox.RejectRole)
+
+        self.bb_main.clicked.connect(self.buttonClicked)
+
+        self.lo_main.addWidget(self.w_entities)
+        self.lo_main.addWidget(self.bb_main)
+
+    @err_catcher(name=__name__)
+    def itemDoubleClicked(self, item, column):
+        self.buttonClicked("select")
+
+    @err_catcher(name=__name__)
+    def buttonClicked(self, button):
+        if button == "select" or button.text() == "Select":
+            entities = self.w_entities.getCurrentData(returnOne=False)
+            if isinstance(entities, dict):
+                entities = [entities]
+
+            validEntities = []
+            for entity in entities:
+                if entity.get("type", "") not in ["asset", "shot"]:
+                    continue
+
+                validEntities.append(entity)
+
+            if not validEntities:
+                msg = "Invalid entity selected."
+                self.core.popup(msg, parent=self)
+                return
+
+            self.entitiesSelected.emit(validEntities)
+
+        self.close()
+
+    @err_catcher(name=__name__)
+    def sizeHint(self):
+        return QSize(400, 400)
+
+
+class DefaultSettingItem(QWidget):
+
+    def __init__(self, origin, name=None, dftTasks=None):
+        super(DefaultSettingItem, self).__init__()
+        self.core = origin.core
+        self.drag_start_pos = None
+        self.loadLayout()
+        self.setName(name)
+        self.setDftTasks(dftTasks)
+
+    @err_catcher(name=__name__)
+    def loadLayout(self):
+        self.l_name = QLabel()
+        self.l_default = QLabel("Apply to tasks:")
+        self.l_defaultEntity = QLabel()
+        self.b_editDft = QToolButton()
+        self.b_editDft.clicked.connect(self.editDefaultsClicked)
+        self.b_editDft.setToolTip("Select for which tasks this preset will be used as a default...")
+        iconPath = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "edit.png"
+        )
+        icon = self.core.media.getColoredIcon(iconPath)
+        self.b_editDft.setIcon(icon)
+
+        self.lo_dft = QHBoxLayout()
+        self.lo_dft.addStretch()
+        self.lo_dft.addWidget(self.l_default)
+        self.lo_dft.addWidget(self.l_defaultEntity)
+        self.lo_dft.addWidget(self.b_editDft)
+        self.lo_dft.setContentsMargins(0, 0, 0, 0)
+
+        self.lo_main = QHBoxLayout()
+        self.lo_main.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(self.lo_main)
+
+        self.lo_main.addWidget(self.l_name, 10)
+        self.lo_main.addLayout(self.lo_dft, 20)
+
+    @err_catcher(name=__name__)
+    def editDefaultsClicked(self):
+        self.dlg_defaults = DefaultTasksWindow(self)
+        self.dlg_defaults.signalSaved.connect(self.setDftTasks)
+        self.dlg_defaults.show()
+
+    @err_catcher(name=__name__)
+    def name(self):
+        return self.l_name.text()
+
+    @err_catcher(name=__name__)
+    def setName(self, name):
+        return self.l_name.setText(name or "")
+
+    @err_catcher(name=__name__)
+    def dftTasks(self):
+        return self._dftTasks
+
+    @err_catcher(name=__name__)
+    def setDftTasks(self, tasks):
+        newDftTasks = {
+            "entities": ["*"],
+            "departments": ["*"],
+            "tasks": ["*"],
+            "useExpression": False,
+            "expression": "# set the variable \"result\" to True or False to decide when the default preset scenefile should get applied.\n# Example:\n#\n# context = core.getScenefileData(core.getCurrentFileName())\n# if context.get(\"department\") == \"rig\":\n#     result = True\n# else:\n#     result = False",
+        }
+        newDftTasks.update(tasks or {})
+
+        self._dftTasks = newDftTasks
+        entities = ", ".join(self._dftTasks["entities"])
+        departments = ", ".join(self._dftTasks["departments"])
+        tasks = ", ".join(self._dftTasks["tasks"])
+        if len(self._dftTasks["entities"]) > 1:
+            dataStr = "%s\n%s\n%s" % (entities, departments, tasks)
+        else:
+            dataStr = "%s - %s - %s" % (entities, departments, tasks)
+
+        if dataStr == " -  - ":
+            dataStr = "-"
+
+        if self._dftTasks.get("useExpression") and self._dftTasks.get("expression"):
+            dataStr += " + expression"
+
+        self.l_defaultEntity.setText(dataStr)
+
+
+class ProductTagItem(QWidget):
+
+    removed = Signal(object)
+
+    def __init__(self, core):
+        super(ProductTagItem, self).__init__()
+        self.core = core
+        self.loadLayout()
+
+    @err_catcher(name=__name__)
+    def loadLayout(self):
+        self.l_product = QLabel("Product:")
+        self.e_product = QLineEdit()
+        self.e_product.setPlaceholderText("Product name")
+        self.e_product.setToolTip("Product name")
+        
+        self.l_tags = QLabel("Tags:")
+        self.e_tags = QLineEdit()
+        self.e_tags.setPlaceholderText("Comma separated tags")
+        self.e_tags.setToolTip("Comma separated tags")
+        
+        self.b_remove = QToolButton()
+        self.b_remove.clicked.connect(lambda: self.removed.emit(self))
+        
+        path = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "delete.png"
+        )
+        icon = self.core.media.getColoredIcon(path)
+        self.b_remove.setIcon(icon)
+        self.b_remove.setIconSize(QSize(20, 20))
+        self.b_remove.setToolTip("Delete")
+        if self.core.appPlugin.pluginName != "Standalone":
+            self.b_remove.setStyleSheet(
+                "QWidget{padding: 0; border-width: 0px;background-color: transparent} QWidget:hover{border-width: 1px; }"
+            )
+        
+        self.lo_main = QHBoxLayout()
+        self.lo_main.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(self.lo_main)
+        
+        self.lo_main.addWidget(self.l_product)
+        self.lo_main.addWidget(self.e_product, 10)
+        self.lo_main.addWidget(self.l_tags)
+        self.lo_main.addWidget(self.e_tags, 10)
+        self.lo_main.addWidget(self.b_remove)
+
+    @err_catcher(name=__name__)
+    def getProduct(self):
+        return self.e_product.text().strip()
+
+    @err_catcher(name=__name__)
+    def setProduct(self, product):
+        self.e_product.setText(product)
+
+    @err_catcher(name=__name__)
+    def getTags(self):
+        return self.e_tags.text().strip()
+
+    @err_catcher(name=__name__)
+    def setTags(self, tags):
+        self.e_tags.setText(tags)
+
+
+class ProductTagsDlg(QDialog):
+    def __init__(self, core, parent=None):
+        super(ProductTagsDlg, self).__init__()
+        self.parentDlg = parent
+        self.core = core
+        self.items = []
+        self.setupUi()
+        self.loadTags()
+
+    @err_catcher(name=__name__)
+    def setupUi(self):
+        title = "Product Tags"
+
+        self.setWindowTitle(title)
+        self.core.parentWindow(self, parent=self.parentDlg)
+
+        self.lo_main = QVBoxLayout()
+        self.setLayout(self.lo_main)
+
+        # Header label
+        self.l_header = QLabel("Project wide product tags:")
+        self.lo_main.addWidget(self.l_header)
+
+        # Add button widget
+        self.w_add = QWidget()
+        self.b_add = QToolButton()
+        self.lo_add = QHBoxLayout()
+        self.w_add.setLayout(self.lo_add)
+        self.lo_add.addStretch()
+        self.lo_add.addWidget(self.b_add)
+
+        path = os.path.join(
+            self.core.prismRoot, "Scripts", "UserInterfacesPrism", "add.png"
+        )
+        icon = self.core.media.getColoredIcon(path)
+        self.b_add.setIcon(icon)
+        self.b_add.setIconSize(QSize(20, 20))
+        self.b_add.setToolTip("Add Product Tag")
+        self.b_add.clicked.connect(self.addItem)
+        if self.core.appPlugin.pluginName != "Standalone":
+            self.b_add.setStyleSheet(
+                "QWidget{padding: 0; border-width: 0px;background-color: transparent} QWidget:hover{border-width: 1px; }"
+            )
+
+        # Items layout
+        self.lo_items = QVBoxLayout()
+        
+        self.lo_main.addLayout(self.lo_items)
+        self.lo_main.addWidget(self.w_add)
+        self.lo_main.addStretch()
+
+        self.bb_main = QDialogButtonBox()
+        self.bb_main.addButton("Save", QDialogButtonBox.AcceptRole)
+        self.bb_main.addButton("Cancel", QDialogButtonBox.RejectRole)
+
+        self.bb_main.clicked.connect(self.buttonClicked)
+        self.lo_main.addWidget(self.bb_main)
+
+    @err_catcher(name=__name__)
+    def loadTags(self):
+        tags = self.core.products.getProjectProductTags()
+        self.clearItems()
+        if tags:
+            for product, tagList in tags.items():
+                tagsStr = ", ".join(tagList) if isinstance(tagList, list) else tagList
+                self.addItem(product=product, tags=tagsStr)
+
+    @err_catcher(name=__name__)
+    def addItem(self, product=None, tags=None):
+        item = ProductTagItem(self.core)
+        self.items.append(item)
+        item.removed.connect(self.removeItem)
+        
+        if product:
+            item.setProduct(product)
+        
+        if tags:
+            item.setTags(tags)
+        
+        self.lo_items.addWidget(item)
+        return item
+
+    @err_catcher(name=__name__)
+    def removeItem(self, item):
+        self.items.remove(item)
+        idx = self.lo_items.indexOf(item)
+        if idx != -1:
+            w = self.lo_items.takeAt(idx)
+            if w.widget():
+                w.widget().deleteLater()
+
+    @err_catcher(name=__name__)
+    def clearItems(self):
+        for idx in reversed(range(self.lo_items.count())):
+            item = self.lo_items.takeAt(idx)
+            w = item.widget()
+            if w:
+                w.setVisible(False)
+                w.deleteLater()
+        
+        self.items = []
+
+    @err_catcher(name=__name__)
+    def getTags(self):
+        tagsDict = {}
+        for item in self.items:
+            product = item.getProduct()
+            tags = item.getTags()
+            if product:
+                tagList = [t.strip() for t in tags.split(",") if t.strip()]
+                tagsDict[product] = tagList
+        return tagsDict
+
+    @err_catcher(name=__name__)
+    def buttonClicked(self, button):
+        if button == "save" or button.text() == "Save":
+            productTags = self.getTags()
+            self.core.products.setProjectProductTags(productTags)
+
+        self.close()
+
+    @err_catcher(name=__name__)
+    def sizeHint(self):
+        return QSize(600, 400)

@@ -283,6 +283,21 @@ class MediaManager(object):
             reader = "Error - empty file: %s" % filepath
         else:
             imageio = self.getImageIO()
+            if not imageio:
+                details = ""
+                try:
+                    import imageio
+                    import imageio.plugins.ffmpeg
+                    import imageio_ffmpeg
+                except Exception as e:
+                    details = str(e)
+
+                msg = "Error: imageio module couldn't be loaded"
+                if details:
+                    msg += ": %s" % details
+
+                return msg
+
             filepath = str(filepath)  # unicode causes errors in Python 2
             if platform.system() == "Windows":
                 filepath = filepath.lower()
@@ -668,12 +683,25 @@ class MediaManager(object):
     def getPixmapFromExrPathWithoutOIIO(self, path, width=None, height=None, channel=None, allowThumb=True, regenerateThumb=False):
         useNuke = os.getenv("PRISM_USE_NUKE_FOR_PREVIEWS", "0") == "1"
         if useNuke:
-            return self.getPixmapFromExrPathFromNuke(path, width=width, height=height, channel=channel, allowThumb=allowThumb, regenerateThumb=regenerateThumb)
+            pmap = self.getPixmapFromExrPathFromNuke(path, width=width, height=height, channel=channel, allowThumb=allowThumb, regenerateThumb=regenerateThumb)
         else:
-            return self.getPixmapFromExrPathFromFfmpeg(path, width=width, height=height, channel=channel, allowThumb=allowThumb, regenerateThumb=regenerateThumb)
+            pmap = self.getPixmapFromExrPathFromFfmpeg(path, width=width, height=height, channel=channel, allowThumb=allowThumb, regenerateThumb=regenerateThumb)
+
+        return pmap
 
     @err_catcher(name=__name__)
-    def getPixmapFromExrPathFromFfmpeg(self, path, width=None, height=None, channel=None, allowThumb=True, regenerateThumb=False):
+    def getQImageFromExrPathWithoutOIIO(self, path, width=None, height=None, channel=None, allowThumb=True, regenerateThumb=False):
+        useNuke = os.getenv("PRISM_USE_NUKE_FOR_PREVIEWS", "0") == "1"
+        if useNuke:
+            pmap = self.getPixmapFromExrPathFromNuke(path, width=width, height=height, channel=channel, allowThumb=allowThumb, regenerateThumb=regenerateThumb)
+            qimg = pmap.toImage()
+        else:
+            qimg = self.getQImageFromExrPathFromFfmpeg(path, width=width, height=height, channel=channel, allowThumb=allowThumb, regenerateThumb=regenerateThumb)
+
+        return qimg
+
+    @err_catcher(name=__name__)
+    def generateImageFromExrPathFromFfmpeg(self, path, allowThumb=True):
         ffmpegPath = self.getFFmpeg()
         if not ffmpegPath or not os.path.exists(ffmpegPath):
             return
@@ -681,10 +709,8 @@ class MediaManager(object):
         thumbEnabled = self.getUseThumbnails()
         if thumbEnabled and allowThumb:
             outputPath = self.getThumbnailPath(path)
-            cleanTemp = False
         else:
             outputPath = self.core.getTempFilepath(filename=os.path.splitext(os.path.basename(path))[0] + ".jpg")
-            cleanTemp = True
 
         if not os.path.exists(os.path.dirname(outputPath)):
             try:
@@ -712,11 +738,13 @@ class MediaManager(object):
         args.append(outputPath)
         logger.debug("starting FFMPEG with these args:\n\n%s" % args)
         env = self.core.startEnv.copy()
+        flags = subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else None
         self.ffmpegProc = subprocess.Popen(
             args,
             env=env,
             text=True,
-            bufsize=1
+            bufsize=1,
+            creationflags=flags,
         )
 
         for idx in range(30):
@@ -733,14 +761,39 @@ class MediaManager(object):
             logger.warning("failed to generate thumbnail with FFMPEG.")
             return
 
+        return outputPath
+
+    @err_catcher(name=__name__)
+    def getPixmapFromExrPathFromFfmpeg(self, path, width=None, height=None, channel=None, allowThumb=True, regenerateThumb=False):
+        outputPath = self.generateImageFromExrPathFromFfmpeg(path, allowThumb)
+        if not outputPath:
+            return
+
         pmap = self.getPixmapFromPath(outputPath, width=width, height=height)
-        if cleanTemp:
+        thumbEnabled = self.getUseThumbnails()
+        if not thumbEnabled or not allowThumb:
             try:
                 os.remove(outputPath)
             except:
                 pass
 
         return pmap
+
+    @err_catcher(name=__name__)
+    def getQImageFromExrPathFromFfmpeg(self, path, width=None, height=None, channel=None, allowThumb=True, regenerateThumb=False):
+        outputPath = self.generateImageFromExrPathFromFfmpeg(path, allowThumb)
+        if not outputPath:
+            return
+
+        qimg = self.getQImageFromPath(outputPath, width=width, height=height)
+        thumbEnabled = self.getUseThumbnails()
+        if not thumbEnabled or not allowThumb:
+            try:
+                os.remove(outputPath)
+            except:
+                pass
+
+        return qimg
 
     @err_catcher(name=__name__)
     def getPixmapFromExrPathFromNuke(self, path, width=None, height=None, channel=None, allowThumb=True, regenerateThumb=False):
@@ -813,6 +866,33 @@ nuke.execute(write, %s, %s)
             # msg = "OpenImageIO is not available. Unable to read the file."
             # self.core.popup(msg)
             return self.getPixmapFromExrPathWithoutOIIO(path, width=width, height=height, channel=channel, allowThumb=allowThumb, regenerateThumb=regenerateThumb)
+
+        qimg = self.getQImageFromExrPath(path, width=width, height=height, channel=channel, allowThumb=allowThumb, regenerateThumb=regenerateThumb)
+        pixmap = QPixmap.fromImage(qimg)
+        if thumbEnabled and allowThumb:
+            thumbPath = self.getThumbnailPath(path)
+            self.savePixmap(pixmap, thumbPath)
+
+        return pixmap
+
+    @err_catcher(name=__name__)
+    def getQImageFromExrPath(self, path, width=None, height=None, channel=None, allowThumb=True, regenerateThumb=False):
+        thumbEnabled = self.getUseThumbnails()
+        if allowThumb and thumbEnabled and not regenerateThumb and path:
+            thumbPath = self.getThumbnailPath(path)
+            if os.path.exists(thumbPath):
+                return self.getQImageFromPath(thumbPath, width=width, height=height)
+
+        oiio = self.getOIIO()
+        if not oiio:
+            return self.getQImageFromExrPathWithoutOIIO(
+                path,
+                width=width,
+                height=height,
+                channel=channel,
+                allowThumb=allowThumb,
+                regenerateThumb=regenerateThumb
+            )
 
         path = str(path)  # for python 2
         imgInput = oiio.ImageInput.open(path)
@@ -924,12 +1004,11 @@ nuke.execute(write, %s, %s)
 
                 qimg.setPixel(i, k, rgb)
 
-        pixmap = QPixmap.fromImage(qimg)
         if thumbEnabled and allowThumb:
             thumbPath = self.getThumbnailPath(path)
-            self.savePixmap(pixmap, thumbPath)
+            self.saveQImage(qimg, thumbPath)
 
-        return pixmap
+        return qimg
 
     @err_catcher(name=__name__)
     def getPixmapFromPath(self, path, width=None, height=None, colorAdjust=False):
@@ -956,6 +1035,68 @@ nuke.execute(write, %s, %s)
         return pixmap
 
     @err_catcher(name=__name__)
+    def getQImageFromPath(self, path, width=None, height=None, colorAdjust=False):
+        if not path:
+            return
+
+        ext = os.path.splitext(path)[1].lower()
+        if ext in self.core.media.videoFormats:
+            return self.getQImageFromVideoPath(path)
+        elif ext in [".exr", ".dpx", ".hdr", ".psd"]:
+            return self.core.media.getQImageFromExrPath(
+                path, width, height
+            )
+
+        qimg = QImage(path)
+        if qimg.isNull():
+            qimg = self.core.media.getQImageFromExrPath(
+                path, width, height
+            )
+
+        if (width or height) and qimg and not qimg.isNull():
+            qimg = self.scalePixmap(qimg, width, height)
+
+        return qimg
+
+    @err_catcher(name=__name__)
+    def getQImageFromVideoPath(self, path, allowThumb=True, regenerateThumb=False, videoReader=None, imgNum=0):
+        thumbEnabled = self.getUseThumbnails()
+        if allowThumb and thumbEnabled and not regenerateThumb and imgNum == 0:
+            thumbPath = self.getThumbnailPath(path)
+            if os.path.exists(thumbPath):
+                return self.getQImageFromPath(thumbPath)
+
+        _, ext = os.path.splitext(path)
+        try:
+            vidFile = self.core.media.getVideoReader(path) if videoReader is None else videoReader
+            if self.core.isStr(vidFile):
+                logger.warning(vidFile)
+                imgPath = os.path.join(
+                    self.core.projects.getFallbackFolder(),
+                    "%s.jpg" % ext[1:].lower(),
+                )
+                qimg = self.getQImageFromPath(imgPath)
+            else:
+                image = vidFile.get_data(imgNum)
+                fileRes = vidFile._meta["size"]
+                width = fileRes[0]
+                height = fileRes[1]
+                qimg = QImage(image, width, height, 3 * width, QImage.Format_RGB888)
+                if thumbEnabled and imgNum == 0:
+                    thumbPath = self.getThumbnailPath(path)
+                    self.saveQImage(qimg, thumbPath)
+
+        except Exception as e:
+            logger.debug(traceback.format_exc())
+            imgPath = os.path.join(
+                self.core.projects.getFallbackFolder(),
+                "%s.jpg" % ext[1:].lower(),
+            )
+            qimg = self.getQImageFromPath(imgPath)
+
+        return qimg
+
+    @err_catcher(name=__name__)
     def getPixmapFromVideoPath(self, path, allowThumb=True, regenerateThumb=False, videoReader=None, imgNum=0):
         thumbEnabled = self.getUseThumbnails()
         if allowThumb and thumbEnabled and not regenerateThumb and imgNum == 0:
@@ -972,17 +1113,10 @@ nuke.execute(write, %s, %s)
                     self.core.projects.getFallbackFolder(),
                     "%s.jpg" % ext[1:].lower(),
                 )
-                pmsmall = self.core.media.getPixmapFromPath(imgPath)
+                pmsmall = self.getPixmapFromPath(imgPath)
             else:
-                image = vidFile.get_data(imgNum)
-                fileRes = vidFile._meta["size"]
-                width = fileRes[0]
-                height = fileRes[1]
-                qimg = QImage(image, width, height, 3*width, QImage.Format_RGB888)
+                qimg = self.getQImageFromVideoPath(path, allowThumb=allowThumb, regenerateThumb=regenerateThumb, videoReader=vidFile, imgNum=imgNum)
                 pmsmall = QPixmap.fromImage(qimg)
-                if thumbEnabled and imgNum == 0:
-                    thumbPath = self.getThumbnailPath(path)
-                    self.savePixmap(pmsmall, thumbPath)
 
         except Exception as e:
             logger.debug(traceback.format_exc())
@@ -990,7 +1124,7 @@ nuke.execute(write, %s, %s)
                 self.core.projects.getFallbackFolder(),
                 "%s.jpg" % ext[1:].lower(),
             )
-            pmsmall = self.core.media.getPixmapFromPath(imgPath)
+            pmsmall = self.getPixmapFromPath(imgPath)
 
         return pmsmall
 
@@ -1031,6 +1165,43 @@ nuke.execute(write, %s, %s)
                 pimg.save(path)
             except:
                 pmap.save(path, "JPG")
+
+    @err_catcher(name=__name__)
+    def saveQImage(self, qimg, path):
+        while True:
+            if os.path.exists(os.path.dirname(path)):
+                break
+            else:
+                try:
+                    os.makedirs(os.path.dirname(path))
+                    break
+                except FileExistsError:
+                    break
+                except:
+                    msg = "Failed to create folder. Make sure you have the required permissions to create this folder.\n\n%s" % os.path.dirname(path)
+                    result = self.core.popupQuestion(msg, buttons=["Retry", "Cancel"])
+                    if result != "Retry":
+                        return
+
+        if platform.system() == "Windows":
+            if os.path.splitext(path)[1].lower() == ".png":
+                qimg.save(path, "PNG", 95)
+            else:
+                qimg.save(path, "JPG", 95)
+        else:
+            try:
+                buf = QBuffer()
+                buf.open(QIODevice.ReadWrite)
+                qimg.save(buf, "PNG")
+
+                strio = StringIO()
+                strio.write(buf.data())
+                buf.close()
+                strio.seek(0)
+                pimg = Image.open(strio)
+                pimg.save(path)
+            except:
+                qimg.save(path, "JPG")
 
     @err_catcher(name=__name__)
     def getPixmapFromUrl(self, url, headers=None):
@@ -1145,9 +1316,9 @@ nuke.execute(write, %s, %s)
             ".tga",
             ".gif",
         ]:
-            pm = self.getPixmapFromPath(path)
-            if pm:
-                size = pm.size()
+            qimg = self.getQImageFromPath(path)
+            if qimg:
+                size = qimg.size()
                 pwidth = size.width()
                 pheight = size.height()
         elif ext in [".exr", ".dpx", ".hdr", ".psd"]:
@@ -1159,9 +1330,9 @@ nuke.execute(write, %s, %s)
                 pwidth = imgSpecs.full_width
                 pheight = imgSpecs.full_height
             else:
-                pm = self.getPixmapFromExrPathWithoutOIIO(path)
-                if pm:
-                    size = pm.size()
+                qimg = self.getQImageFromExrPathWithoutOIIO(path)
+                if qimg:
+                    size = qimg.size()
                     pwidth = size.width()
                     pheight = size.height()
 
@@ -1286,6 +1457,7 @@ nuke.execute(write, %s, %s)
     @err_catcher(name=__name__)
     def playMediaInExternalPlayer(self, path, name=None):
         mediaPlayer = self.getExternalMediaPlayer(name=name)
+        path = os.path.normpath(path)
         progPath = mediaPlayer.get("path") if mediaPlayer else ""
         if not progPath:
             self.core.popup("No media player path set in your user settings..")
@@ -1320,7 +1492,7 @@ nuke.execute(write, %s, %s)
                     raise RuntimeError("%s - %s" % (comd, e))
 
     @err_catcher(name=__name__)
-    def getFallbackPixmap(self, big=False):
+    def getFallbackImagePath(self, big=False):
         if big:
             filename = "noFileBig.jpg"
         else:
@@ -1336,11 +1508,25 @@ nuke.execute(write, %s, %s)
                 base, "00_Pipeline/Fallbacks/" + filename
             )
 
+        return imgFile
+
+    @err_catcher(name=__name__)
+    def getFallbackPixmap(self, big=False):
+        imgFile = self.getFallbackImagePath(big=big)
         pmap = self.core.media.getPixmapFromPath(imgFile)
         if not pmap:
             pmap = QPixmap()
 
         return pmap
+    
+    @err_catcher(name=__name__)
+    def getFallbackQImage(self, big=False):
+        imgFile = self.getFallbackImagePath(big=big)
+        qimg = self.getQImageFromPath(imgFile)
+        if not qimg:
+            qimg = QImage()
+
+        return qimg
 
     @property
     @err_catcher(name=__name__)

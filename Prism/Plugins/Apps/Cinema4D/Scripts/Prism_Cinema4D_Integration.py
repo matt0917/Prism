@@ -66,7 +66,7 @@ class Prism_Cinema4D_Integration(object):
         if paths:
             examplePath = sorted(paths)[-1]
         else:
-            examplePath = base + "\\Maxon Cinema4D 2025"
+            examplePath = base + "\\Maxon Cinema4D 2026"
 
         return examplePath
 

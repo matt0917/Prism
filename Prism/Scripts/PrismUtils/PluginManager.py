@@ -181,7 +181,7 @@ class PluginManager(object):
         elif location == "custom":
             pluginPath = path
 
-        if location not in ["custom", "user", "project"] and pluginType:
+        if location not in ["computer", "custom", "user", "project"] and pluginType:
             if pluginType == "App":
                 dirName = "Apps"
             elif pluginType == "Custom":

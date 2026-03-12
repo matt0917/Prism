@@ -37,7 +37,7 @@ import os
 
 class Prism_Cinema4D_Variables(object):
     def __init__(self, core, plugin):
-        self.version = "v2.1.0"
+        self.version = "v2.1.1"
         self.pluginName = "Cinema4D"
         self.pluginType = "App"
         self.appShortName = "Cinema4D"
@@ -48,7 +48,7 @@ class Prism_Cinema4D_Variables(object):
         self.outputFormats = [".abc", ".obj", ".fbx", ".rs", ".ass", ".c4d", "ShotCam"]
         self.appColor = [91, 107, 183]
         self.renderPasses = []
-        self.platforms = ["Windows"]
+        self.platforms = ["Windows", "Linux", "Darwin"]
         self.pluginDirectory = os.path.abspath(
             os.path.dirname(os.path.dirname(__file__))
         )

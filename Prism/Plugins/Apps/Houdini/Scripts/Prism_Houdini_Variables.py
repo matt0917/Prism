@@ -37,7 +37,7 @@ import os
 
 class Prism_Houdini_Variables(object):
     def __init__(self, core, plugin):
-        self.version = "v2.1.0"
+        self.version = "v2.1.1"
         self.pluginName = "Houdini"
         self.pluginType = "App"
         self.appShortName = "Hou"
@@ -57,6 +57,7 @@ class Prism_Houdini_Variables(object):
             "other",
         ]
         self.appSpecificFormats = self.sceneFormats + [".bgeo", ".bgeo.sc", ".hda"]
+        self.canBuildScene = True
         self.appColor = [242, 103, 34]
         self.renderPasses = {
             "houdini_arnold": [

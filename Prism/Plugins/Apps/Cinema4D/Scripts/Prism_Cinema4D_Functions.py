@@ -860,6 +860,7 @@ class Prism_Cinema4D_Functions(object):
         dlParams["jobInfos"]["Plugin"] = "Cinema4D"
         dlParams["jobInfos"]["Comment"] = "Prism-Submission-Cinema4D_ImageRender"
         dlParams["pluginInfos"]["Version"] = str(self.getAppVersion(origin))[:4]
+        dlParams["pluginInfos"]["FilePath"] = dlParams["jobInfos"]["OutputFilename0"]
 
     @err_catcher(name=__name__)
     def getCurrentRenderer(self, origin):

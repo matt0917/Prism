@@ -789,6 +789,16 @@ class Prism_Houdini_Filecache(object):
         return val
 
     @err_catcher(name=__name__)
+    def isPrismFilecacheNode(self, node):
+        if not self.core.appPlugin.isNodeValid(self, node):
+            return False
+
+        if node.type().name().startswith("prism::Filecache"):
+            return True
+
+        return False
+
+    @err_catcher(name=__name__)
     def getImportPath(self, expand=True, node=None):
         if hou.hipFile.isLoadingHipFile():
             return ""
@@ -801,6 +811,14 @@ class Prism_Houdini_Filecache(object):
         state = self.getStateFromNode({"node": node})
         if not state:
             return
+
+        if self.isPrismFilecacheNode(node) and node.parm("showUsdSettings").eval():
+            usdPlug = self.core.getPlugin("USD")
+            if not usdPlug:
+                self.core.popup("USD plugin is not loaded.")
+                return
+
+            return usdPlug.api.usdExport.getImportPath(expand=expand, node=node)
 
         entity = state.ui.getOutputEntity()
         product = hou.text.expandString(self.getProductName(node))
@@ -818,7 +836,13 @@ class Prism_Houdini_Filecache(object):
 
         if path:
             path = path.replace("\\", "/")
-            path = self.core.appPlugin.detectCacheSequence(path)
+            incr = node.parm("f3").eval() / node.parm("substeps").eval()
+            if incr < 1:
+                subframeStr = f"`pythonexprs('\"%0{self.core.framePadding}d.%03d\" % (int(hou.timeToFrame(hou.time())), round(int(hou.timeToFrame(hou.time()) * (1 / {incr})) / (1 / {incr}) % 1, 3) * 1000)')`"
+            else:
+                subframeStr = None
+
+            path = self.core.appPlugin.detectCacheSequence(path, subframeStr=subframeStr)
             path = self.core.appPlugin.getPathRelativeToProject(path) if self.core.appPlugin.getUseRelativePath() else path
             if expand:
                 path = hou.text.expandString(path)
@@ -909,7 +933,7 @@ class Prism_Houdini_Filecache(object):
         else:
             fileName = self.core.getCurrentFileName()
             fnameData = self.core.getScenefileData(fileName)
-            if fnameData.get("type") in ["asset", "shot"]:
+            if fnameData.get("type") in ["asset", "shot"] and "version" in fnameData:
                 version = fnameData["version"]
             else:
                 version = self.core.versionFormat % self.core.lowestVersion

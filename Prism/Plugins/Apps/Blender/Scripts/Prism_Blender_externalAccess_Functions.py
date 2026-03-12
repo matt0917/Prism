@@ -109,21 +109,22 @@ class Prism_Blender_externalAccess_Functions(object):
         if "blender" not in settings:
             settings["blender"] = {}
 
-        bsPath = self.core.fixPath(origin.le_bldAutoSavePath.text())
-        if not bsPath.endswith(os.sep):
-            bsPath += os.sep
+        if hasattr(origin, "le_bldAutoSavePath"):
+            bsPath = self.core.fixPath(origin.le_bldAutoSavePath.text())
+            if not bsPath.endswith(os.sep):
+                bsPath += os.sep
 
-        if origin.chb_bldRperProject.isChecked():
-            if os.path.exists(self.core.prismIni):
-                k = "autosavepath_%s" % self.core.projectName
-                settings["blender"][k] = bsPath
-        else:
-            settings["blender"]["autosavepath"] = bsPath
+            if origin.chb_bldRperProject.isChecked():
+                if os.path.exists(self.core.prismIni):
+                    k = "autosavepath_%s" % self.core.projectName
+                    settings["blender"][k] = bsPath
+            else:
+                settings["blender"]["autosavepath"] = bsPath
 
-        settings["blender"]["autosaverender"] = origin.gb_bldAutoSave.isChecked()
-        settings["blender"][
-            "autosaveperproject"
-        ] = origin.chb_bldRperProject.isChecked()
+            settings["blender"]["autosaverender"] = origin.gb_bldAutoSave.isChecked()
+            settings["blender"][
+                "autosaveperproject"
+            ] = origin.chb_bldRperProject.isChecked()
 
     @err_catcher(name=__name__)
     def userSettings_loadSettings(self, origin, settings):

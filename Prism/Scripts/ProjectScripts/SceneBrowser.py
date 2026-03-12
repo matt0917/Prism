@@ -981,6 +981,14 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
                 filepath = self.core.convertPath(filepath, "local")
 
         rcmenu = QMenu(self)
+        buildAct = QAction("Build new Scene", self)
+        buildAct.triggered.connect(lambda: self.buildScene())
+        if self.core.appPlugin.pluginName == "Standalone":
+            buildAct.setEnabled(False)
+
+        if getattr(self.core.appPlugin, "canBuildScene", False) and os.getenv("PRISM_SHOW_BUILD", "1") == "1":
+            rcmenu.addAction(buildAct)
+
         current = QAction(self.core.tr("Create new version from current"), self)
         current.triggered.connect(lambda: self.createFromCurrent())
         if self.core.appPlugin.pluginName == "Standalone":
@@ -988,7 +996,10 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
 
         rcmenu.addAction(current)
         emp = QMenu(self.core.tr("Create new version from preset"), self)
-        scenes = self.core.entities.getPresetScenes()
+        context = self.getCurrentEntity().copy()
+        context["department"] = curDep
+        context["task"] = curTask
+        scenes = self.core.entities.getPresetScenes(context)
         dirMenus = {}
         for scene in sorted(scenes, key=lambda x: os.path.basename(x["label"]).lower()):
             folders = scene["label"].split("/")
@@ -1201,6 +1212,16 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
             and self.projectBrowser.actionCloseAfterLoad.isChecked()
         ):
             self.window().close()
+
+    @err_catcher(name=__name__)
+    def buildScene(self):
+        entity = self.getCurrentEntity()
+        curDep = self.getCurrentDepartment()
+        curTask = self.getCurrentTask()
+        filepath = self.core.entities.buildScene(
+            entity=entity, department=curDep, task=curTask
+        )
+        self.core.addToRecent(filepath)
 
     @err_catcher(name=__name__)
     def createFromCurrent(self):
@@ -2003,7 +2024,7 @@ class SceneBrowser(QWidget, SceneBrowser_ui.Ui_w_sceneBrowser):
                     for key in metadata:
                         if metadata[key]["show"]:
                             l_key = QLabel(key + ":    ")
-                            l_val = QLabel(metadata[key]["value"])
+                            l_val = QLabel(str(metadata[key]["value"]))
                             l_val.setWordWrap(True)
                             self.lo_entityInfo.addWidget(l_key, idx, 0)
                             self.lo_entityInfo.addWidget(l_val, idx, 1)

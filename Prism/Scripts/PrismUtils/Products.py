@@ -816,7 +816,11 @@ class Products(object):
             if len(seqFiles) > 1:
                 extData = self.core.paths.splitext(seqFile)
                 base = extData[0]
-                frameStr = "." + base[-self.core.framePadding:]
+                if self.core.framePadding == 4 and len(base) > 8 and base[-4] == "." and base[-3:].isnumeric() and base[-8:-4].isnumeric() and base[-9] != "v":
+                    frameStr = "." + base[-8:]
+                else:
+                    frameStr = "." + base[-self.core.framePadding:]
+
                 base, ext = self.core.paths.splitext(masterPath)
                 masterPathPadded = base + frameStr + ext
             else:
@@ -1169,8 +1173,46 @@ class Products(object):
     def getTagsFromProduct(self, product):
         productPath = self.getProductPathFromEntity(product, includeProduct=False)
         cfgPath = os.path.join(productPath, "products" + self.core.configs.getProjectExtension())
-        tags = self.core.getConfig(product.get("product"), "tags", configPath=cfgPath) or []
+        tags = self.core.getConfig(product.get("product"), "tags", configPath=cfgPath)
+        if tags is None:
+            tags = []
+            prjTags = self.getProjectTagsFromProduct(product["product"])
+            for prjTag in prjTags:
+                if prjTag not in tags:
+                    tags.append(prjTag)
+
         return tags
+
+    @err_catcher(name=__name__)
+    def getDefaultProjectProductTags(self):
+        tags = {
+            "Modeling": ["to_surf"],
+            "Surfacing": ["to_rig, static"],
+            "Rigging": ["to_anm"],
+            "Animation": ["animated"],
+        }
+        return tags
+    
+    @err_catcher(name=__name__)
+    def getProjectTagsFromProduct(self, product):
+        tagData = self.getProjectProductTags() or {}
+        if product not in list(tagData.keys()):
+            return []
+
+        tags = tagData[product] or []
+        return tags
+
+    @err_catcher(name=__name__)
+    def getProjectProductTags(self):
+        tagData = self.core.getConfig("products", "tags", config="project")
+        if tagData is None:
+            tagData = self.getDefaultProjectProductTags()
+
+        return tagData
+
+    @err_catcher(name=__name__)
+    def setProjectProductTags(self, tags):
+        self.core.setConfig("products", "tags", val=tags, config="project")
 
     @err_catcher(name=__name__)
     def setProductTags(self, product, tags):
@@ -1194,12 +1236,35 @@ class Products(object):
         return foundProducts
 
     @err_catcher(name=__name__)
+    def getRecommendedTags(self, context):
+        tags = []
+        departments = self.core.projects.getAssetDepartments()
+        departments += self.core.projects.getShotDepartments()
+        for department in departments:
+            depTag = "to_" + department.get("abbreviation", "").lower()
+            tags.append(depTag)
+
+            for defaultTask in department.get("defaultTasks", []):
+                taskTag = "to_" + defaultTask.lower()
+                tags.append(taskTag)
+
+        tags += ["usd", "main", "static", "animated"]
+        tags += getattr(self, "extraTags", [])
+        newTags = []
+        for tag in tags:
+            if tag not in newTags:
+                newTags.append(tag)
+
+        return newTags
+
+    @err_catcher(name=__name__)
     def importConnectedAssetsForEntities(self, entities=None, parent=None):
         for entity in entities:
             self.importConnectedAssets(entity)
 
     @err_catcher(name=__name__)
-    def importConnectedAssets(self, entity=None, quiet=True):
+    def importConnectedAssets(self, entity=None, quiet=True, quietCheck=False):
+        logger.debug("importing connected assets")
         sm = self.core.getStateManager()
         if not sm:
             return
@@ -1209,22 +1274,41 @@ class Products(object):
             entity = self.core.getScenefileData(filepath)
 
         if not entity or entity.get("type") != "shot":
-            msg = "Importing connected assets is possible in shot scenefiles only."
-            self.core.popup(msg)
+            if not quietCheck:
+                msg = "Importing connected assets is possible in shot scenefiles only."
+                self.core.popup(msg)
+
             return
 
         productsToImport = []
         entities = self.core.entities.getConnectedEntities(entity)
         if not entities:
-            result = self.core.popupQuestion("No assets are connected to the current shot.", buttons=["Connect Assets...", "Close"], icon=QMessageBox.Information)
-            if result == "Connect Assets...":
-                self.core.entities.connectEntityDlg(entities=[entity])
+            msg = "No assets are connected to the current shot."
+            if not quietCheck:
+                result = self.core.popupQuestion(msg, buttons=["Connect Assets...", "Close"], icon=QMessageBox.Information)
+                if result == "Connect Assets...":
+                    self.core.entities.connectEntityDlg(entities=[entity])
 
             return
 
         tags = [x.strip() for x in os.getenv("PRISM_AUTO_IMPORT_TAGS", "").split(",") if x]
         if not tags:
-            tags = ["usd", "assembly", "main"]
+            tags = ["usd", "main"]
+
+        curDep = entity.get("department")
+        if curDep:
+            tags.insert(0, "to_%s" % curDep.lower())
+
+        task = entity.get("task")
+        if task:
+            tags.insert(0, "to_%s" % task.lower())
+
+        newTags = []
+        for tag in tags:
+            if tag not in newTags:
+                newTags.append(tag)
+
+        tags = newTags
 
         for centity in entities:
             products = self.core.products.getProductsByTags(centity, tags)
@@ -1232,13 +1316,17 @@ class Products(object):
 
         if not productsToImport:
             msg = "No products to import.\n(checking for tags: \"%s\")" % "\", \"".join(tags)
-            self.core.popup(msg)
+            logger.debug(msg)
+            if not quietCheck:
+                self.core.popup(msg)
+
             return
 
         settings = {}
         if quiet:
             settings["quiet"] = True
 
+        importedProducts = []
         for product in productsToImport:
             if "asset_path" not in product:
                 continue
@@ -1249,6 +1337,65 @@ class Products(object):
 
             sm.importFile(productPath, settings=settings)
             logger.debug("added product to shot: %s - %s" % (self.core.entities.getShotName(entity), productPath))
+            importedProducts.append(productPath)
+
+        if not importedProducts:
+            logger.debug("no products to import (%s)" % productsToImport)
+
+    @err_catcher(name=__name__)
+    def importProductsForTask(self, entity=None, department=None, task=None, quiet=True, quietCheck=False):
+        logger.debug("importing products for entity %s for department %s" % (entity, department))
+        sm = self.core.getStateManager()
+        if not sm:
+            return
+
+        if not entity:
+            filepath = self.core.getCurrentFileName()
+            entity = self.core.getScenefileData(filepath)
+
+        productsToImport = []
+        tags = [x.strip() for x in os.getenv("PRISM_AUTO_IMPORT_TAGS", "").split(",") if x]
+        if not tags:
+            tags = ["usd", "main"]
+
+        tags.insert(0, "to_%s" % department.lower())
+        tags.insert(0, "to_%s" % task.lower())
+
+        newTags = []
+        for tag in tags:
+            if tag not in newTags:
+                newTags.append(tag)
+
+        tags = newTags
+
+        productsToImport = self.core.products.getProductsByTags(entity, tags)
+        if not productsToImport:
+            msg = "No products to import.\n(checking for tags: \"%s\")" % "\", \"".join(tags)
+            logger.debug(msg)
+            if not quietCheck:
+                self.core.popup(msg)
+
+            return
+
+        settings = {}
+        if quiet:
+            settings["quiet"] = True
+
+        if self.core.appPlugin.pluginName == "Maya":
+            settings["useNamespace"] = False
+
+        importedProducts = []
+        for product in productsToImport:
+            productPath = self.core.products.getLatestVersionpathFromProduct(product["product"], entity=product)
+            if not productPath:
+                continue
+
+            sm.importFile(productPath, settings=settings)
+            logger.debug("imported product: %s - %s" % (self.core.entities.getEntityName(entity), productPath))
+            importedProducts.append(productPath)
+
+        if not importedProducts:
+            logger.debug("no products to import (%s)" % productsToImport)
 
 
 class PreferredVersionDialog(QDialog):

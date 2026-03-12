@@ -262,6 +262,10 @@ class UserSettings(QDialog, UserSettings_ui.Ui_dlg_UserSettings):
                     }
 
                 if self.core.getPluginData(i, "hasIntegration") is not False:
+                    hasIntegrationPath = self.core.getPluginData(i, "hasIntegrationPath")
+                    if hasIntegrationPath is None:
+                        hasIntegrationPath = True
+
                     gb_integ = QGroupBox("Prism integrations")
                     lo_integ = QVBoxLayout()
                     gb_integ.setLayout(lo_integ)
@@ -270,8 +274,9 @@ class UserSettings(QDialog, UserSettings_ui.Ui_dlg_UserSettings):
                     lo_integButtons = QHBoxLayout()
                     b_addInteg = QPushButton("Add")
                     b_removeInteg = QPushButton("Remove")
-                    examplePath = self.core.getPluginData(i, "examplePath") or ""
-                    l_examplePath = QLabel("Examplepath:\n\n" + examplePath)
+                    if hasIntegrationPath:
+                        examplePath = self.core.getPluginData(i, "examplePath") or ""
+                        l_examplePath = QLabel("Examplepath:\n\n" + examplePath)
 
                     w_integ.setLayout(lo_integButtons)
                     lo_integButtons.addStretch()
@@ -279,7 +284,9 @@ class UserSettings(QDialog, UserSettings_ui.Ui_dlg_UserSettings):
                     lo_integButtons.addWidget(b_removeInteg)
 
                     lo_integ.addWidget(lw_integ)
-                    lo_integ.addWidget(l_examplePath)
+                    if hasIntegrationPath:
+                        lo_integ.addWidget(l_examplePath)
+
                     lo_integ.addWidget(w_integ)
                     lo_tab.addWidget(gb_integ)
 
@@ -295,9 +302,10 @@ class UserSettings(QDialog, UserSettings_ui.Ui_dlg_UserSettings):
                         "lw": lw_integ,
                         "badd": b_addInteg,
                         "bremove": b_removeInteg,
-                        "lexample": l_examplePath,
                         "tab": tab,
                     }
+                    if hasIntegrationPath:
+                        self.integrationPlugins[i]["lexample"] = l_examplePath
 
                 getattr(
                     self.core.getPlugin(i), "userSettings_loadUI", lambda x, y: None
@@ -352,7 +360,7 @@ class UserSettings(QDialog, UserSettings_ui.Ui_dlg_UserSettings):
         self.buttonBox.accepted.connect(self.accept)
         self.buttonBox.rejected.connect(self.reject)
 
-        if not self.core.getPlugin("Hub", allowUnloaded=True) and os.getenv("PRISM_ALLOW_HUB_INSTALL") != "0":
+        if not self.core.getPlugin("Hub", allowUnloaded=True) and os.getenv("PRISM_ALLOW_HUB_INSTALL") != "0" and platform.system() == "Windows":
             self.gb_installHub = QGroupBox("Hub")
             self.lo_installHub = QHBoxLayout(self.gb_installHub)
             self.b_installHub = QPushButton("Install Hub")
@@ -493,6 +501,10 @@ class UserSettings(QDialog, UserSettings_ui.Ui_dlg_UserSettings):
             tabtext = self.tw_settings.tabText(idx)
             if text == tabtext:
                 self.tw_settings.setCurrentIndex(idx)
+                widget = self.tw_settings.widget(idx)
+                if hasattr(widget, "entered"):
+                    widget.entered(self, widget)
+
                 break
 
     @err_catcher(name=__name__)

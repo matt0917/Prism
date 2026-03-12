@@ -835,6 +835,10 @@ class Prism_Houdini_Functions(object):
         ):
             return False
 
+        if hou.hipFile.isLoadingHipFile():
+            self.core.popup("Houdini is loading another hipfile currently.\nPlease wait or cancel the hipfile loading and try again.")
+            return False
+
         mods = QApplication.keyboardModifiers()
         if self.core.getConfig("houdini", "openInManual") or mods == Qt.AltModifier:
             hou.setUpdateMode(hou.updateMode.Manual)
@@ -2152,12 +2156,13 @@ class Prism_Houdini_Functions(object):
         return state
 
     @err_catcher(name=__name__)
-    def detectCacheSequence(self, path):
+    def detectCacheSequence(self, path, subframeStr=None):
         folder = os.path.dirname(path)
         fname = os.path.basename(path)
         base, ext = self.splitExtension(fname)
         convertedParts = []
-        for part in base.split("."):
+        addedIntF = None
+        for idx, part in enumerate(base.split(".")):
             if len(part) == self.core.framePadding:
                 part = part.strip("-")
                 if sys.version[0] == "2":
@@ -2165,6 +2170,16 @@ class Prism_Houdini_Functions(object):
 
                 if part.isnumeric():
                     part = "$F" + str(self.core.framePadding)
+                    addedIntF = idx
+            elif subframeStr:
+                if len(part) == 3 and addedIntF is not None and addedIntF == (idx - 1):
+                    part = part.strip("-")
+                    if sys.version[0] == "2":
+                        part = unicode(part)
+
+                    if part.isnumeric():
+                        part = subframeStr
+                        convertedParts = convertedParts[:-1]
 
             convertedParts.append(part)
 

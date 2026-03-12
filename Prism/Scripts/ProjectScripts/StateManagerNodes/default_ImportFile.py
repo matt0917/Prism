@@ -33,12 +33,16 @@
 
 
 import os
+import logging
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
 from qtpy.QtWidgets import *
 
 from PrismUtils.Decorators import err_catcher
+
+
+logger = logging.getLogger(__name__)
 
 
 class ImportFileClass(object):
@@ -314,11 +318,11 @@ class ImportFileClass(object):
             self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def runSanityChecks(self, cachePath):
+    def runSanityChecks(self, cachePath, settings=None):
         result = True
 
         if getattr(self.core.appPlugin, "hasFrameRange", True):
-            result = self.checkFrameRange(cachePath)
+            result = self.checkFrameRange(cachePath, settings=settings)
 
         if not result:
             return False
@@ -326,7 +330,7 @@ class ImportFileClass(object):
         return True
 
     @err_catcher(name=__name__)
-    def checkFrameRange(self, cachePath):
+    def checkFrameRange(self, cachePath, settings=None):
         versionInfoPath = self.core.getVersioninfoPath(
             self.core.products.getVersionInfoPathFromProductFilepath(cachePath)
         )
@@ -341,12 +345,16 @@ class ImportFileClass(object):
             % (curFPS, impFPS)
         )
 
-        result = self.core.popupQuestion(
-            fString,
-            title="FPS mismatch",
-            buttons=["Continue", "Cancel"],
-            icon=QMessageBox.Warning,
-        )
+        if not settings or not settings.get("quiet", False):
+            result = self.core.popupQuestion(
+                fString,
+                title="FPS mismatch",
+                buttons=["Continue", "Cancel"],
+                icon=QMessageBox.Warning,
+            )
+        else:
+            logger.warning(fString)
+            result = "Continue"
 
         if result == "Cancel":
             return False
@@ -386,7 +394,7 @@ class ImportFileClass(object):
             self.core.popup("Import into %s is not supported." % self.core.appPlugin.pluginName)
             return
 
-        result = self.runSanityChecks(impFileName)
+        result = self.runSanityChecks(impFileName, settings=settings)
         if not result:
             return
 

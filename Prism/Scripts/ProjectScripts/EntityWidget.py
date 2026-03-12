@@ -410,8 +410,14 @@ class EntityPage(QWidget):
         self.tw_tree.itemExpanded.connect(self.itemExpanded)
         self.tw_tree.itemCollapsed.connect(self.itemCollapsed)
         self.tw_tree.customContextMenuRequested.connect(self.contextMenuTree)
-        self.e_search.textChanged.connect(lambda x: self.refreshEntities(restoreSelection=True))
+        self.e_search.textChanged.connect(self.onSearchTextChanged)
         self.cb_location.activated.connect(self.onLocationChanged)
+
+    @err_catcher(name=__name__)
+    def onSearchTextChanged(self, text):
+        minLength = int(os.getenv("PRISM_MINIMUM_SEARCH_LENGTH", "0"))
+        if len(text) >= minLength or len(text) == 0:
+            self.refreshEntities(restoreSelection=True)
 
     @err_catcher(name=__name__)
     def getLocations(self, includeAll=False):
@@ -580,6 +586,9 @@ class EntityPage(QWidget):
 
     @err_catcher(name=__name__)
     def refreshAssetItem(self, item):
+        if not item:
+            return
+
         item.takeChildren()
         data = item.data(0, Qt.UserRole)
         path = data["paths"][0]
@@ -1222,6 +1231,12 @@ class EntityPage(QWidget):
                 "asset_path": entityName,
                 "asset": os.path.basename(entityName)
             }
+            if entityType == "folder" and not self.core.entities.isValidAssetName(data["asset"]) and os.path.dirname(data["asset_path"]):
+                msg = "\"%s\" is not a valid foldername, because it will turn the parent folder into an asset." % data["asset"]
+                result = self.core.popupQuestion(msg, buttons=["Continue", "Cancel"], icon=QMessageBox.Warning)
+                if result != "Continue":
+                    continue
+
             description = None
             preview = None
             metaData = None

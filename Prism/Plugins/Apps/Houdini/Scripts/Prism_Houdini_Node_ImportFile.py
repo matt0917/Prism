@@ -115,7 +115,11 @@ class Prism_Houdini_ImportFile(object):
             comment = data.get("comment", "")
             user = data.get("user", "")
         else:
-            expandedPath = hou.text.expandString(path)
+            try:
+                expandedPath = hou.text.expandString(path) or ""
+            except:
+                expandedPath = path or ""
+
             if os.path.exists(expandedPath):
                 date = self.core.getFileModificationDate(expandedPath, validate=True)
             else:

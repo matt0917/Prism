@@ -1796,8 +1796,15 @@ class EditTagsDlg(QDialog):
         self.l_tags = QLabel("Tags:")
         self.e_tags = QLineEdit()
 
+        self.b_editTags = QToolButton()
+        self.b_editTags.setArrowType(Qt.DownArrow)
+        self.b_editTags.setToolTip("Recommended Tags")
+        self.b_editTags.setMaximumSize(QSize(30, 16777215))
+        self.b_editTags.clicked.connect(self.showRecommendedTags)
+
         self.lo_tags.addWidget(self.l_tags)
         self.lo_tags.addWidget(self.e_tags)
+        self.lo_tags.addWidget(self.b_editTags)
 
         self.lo_main = QVBoxLayout()
         self.setLayout(self.lo_main)
@@ -1824,6 +1831,29 @@ class EditTagsDlg(QDialog):
     @err_catcher(name=__name__)
     def refreshTags(self):
         tags = self.core.products.getTagsFromProduct(self.productData)
+        self.e_tags.setText(", ".join(tags))
+
+    @err_catcher(name=__name__)
+    def showRecommendedTags(self):
+        tmenu = QMenu(self)
+
+        tags = self.core.products.getRecommendedTags(self.productData)
+        for tag in tags:
+            tAct = QAction(tag, self)
+            tAct.triggered.connect(lambda x=None, t=tag: self.toggleTag(t))
+            tmenu.addAction(tAct)
+
+        tmenu.exec_(QCursor.pos())
+
+    @err_catcher(name=__name__)
+    def toggleTag(self, tag):
+        tags = [t.strip() for t in self.e_tags.text().split(",")]
+        if tag in tags:
+            tags = [t for t in tags if t != tag]
+        else:
+            tags.append(tag)
+
+        tags = [t for t in tags if t]
         self.e_tags.setText(", ".join(tags))
 
     @err_catcher(name=__name__)

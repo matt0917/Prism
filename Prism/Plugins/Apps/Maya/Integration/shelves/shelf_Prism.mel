@@ -146,6 +146,8 @@ global proc shelf_Prism () {
         -flat 1
         -mi "Instant Export" ( "pcore.getPlugin(\"Maya\").onShelfClickedExport(doubleclick=True)" )
         -mip 0
+        -mi "Export Multiple Assets..." ( "pcore.getPlugin(\"Maya\").openBatchExport()" )
+        -mip 1
     ;
     shelfButton
         -enableCommandRepeat 1

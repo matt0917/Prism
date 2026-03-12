@@ -214,9 +214,17 @@ class Prism_Maya_externalAccess_Functions(object):
 
     @err_catcher(name=__name__)
     def preProjectSettingsLoad(self, origin, settings):
-        if settings and "maya" in settings:
-            if "setPrefix" in settings["maya"]:
-                origin.e_mayaSetPrefix.setText(settings["maya"]["setPrefix"])
+        if settings:
+            if "maya" in settings:
+                if "setPrefix" in settings["maya"]:
+                    origin.e_mayaSetPrefix.setText(settings["maya"]["setPrefix"])
+
+                if "useRelativePaths" in settings["maya"]:
+                    origin.chb_mayaRelative.setChecked(settings["maya"]["useRelativePaths"])
+            
+            if "sceneBuilding" in settings:
+                if "maya_apply_abc_caches" in settings["sceneBuilding"]:
+                    origin.w_mayaAbcCaches.setDftTasks(settings["sceneBuilding"]["maya_apply_abc_caches"])
 
     @err_catcher(name=__name__)
     def preProjectSettingsSave(self, origin, settings):
@@ -225,6 +233,15 @@ class Prism_Maya_externalAccess_Functions(object):
 
         prefix = origin.e_mayaSetPrefix.text()
         settings["maya"]["setPrefix"] = prefix
+
+        rel = origin.chb_mayaRelative.isChecked()
+        settings["maya"]["useRelativePaths"] = rel
+
+        if "sceneBuilding" not in settings:
+            settings["sceneBuilding"] = {}
+
+        val = origin.w_mayaAbcCaches.dftTasks()
+        settings["sceneBuilding"]["maya_apply_abc_caches"] = val
 
     @err_catcher(name=__name__)
     def projectSettings_loadUI(self, origin):
@@ -237,13 +254,40 @@ class Prism_Maya_externalAccess_Functions(object):
         projectSettings.w_maya.setLayout(lo_maya)
 
         ttip = "Prefix for all selection sets created by Prism in Maya."
-        l_relative = QLabel("Selection Set Prefix:")
-        l_relative.setToolTip(ttip)
+        l_prefix = QLabel("Selection Set Prefix:")
+        l_prefix.setToolTip(ttip)
         projectSettings.e_mayaSetPrefix = QLineEdit()
         projectSettings.e_mayaSetPrefix.setToolTip(ttip)
 
-        lo_maya.addWidget(l_relative, 0, 0)
+        lo_maya.addWidget(l_prefix, 0, 0)
         sp_stretch = QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Preferred)
         lo_maya.addItem(sp_stretch, 0, 1)
         lo_maya.addWidget(projectSettings.e_mayaSetPrefix, 0, 2)
+
+        ttip = "When enabled Prism will use filepaths, relative to the Maya project when referencing files in Maya. When disabled, Prism will use absolute filepaths instead."
+        l_relative = QLabel("Use relative paths:")
+        l_relative.setToolTip(ttip)
+        projectSettings.chb_mayaRelative = QCheckBox()
+        projectSettings.chb_mayaRelative.setToolTip(ttip)
+
+        lo_maya.addWidget(l_relative, 1, 0)
+        sp_stretch = QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Preferred)
+        lo_maya.addItem(sp_stretch, 1, 1)
+        lo_maya.addWidget(projectSettings.chb_mayaRelative, 1, 2)
+
         projectSettings.w_prjSettings.layout().addWidget(projectSettings.w_maya)
+
+        if not hasattr(projectSettings, "w_sceneBuildingMaya"):
+            projectSettings.w_sceneBuildingMaya = QGroupBox("Maya")
+            projectSettings.lo_sceneBuildingMaya = QVBoxLayout(projectSettings.w_sceneBuildingMaya)
+            idx = projectSettings.lo_sceneBuilding.count()
+            projectSettings.lo_sceneBuilding.insertWidget(idx - 1, projectSettings.w_sceneBuildingMaya)
+
+        from PrismUtils import ProjectWidgets
+        dftTasks = {
+            "entities": [],
+            "departments": [],
+            "tasks": [],
+        }
+        projectSettings.w_mayaAbcCaches = ProjectWidgets.DefaultSettingItem(projectSettings, "Apply Alembic Caches:", dftTasks)
+        projectSettings.lo_sceneBuildingMaya.addWidget(projectSettings.w_mayaAbcCaches)

@@ -37,6 +37,7 @@ import sys
 import logging
 import shutil
 import time
+import re
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -169,62 +170,93 @@ class ProjectEntities(object):
         if "sequence" not in entity:
             return
 
-        if "shot" in entity:
-            shotname = (entity["sequence"] or "") + "-" + (entity["shot"] or "")
+        shotnameTemplate = os.getenv("PRISM_SHOT_NAME_TEMPLATE")
+        if shotnameTemplate:
+            shotname = self.core.projects.resolveStructurePath(shotnameTemplate, context=entity)[0]
         else:
-            shotname = entity["sequence"] or ""
+            if "shot" in entity:
+                shotname = (entity["sequence"] or "") + "-" + (entity["shot"] or "")
+            else:
+                shotname = entity["sequence"] or ""
 
-        if "episode" in entity:
-            shotname = "%s-%s" % (entity["episode"], shotname)
+            if "episode" in entity:
+                shotname = "%s-%s" % (entity["episode"], shotname)
 
         return shotname
 
     @err_catcher(name=__name__)
     def setShotRange(self, entity, start, end):
-        seqRanges = self.core.getConfig(
-            "shotRanges", entity["sequence"], config="shotinfo", allowCache=False
-        )
-        if not seqRanges:
-            seqRanges = {}
+        if self.core.projects.getUseEpisodes() and self.core.compareVersions(self.core.projectVersion, "v2.1.1") != "lower":
+            epRanges = self.core.getConfig(
+                "shotRanges", entity["episode"], config="shotinfo", allowCache=False
+            )
+            if not epRanges:
+                epRanges = {}
 
-        seqRanges[entity["shot"]] = [start, end]
-        self.core.setConfig(
-            "shotRanges", entity["sequence"], seqRanges, config="shotinfo"
-        )
+            if not epRanges.get(entity["sequence"]):
+                epRanges[entity["sequence"]] = {}
+
+            epRanges[entity["sequence"]][entity["shot"]] = [start, end]
+            self.core.setConfig(
+                "shotRanges", entity["episode"], epRanges, config="shotinfo"
+            )
+        else:
+            seqRanges = self.core.getConfig(
+                "shotRanges", entity["sequence"], config="shotinfo", allowCache=False
+            )
+            if not seqRanges:
+                seqRanges = {}
+
+            seqRanges[entity["shot"]] = [start, end]
+            self.core.setConfig(
+                "shotRanges", entity["sequence"], seqRanges, config="shotinfo"
+            )
 
     @err_catcher(name=__name__)
     def getShotRange(self, entity, handles=False):
+        shotRange = None
         ranges = self.core.getConfig("shotRanges", config="shotinfo") or {}
-        if entity.get("sequence") in ranges:
-            if entity.get("shot") in ranges[entity["sequence"]]:
-                shotRange = ranges[entity["sequence"]][entity["shot"]].copy()
-                if handles:
-                    metaData = self.getMetaData(entity)
-                    if "handles_in" in metaData:
-                        try:
-                            shotRange[0] = shotRange[0] - int(metaData["handles_in"]["value"])
-                        except:
-                            pass
+        if self.core.projects.getUseEpisodes() and self.core.compareVersions(self.core.projectVersion, "v2.1.1") != "lower":
+            if entity.get("episode") in ranges:
+                if entity.get("sequence") in ranges[entity["episode"]]:
+                    if entity.get("shot") in ranges[entity["episode"]][entity["sequence"]]:
+                        shotRange = ranges[entity["episode"]][entity["sequence"]][entity["shot"]].copy()
 
-                    if "handles_out" in metaData:
-                        try:
-                            shotRange[1] = shotRange[1] + int(metaData["handles_out"]["value"])
-                        except:
-                            pass
+        else:
+            if entity.get("sequence") in ranges:
+                if entity.get("shot") in ranges[entity["sequence"]]:
+                    shotRange = ranges[entity["sequence"]][entity["shot"]].copy()
 
-                    if "handles" in metaData:
-                        try:
-                            handleNum = int(metaData["handles"]["value"])
-                        except:
-                            pass
-                        else:
-                            if "handles_in" not in metaData:
-                                shotRange[0] = shotRange[0] - handleNum
+        if not shotRange:
+            return
 
-                            if "handles_out" not in metaData:
-                                shotRange[1] = shotRange[1] + handleNum
+        if handles:
+            metaData = self.getMetaData(entity)
+            if "handles_in" in metaData:
+                try:
+                    shotRange[0] = shotRange[0] - int(metaData["handles_in"]["value"])
+                except:
+                    pass
 
-                return shotRange
+            if "handles_out" in metaData:
+                try:
+                    shotRange[1] = shotRange[1] + int(metaData["handles_out"]["value"])
+                except:
+                    pass
+
+            if "handles" in metaData:
+                try:
+                    handleNum = int(metaData["handles"]["value"])
+                except:
+                    pass
+                else:
+                    if "handles_in" not in metaData:
+                        shotRange[0] = shotRange[0] - handleNum
+
+                    if "handles_out" not in metaData:
+                        shotRange[1] = shotRange[1] + handleNum
+
+        return shotRange
 
     @err_catcher(name=__name__)
     def getEpisodes(self, searchFilter="", locations=None):
@@ -347,6 +379,7 @@ class ProjectEntities(object):
 
     @err_catcher(name=__name__)
     def filterValidShots(self, shotData, searchFilter=""):
+        searchFilters = [x.strip() for x in searchFilter.lower().split(",") if x.strip()] if searchFilter else []
         validShots = []
         for data in shotData:
             if "." in os.path.basename(data["path"]) and os.path.isfile(data["path"]):
@@ -364,13 +397,27 @@ class ProjectEntities(object):
             if self.isShotOmitted(data):
                 continue
 
-            if (
-                ("episode" not in data or searchFilter.lower() not in data["episode"].lower())
-                and searchFilter.lower() not in data["sequence"].lower()
-                and searchFilter.lower() not in data["shot"].lower()
-            ):
-                metaData = self.getMetaData(data)
-                if not metaData or searchFilter.lower() not in metaData.get("Description", {}).get("value", "").lower():
+            if searchFilters:
+                valid = False
+                for searchFilter in searchFilters:
+                    if (
+                        ("episode" in data and searchFilter in data["episode"].lower())
+                        or searchFilter in data["sequence"].lower()
+                        or searchFilter in data["shot"].lower()
+                    ):
+                        valid = True
+                        break
+
+                    metaData = self.getMetaData(data)
+                    if metaData and searchFilter in metaData.get("Description", {}).get("value", "").lower():
+                        valid = True
+                        break
+
+                    if searchFilter in self.getEntityName(data):
+                        valid = True
+                        break
+
+                if not valid:
                     continue
 
             validShots.append(data)
@@ -1057,11 +1104,117 @@ class ProjectEntities(object):
                     args=[self, entity, step, category, catPath],
                 )
 
+                ctx = entity.copy()
+                ctx["department"] = step
+                preset = self.getDefaultPresetSceneForContext(ctx)
+                if preset:
+                    presetName = preset["name"]
+                    presetPath = self.getScenePresetPathFromName(presetName)
+                    if presetPath:
+                        self.createSceneFromPreset(
+                            entity,
+                            presetPath,
+                            step=step,
+                            category=category,
+                            comment=os.path.basename(os.path.splitext(presetPath)[0])
+                        )
+
             logger.debug("task created %s" % catPath)
         else:
             logger.debug("task already exists: %s" % catPath)
 
         return catPath
+
+    @err_catcher(name=__name__)
+    def getDefaultPresetSceneForContext(self, context):
+        kwargs = {
+            "context": context,
+        }
+        result = self.core.callback("getDefaultPresetSceneForContext", **kwargs)
+        filename = ""
+        for res in result:
+            if res and "filename" in res:
+                filename = res["filename"]
+
+        if filename:
+            presetPath = self.getScenePresetPathFromName(filename)
+            return presetPath
+
+        defaults = self.getDefaultPresetScenes()
+        return self.getItemMatchingContext(defaults, context)
+
+    @err_catcher(name=__name__)
+    def getDefaultPresetScenes(self):
+        presets = self.core.getConfig("globals", "presetScenes", config="project") or []
+        presets = [p for p in presets if p.get("name")]
+        return presets
+
+    @err_catcher(name=__name__)
+    def doesContextMatchTaskFilters(self, taskFilters, context):
+        for entity in taskFilters["entities"]:
+            if entity != "*":
+                entityData = entity.split(":")
+                if entityData[0] != "*" and context.get("type") != entityData[0]:
+                    continue
+
+                entityName = re.escape(entityData[1]).replace("\\*", ".*")
+                if context["type"] == "asset":
+                    if not re.match("^%s$" % entityName, context.get("asset_path", "")):
+                        continue
+
+                elif context["type"] == "shot":
+                    if not re.match("^%s$" % entityName, self.getShotName(context)):
+                        continue
+
+            for department in taskFilters["departments"]:
+                if department != "*":
+                    departmentName = re.escape(department).replace("\\*", ".*")
+                    ctxDep = context.get("department", "")
+                    if not ctxDep or not re.match("^%s$" % departmentName, ctxDep):
+                        continue
+
+                for task in taskFilters["tasks"]:
+                    if task != "*":
+                        taskName = re.escape(task).replace("\\*", ".*")
+                        ctxTask = context.get("task", "")
+                        if not ctxTask or not re.match("^%s$" % taskName, ctxTask):
+                            continue
+
+                    if taskFilters.get("useExpression"):
+                        result = self.validateExpression(taskFilters.get("expression"))
+                        if not result or not result["valid"] or not result["result"]:
+                            continue
+
+                    return True
+
+        return False
+
+    @err_catcher(name=__name__)
+    def getItemMatchingContext(self, items, context):
+        for item in items:
+            taskFilters = item["dftTasks"]
+            if self.doesContextMatchTaskFilters(taskFilters, context):
+                return item
+
+    @err_catcher(name=__name__)
+    def validateExpression(self, expression):
+        context = {}
+        core = self.core
+        lcls = locals().copy()
+        try:
+            exec(expression, lcls, None)
+        except Exception as e:
+            print(e)
+            result = {"valid": False, "error": str(e)}
+            return result
+        else:
+            if "result" in lcls:
+                exvar = bool(lcls["result"])
+                result = {"valid": True, "result": exvar}
+                return result
+
+        result = {"valid": False, "error": "Make sure \"result\" is defined."}
+        return result
 
     @err_catcher(name=__name__)
     def createTasksFromPreset(self, entity, preset=None, presetName=None):
@@ -1786,6 +1939,7 @@ class ProjectEntities(object):
 
     @err_catcher(name=__name__)
     def filterAssets(self, assets, filterStr, projectPath=None):
+        searchFilters = [x.strip() for x in filterStr.lower().split(",") if x.strip()] if filterStr else []
         filteredPaths = []
         for absAssetPath in assets:
             base = self.core.assetPath
@@ -1798,19 +1952,27 @@ class ProjectEntities(object):
                 assetPath = assetPath.replace(localAssetPath, "")
             assetPath = assetPath[1:]
 
-            if filterStr.lower() in assetPath.lower():
-                filteredPaths.append(absAssetPath)
-            else:
+            valid = False
+            for searchFilter in searchFilters:
+                if searchFilter in assetPath.lower():
+                    valid = True
+                    break
+
                 description = self.getAssetDescription(self.getAssetNameFromPath(assetPath), projectPath=projectPath) or ""
-                if filterStr.lower() in description.lower():
-                    filteredPaths.append(absAssetPath)
-                else:
-                    entity = self.getAsset(assetPath, projectPath=projectPath)
-                    metaData = self.getMetaData(entity, projectPath=projectPath)
-                    if metaData and "tags" in metaData:
-                        tags = [x.strip() for x in metaData["tags"]["value"].split(",")]
-                        if filterStr in tags:
-                            filteredPaths.append(absAssetPath)
+                if searchFilter in description.lower():
+                    valid = True
+                    break
+
+                entity = self.getAsset(assetPath, projectPath=projectPath)
+                metaData = self.getMetaData(entity, projectPath=projectPath)
+                if metaData and "tags" in metaData:
+                    tags = [x.strip() for x in metaData["tags"]["value"].split(",")]
+                    if searchFilter in tags:
+                        valid = True
+                        break
+
+            if valid:
+                filteredPaths.append(absAssetPath)
 
         return filteredPaths
 
@@ -2129,7 +2291,7 @@ class ProjectEntities(object):
                 return preset
 
     @err_catcher(name=__name__)
-    def getPresetScenes(self):
+    def getPresetScenes(self, context=None):
         presetDir = os.path.join(self.core.projects.getPipelineFolder(), "PresetScenes")
         folders = [presetDir]
         folders += [x.strip() for x in os.getenv("PRISM_SCENEFILE_PRESET_PATHS", "").split(os.pathsep) if x]
@@ -2156,7 +2318,7 @@ class ProjectEntities(object):
                     if filename == "readme.txt":
                         continue
 
-                    if filename.startswith(".") or filename.startswith("_"):
+                    if filename.startswith(".") or filename.startswith("_") or filename.endswith("~"):
                         continue
 
                     if blacklisted:
@@ -2480,6 +2642,178 @@ class ProjectEntities(object):
         return targetpath
 
     @err_catcher(name=__name__)
+    def getDefaultSceneBuildingSettings(self):
+        settings = {
+            "apply_framerange": {
+                "entities": ["shot:*"],
+                "departments": ["*"],
+                "tasks": ["*"],
+            },
+            "apply_handlerange": {
+                "entities": [""],
+                "departments": [""],
+                "tasks": [""],
+            },
+            "apply_fps": {
+                "entities": ["*"],
+                "departments": ["*"],
+                "tasks": ["*"],
+            },
+            "apply_resolution": {
+                "entities": ["*"],
+                "departments": ["*"],
+                "tasks": ["*"],
+            },
+            "import_products": {
+                "entities": ["*"],
+                "departments": ["*"],
+                "tasks": ["*"],
+            },
+            "import_shotcam": {
+                "entities": ["shot:*"],
+                "departments": ["*"],
+                "tasks": ["*"],
+            }
+        }
+        return settings
+
+    @err_catcher(name=__name__)
+    def buildScene(self, entity, department, task):
+        kwargs = {
+            "entity": entity,
+            "department": department,
+            "task": task,
+        }
+        skipBuildSteps = []
+        result = self.core.callback("preBuildScene", **kwargs)
+        for res in result:
+            if isinstance(res, dict) and res.get("cancel", False):
+                return
+
+        if hasattr(self.core.appPlugin, "newScene"):
+            result = self.core.appPlugin.newScene()
+            if not result:
+                return
+
+        result = self.core.callback("buildScene", **kwargs)
+        for res in result:
+            if isinstance(res, dict):
+                if res.get("cancel", False):
+                    return
+
+                if res.get("skipBuildSteps"):
+                    skipBuildSteps += res["skipBuildSteps"]
+
+        version = self.core.entities.getHighestVersion(entity, department, task)
+        filepath = self.core.generateScenePath(
+            entity=entity,
+            department=department,
+            task=task,
+            extension=self.core.appPlugin.getSceneExtension(self),
+            version=version
+        )
+
+        if self.core.useLocalFiles:
+            filepath = self.core.convertPath(filepath, "local")
+
+        if not os.path.exists(os.path.dirname(filepath)):
+            try:
+                os.makedirs(os.path.dirname(filepath))
+            except:
+                self.core.popup("The directory could not be created")
+                return
+
+        filepath = filepath.replace("\\", "/")
+        self.core.startAutosaveTimer(quit=True)
+
+        details = entity.copy()
+        details["department"] = department
+        details["task"] = task
+        details["extension"] = os.path.splitext(filepath)[1]
+        details["comment"] = "Scene Building"
+        details["version"] = version
+        presetScene = self.getDefaultPresetSceneForContext(details)
+        if presetScene:
+            self.createSceneFromPreset(
+                entity,
+                presetScene,
+                step=department,
+                category=task,
+                comment="build scene",
+                location="local",
+            )
+        else:
+            filepath = self.core.saveScene(filepath=filepath, details=details)
+
+        self.core.sanities.checksToRun["onSceneOpen"]["enabled"] = False
+        self.core.sceneOpen()
+        self.core.sanities.checksToRun["onSceneOpen"]["enabled"] = True
+        # self.core.sanities.runChecks("onSceneOpen", settings={"accept": True})
+        sbSettings = self.getDefaultSceneBuildingSettings()
+        sbData = self.core.getConfig("sceneBuilding", config="project") or {}
+        sbSettings.update(sbData)
+        if "apply_framerange" in sbSettings and "apply_framerange" not in skipBuildSteps:
+            if self.doesContextMatchTaskFilters(sbSettings["apply_framerange"], details):
+                settings = {
+                    "accept": True,
+                    "value": "Set shotrange in scene"
+                }
+                self.core.sanities.checkFramerange(settings)
+
+        if "apply_handlerange" in sbSettings and "apply_handlerange" not in skipBuildSteps:
+            if self.doesContextMatchTaskFilters(sbSettings["apply_handlerange"], details):
+                settings = {
+                    "accept": True,
+                    "value": "Set shotrange in scene (with handles)"
+                }
+                self.core.sanities.checkFramerange(settings)
+
+        if "apply_fps" in sbSettings and "apply_fps" not in skipBuildSteps:
+            if self.doesContextMatchTaskFilters(sbSettings["apply_fps"], details):
+                settings = {
+                    "accept": True
+                }
+                self.core.sanities.checkFPS(settings)
+
+        if "apply_resolution" in sbSettings and "apply_resolution" not in skipBuildSteps:
+            if self.doesContextMatchTaskFilters(sbSettings["apply_resolution"], details):
+                settings = {
+                    "accept": True
+                }
+                self.core.sanities.checkResolution(settings)
+
+        if "import_products" in sbSettings and "import_products" not in skipBuildSteps:
+            if self.doesContextMatchTaskFilters(sbSettings["import_products"], details):
+                entityData = entity.copy()
+                entityData["department"] = department
+                entityData["task"] = task
+                self.core.products.importProductsForTask(entity, department, task, quietCheck=True)
+                if entity.get("type") in ["shot"]:
+                    self.core.products.importConnectedAssets(entityData, quietCheck=True)
+
+        if "import_shotcam" in sbSettings and "import_shotcam" not in skipBuildSteps:
+            if self.doesContextMatchTaskFilters(sbSettings["import_shotcam"], details):
+                entityData = entity.copy()
+                sm = self.core.getStateManager()
+                if not sm:
+                    return
+
+                sm.importShotCam(shot=entityData, quiet=True)
+
+        if self.core.shouldAutosaveTimerRun():
+            self.core.startAutosaveTimer()
+
+        kwargs = {
+            "entity": entity,
+            "department": department,
+            "task": task,
+            "filepath": filepath,
+        }
+        self.core.callback("postBuildScene", **kwargs)
+        logger.debug("build scene: %s" % filepath)
+        return filepath
+
+    @err_catcher(name=__name__)
     def createVersionFromCurrentScene(self, entity, department, task):
         version = self.core.entities.getHighestVersion(entity, department, task)
         filepath = self.core.generateScenePath(
@@ -2523,7 +2857,7 @@ class ProjectEntities(object):
         if not filename:
             return
 
-        target = os.path.join(targetFolder, os.path.basename(filename))
+        target = os.path.join(targetFolder, "scenefile", os.path.basename(filename))
         if os.path.exists(target):
             mtime = os.path.getmtime(target)
             if time.time() - mtime < (60 * bufferMinutes):

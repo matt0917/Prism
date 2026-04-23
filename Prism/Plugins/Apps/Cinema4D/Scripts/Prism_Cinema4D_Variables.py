@@ -33,11 +33,21 @@
 
 
 import os
+from typing import Any
 
 
 class Prism_Cinema4D_Variables(object):
-    def __init__(self, core, plugin):
-        self.version = "v2.1.1"
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize Cinema4D plugin variables.
+        
+        Sets up plugin metadata, supported formats, output types, and platform
+        compatibility for Maxon Cinema4D integration.
+        
+        Args:
+            core: Prism core instance
+            plugin: Plugin instance
+        """
+        self.version = "v2.1.2"
         self.pluginName = "Cinema4D"
         self.pluginType = "App"
         self.appShortName = "Cinema4D"

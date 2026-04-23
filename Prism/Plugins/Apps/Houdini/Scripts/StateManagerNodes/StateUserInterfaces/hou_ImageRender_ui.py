@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'hou_ImageRender.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.9.0
+## Created by: Qt User Interface Compiler version 6.8.3
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -617,7 +617,7 @@ class Ui_wg_ImageRender(object):
 
         self.sp_rjTimeout = QSpinBox(self.f_rjTimeout)
         self.sp_rjTimeout.setObjectName(u"sp_rjTimeout")
-        self.sp_rjTimeout.setMinimum(1)
+        self.sp_rjTimeout.setMinimum(0)
         self.sp_rjTimeout.setMaximum(9999)
         self.sp_rjTimeout.setValue(180)
 

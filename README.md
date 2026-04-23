@@ -21,8 +21,6 @@ For a getting started guide about how to use Prism see the [Documentation](https
 
 ## Installing
 
-**At this time Prism 2 is supported on Windows only.**
-
 Download the installer from the [website](https://prism-pipeline.com/downloads/)
 (This version allows you to automatically update Prism and install new plugins)
 
@@ -32,7 +30,7 @@ or to install Prism manually:
 * Extract the dependencies and copy the extracted folders into the "Prism" folder of this repository.
 
 * Now the "Prism" folder should contain the folders like:
-"Plugins", "Python39", "PythonLibs", "Scripts", ...
+"Plugins", "Python313", "PythonLibs", "Scripts", ...
 
 * Execute the setup.bat file to launch Prism.
 

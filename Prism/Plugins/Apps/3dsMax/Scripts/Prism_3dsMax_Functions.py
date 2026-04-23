@@ -37,6 +37,7 @@ import sys
 import traceback
 import time
 import logging
+from typing import Any, List, Optional, Dict, Tuple
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -56,9 +57,27 @@ logger = logging.getLogger(__name__)
 
 
 class Prism_3dsMax_Functions(object):
+    """Core functions for 3ds Max plugin.
+    
+    Provides main DCC functionality including scene management, import/export,
+    rendering, playblasts, and State Manager integration.
+    
+    Attributes:
+        core: PrismCore instance
+        plugin: Plugin instance
+        appVersion: 3ds Max version tuple
+        importHandlers (Dict): File format import handlers
+        exportHandlers (Dict): File format export handlers
+    """
     # TODO smaller stuff
     # region Init
-    def __init__(self, core, plugin):
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize 3ds Max functions.
+        
+        Args:
+            core: PrismCore instance.
+            plugin: Plugin instance.
+        """
         self.core = core
         self.plugin = plugin
         # 3dsMax major version is offset by 2
@@ -83,13 +102,23 @@ class Prism_3dsMax_Functions(object):
         }
 
     @err_catcher(name=__name__)
-    def onProductBrowserOpen(self, origin):
+    def onProductBrowserOpen(self, origin: Any) -> None:
+        """Callback when Product Browser is opened.
+        
+        Args:
+            origin: Product Browser instance.
+        """
         origin.l_versionRight.setText(
             "(Press CTRL and double click a version to show the import options)"
         )
 
     @err_catcher(name=__name__)
-    def startup(self, origin):
+    def startup(self, origin: Any) -> None:
+        """Initialize plugin on DCC startup.
+        
+        Args:
+            origin: PrismCore instance.
+        """
         origin.timer.stop()
         parent = QWidget.find(rt.windows.getMAXHWND())
         origin.messageParent = parent
@@ -104,12 +133,24 @@ class Prism_3dsMax_Functions(object):
         origin.startAutosaveTimer()
 
     @err_catcher(name=__name__)
-    def sceneOpen(self, origin):
+    def sceneOpen(self, origin: Any) -> None:
+        """Callback when scene file is opened.
+        
+        Restarts autosave timer if conditions are met.
+        
+        Args:
+            origin: PrismCore instance.
+        """
         if self.core.shouldAutosaveTimerRun():
             origin.startAutosaveTimer()
 
     @err_catcher(name=__name__)
-    def onStateManagerOpen(self, origin):
+    def onStateManagerOpen(self, origin: Any) -> None:
+        """Callback when State Manager is opened.
+        
+        Args:
+            origin: State Manager instance.
+        """
         origin.disabledCol = QColor(40, 40, 40)
         origin.activePalette = QPalette()
         origin.activePalette.setColor(QPalette.Window, QColor(150, 150, 150))
@@ -141,26 +182,68 @@ class Prism_3dsMax_Functions(object):
 
     #region Scene
     @err_catcher(name=__name__)
-    def getCurrentFileName(self, origin, path=True):
+    def getCurrentFileName(self, origin: Any, path: bool = True) -> str:
+        """Get current scene file name or path.
+        
+        Args:
+            origin: Originating object.
+            path: Whether to return full path. Defaults to True.
+        
+        Returns:
+            Scene file path or name.
+        """
         if path:
             return rt.execute( "maxFilePath + maxFileName")
         else:
             return rt.execute( "maxFileName")
 
     @err_catcher(name=__name__)
-    def getCurrentSceneFiles(self, origin):
+    def getCurrentSceneFiles(self, origin: Any) -> List[str]:
+        """Get list of current scene files.
+        
+        Args:
+            origin: Originating object.
+        
+        Returns:
+            List containing current scene file path.
+        """
         return [self.core.getCurrentFileName()]
 
     @err_catcher(name=__name__)
-    def getSceneExtension(self, origin):
+    def getSceneExtension(self, origin: Any) -> str:
+        """Get scene file extension.
+        
+        Args:
+            origin: Originating object.
+        
+        Returns:
+            File extension string.
+        """
         return self.sceneFormats[0]
 
     @err_catcher(name=__name__)
-    def saveScene(self, origin, filepath, details={}):
+    def saveScene(self, origin: Any, filepath: str, details: Optional[Dict] = None) -> None:
+        """Save current scene to file.
+        
+        Args:
+            origin: Originating object.
+            filepath: Target file path.
+            details: Optional save details. Defaults to None.
+        """
         return rt.execute( 'saveMaxFile "%s"' % filepath)
 
     @err_catcher(name=__name__)
-    def openScene(self, origin, filepath, force=False):
+    def openScene(self, origin: Any, filepath: str, force: bool = False) -> bool:
+        """Open scene file.
+        
+        Args:
+            origin: Originating object.
+            filepath: Path to scene file.
+            force: Whether to force open without prompts. Defaults to False.
+        
+        Returns:
+            True if opened successfully, False otherwise.
+        """
         if not filepath.endswith(".max"):
             return False
 
@@ -172,14 +255,29 @@ class Prism_3dsMax_Functions(object):
 
     #region Frames
     @err_catcher(name=__name__)
-    def getFrameRange(self, origin):
+    def getFrameRange(self, origin: Any) -> List[int]:
+        """Get scene frame range.
+        
+        Args:
+            origin: Originating object.
+        
+        Returns:
+            List of [start_frame, end_frame].
+        """
         startframe = rt.execute( "animationrange.start.frame")
         endframe = rt.execute( "animationrange.end.frame")
 
         return [startframe, endframe]
 
     @err_catcher(name=__name__)
-    def setFrameRange(self, origin, startFrame, endFrame):
+    def setFrameRange(self, origin: Any, startFrame: int, endFrame: int) -> None:
+        """Set scene frame range.
+        
+        Args:
+            origin: Originating object.
+            startFrame: Start frame number.
+            endFrame: End frame number.
+        """
         if startFrame == endFrame:
             QMessageBox.warning(
                 self.core.messageParent,
@@ -191,21 +289,46 @@ class Prism_3dsMax_Functions(object):
         rt.animationRange = rt.Interval(startFrame, endFrame)
 
     @err_catcher(name=__name__)
-    def getCurrentFrame(self):
+    def getCurrentFrame(self) -> int:
+        """Get current frame number.
+        
+        Returns:
+            Current frame number.
+        """
         sliderTime = rt.sliderTime
         currentFrame = sliderTime.frame
         return currentFrame
 
     @err_catcher(name=__name__)
-    def setCurrentFrame(self, origin, frame):
+    def setCurrentFrame(self, origin: Any, frame: int) -> None:
+        """Set current frame.
+        
+        Args:
+            origin: Originating object.
+            frame: Frame number to set.
+        """
         rt.sliderTime = frame
 
     @err_catcher(name=__name__)
-    def getFPS(self, origin):
+    def getFPS(self, origin: Any) -> float:
+        """Get scene frames per second.
+        
+        Args:
+            origin: Originating object.
+        
+        Returns:
+            FPS value.
+        """
         return rt.frameRate
 
     @err_catcher(name=__name__)
-    def setFPS(self, origin, fps):
+    def setFPS(self, origin: Any, fps: float) -> None:
+        """Set scene frames per second.
+        
+        Args:
+            origin: Originating object.
+            fps: FPS value to set.
+        """
         # Max changes the framerange when changing the fps
         # so we store the framerange and then restore later
         framerange = self.getFrameRange(origin)
@@ -217,7 +340,16 @@ class Prism_3dsMax_Functions(object):
 
     #region Nodes
     @err_catcher(name=__name__)
-    def getCamNodes(self, origin, cur=False):
+    def getCamNodes(self, origin: Any, cur: bool = False) -> List:
+        """Get camera nodes in scene.
+        
+        Args:
+            origin: Originating object.
+            cur: Whether to include "Current View" option. Defaults to False.
+        
+        Returns:
+            List of camera node handles.
+        """
         sceneCamHandles = rt.execute("for i in cameras where (superclassof i) == camera collect i.handle")
         sceneCamHandles = list(sceneCamHandles)
 
@@ -227,7 +359,16 @@ class Prism_3dsMax_Functions(object):
         return sceneCamHandles
 
     @err_catcher(name=__name__)
-    def getCamName(self, origin, nodeHandle):
+    def getCamName(self, origin: Any, nodeHandle: Any) -> str:
+        """Get camera node name.
+        
+        Args:
+            origin: Originating object.
+            nodeHandle: Camera node handle.
+        
+        Returns:
+            Camera name or "invalid" if node not valid.
+        """
         if nodeHandle == "Current View":
             return nodeHandle
 
@@ -245,12 +386,30 @@ class Prism_3dsMax_Functions(object):
             return self.getNodeName(origin, nodeHandle)
 
     @err_catcher(name=__name__)
-    def isNodeValid(self, origin, nodeHandle):
+    def isNodeValid(self, origin: Any, nodeHandle: Any) -> bool:
+        """Check if node handle is valid.
+        
+        Args:
+            origin: Originating object.
+            nodeHandle: Node handle to check.
+        
+        Returns:
+            True if node is valid, False otherwise.
+        """
         node = rt.maxOps.getNodeByHandle(nodeHandle)
         return rt.isValidNode(node)
 
     @err_catcher(name=__name__)
-    def getNodeName(self, origin, nodeHandle):
+    def getNodeName(self, origin: Any, nodeHandle: Any) -> str:
+        """Get node name from handle.
+        
+        Args:
+            origin: Originating object.
+            nodeHandle: Node handle.
+        
+        Returns:
+            Node name.
+        """
         if self.isNodeValid(origin, nodeHandle):
             node = rt.maxOps.getNodeByHandle(nodeHandle)
             return node.name
@@ -258,7 +417,12 @@ class Prism_3dsMax_Functions(object):
             return origin.nodeNames[origin.nodes.index(nodeHandle)]
 
     @err_catcher(name=__name__)
-    def selectNodes(self, origin):
+    def selectNodes(self, origin: Any) -> None:
+        """Select nodes from export state's object list.
+        
+        Args:
+            origin: Export state instance.
+        """
         if origin.lw_objects.selectedItems() != []:
             rt.clearSelection()
 
@@ -271,7 +435,12 @@ class Prism_3dsMax_Functions(object):
             rt.select(nodes)
 
     @err_catcher(name=__name__)
-    def selectCam(self, origin):
+    def selectCam(self, origin: Any) -> None:
+        """Select camera node.
+        
+        Args:
+            origin: State with curCam attribute.
+        """
         if self.isNodeValid(origin, origin.curCam):
             curCamNode = rt.maxOps.getNodeByHandle(origin.curCam)
             rt.select(curCamNode)
@@ -279,11 +448,22 @@ class Prism_3dsMax_Functions(object):
 
     #region Export
     @err_catcher(name=__name__)
-    def sm_export_startup(self, origin):
+    def sm_export_startup(self, origin: Any) -> None:
+        """Initialize export state UI.
+        
+        Args:
+            origin: Export state instance.
+        """
         origin.lw_objects.setStyleSheet("QListWidget { background: rgb(100,100,100);}")
 
     @err_catcher(name=__name__)
-    def sm_export_addObjects(self, origin, objects=None):
+    def sm_export_addObjects(self, origin: Any, objects: Optional[List] = None) -> None:
+        """Add objects to export state.
+        
+        Args:
+            origin: Export state instance.
+            objects: List of objects to add. Defaults to None (uses selection).
+        """
         if not objects:
             sel = rt.selection
             objects = [i for i in sel]
@@ -294,7 +474,15 @@ class Prism_3dsMax_Functions(object):
                 origin.nodes.append(objectHandle)
 
     @err_catcher(name=__name__)
-    def sm_export_exportShotcam(self, origin, startFrame, endFrame, outputName):
+    def sm_export_exportShotcam(self, origin: Any, startFrame: int, endFrame: int, outputName: str) -> None:
+        """Export shot camera to Alembic and FBX.
+        
+        Args:
+            origin: Export state instance.
+            startFrame: Start frame number.
+            endFrame: End frame number.
+            outputName: Output file path (without extension).
+        """
         # We always additionally export an .fbx because imported .abc cameras
         # are basically blackboxes in 3dsmax.
         if startFrame == endFrame:
@@ -338,7 +526,19 @@ class Prism_3dsMax_Functions(object):
         rt.clearSelection()
 
     @err_catcher(name=__name__)
-    def exportObj(self, outputName, origin, startFrame, endFrame, nodes):
+    def exportObj(self, outputName: str, origin: Any, startFrame: int, endFrame: int, nodes: Any) -> str:
+        """Export objects to OBJ format.
+        
+        Args:
+            outputName: Output file path with #### frame placeholder.
+            origin: Export state instance.
+            startFrame: Start frame number.
+            endFrame: End frame number.
+            nodes: Nodes to export.
+        
+        Returns:
+            Final output file path.
+        """
         for frame in range(startFrame, endFrame + 1):
             self.setCurrentFrame(origin, frame)
 
@@ -354,7 +554,19 @@ class Prism_3dsMax_Functions(object):
         return outputName
 
     @err_catcher(name=__name__)
-    def exportFbx(self, outputName, origin, startFrame, endFrame, nodes):
+    def exportFbx(self, outputName: str, origin: Any, startFrame: int, endFrame: int, nodes: Any) -> str:
+        """Export objects to FBX format.
+        
+        Args:
+            outputName: Output file path.
+            origin: Export state instance.
+            startFrame: Start frame number.
+            endFrame: End frame number.
+            nodes: Nodes to export.
+        
+        Returns:
+            Output file path.
+        """
         if startFrame == endFrame:
             rt.execute('FbxExporterSetParam "Animation" False')
             self.setCurrentFrame(origin, startFrame)
@@ -371,7 +583,19 @@ class Prism_3dsMax_Functions(object):
         return outputName
 
     @err_catcher(name=__name__)
-    def exportAbc(self, outputName, origin, startFrame, endFrame, nodes):
+    def exportAbc(self, outputName: str, origin: Any, startFrame: int, endFrame: int, nodes: Any) -> str:
+        """Export objects to Alembic format.
+        
+        Args:
+            outputName: Output file path.
+            origin: Export state instance.
+            startFrame: Start frame number.
+            endFrame: End frame number.
+            nodes: Nodes to export.
+        
+        Returns:
+            Output file path.
+        """
         rt.execute("AlembicExport.CoordinateSystem = #Maya")
         selectedOnly = not origin.chb_wholeScene.isChecked()
         additionalOptions = origin.chb_additionalOptions.isChecked()
@@ -400,7 +624,19 @@ class Prism_3dsMax_Functions(object):
         return outputName
 
     @err_catcher(name=__name__)
-    def exportMax(self, outputName, origin, startFrame, endFrame, nodes):
+    def exportMax(self, outputName: str, origin: Any, startFrame: int, endFrame: int, nodes: Any) -> str:
+        """Export objects to 3ds Max format.
+        
+        Args:
+            outputName: Output file path.
+            origin: Export state instance.
+            startFrame: Start frame number.
+            endFrame: End frame number.
+            nodes: Nodes to export.
+        
+        Returns:
+            Output file path.
+        """
         selectedOnly = not origin.chb_wholeScene.isChecked()
         if selectedOnly:
             rt.saveNodes(nodes, outputName, quiet=True)
@@ -410,7 +646,19 @@ class Prism_3dsMax_Functions(object):
         return outputName
 
     @err_catcher(name=__name__)
-    def exportUsd(self, outputName, origin, startFrame, endFrame, nodes):
+    def exportUsd(self, outputName: str, origin: Any, startFrame: int, endFrame: int, nodes: Any) -> str:
+        """Export objects to USD format.
+        
+        Args:
+            outputName: Output file path.
+            origin: Export state instance.
+            startFrame: Start frame number.
+            endFrame: End frame number.
+            nodes: Nodes to export.
+        
+        Returns:
+            Output file path.
+        """
         selectedOnly = not origin.chb_wholeScene.isChecked()
         additionalOptions = origin.chb_additionalOptions.isChecked()
         export_options = rt.USDExporter.createOptions()
@@ -441,11 +689,22 @@ class Prism_3dsMax_Functions(object):
     @err_catcher(name=__name__)
     def sm_export_exportAppObjects(
         self,
-        origin,
-        startFrame,
-        endFrame,
-        outputName,
-    ):
+        origin: Any,
+        startFrame: int,
+        endFrame: int,
+        outputName: str,
+    ) -> str:
+        """Export objects using app-specific export handlers.
+        
+        Args:
+            origin: Export state instance.
+            startFrame: Start frame number.
+            endFrame: End frame number.
+            outputName: Output file path.
+        
+        Returns:
+            Output file path or error message.
+        """
         if startFrame == endFrame:
             self.setFrameRange(origin, startFrame=startFrame, endFrame=endFrame + 1)
         else:
@@ -477,7 +736,17 @@ class Prism_3dsMax_Functions(object):
         return outputName
 
     @err_catcher(name=__name__)
-    def sm_export_preExecute(self, origin, startFrame, endFrame):
+    def sm_export_preExecute(self, origin: Any, startFrame: int, endFrame: int) -> List:
+        """Pre-execution checks for export state.
+        
+        Args:
+            origin: Export state instance.
+            startFrame: Start frame number.
+            endFrame: End frame number.
+        
+        Returns:
+            List of warning messages.
+        """
         warnings = []
 
         if origin.cb_outType.currentText() != "ShotCam":
@@ -510,41 +779,92 @@ class Prism_3dsMax_Functions(object):
         return warnings
 
     @err_catcher(name=__name__)
-    def sm_export_clearSet(self, origin):
+    def sm_export_clearSet(self, origin: Any) -> None:
+        """Clear export object set (not implemented for 3ds Max).
+        
+        Args:
+            origin: Export state instance.
+        """
         pass
 
     @err_catcher(name=__name__)
-    def sm_export_updateObjects(self, origin):
+    def sm_export_updateObjects(self, origin: Any) -> None:
+        """Update export objects list (not implemented for 3ds Max).
+        
+        Args:
+            origin: Export state instance.
+        """
         pass
 
     @err_catcher(name=__name__)
-    def sm_export_removeSetItem(self, origin, node):
+    def sm_export_removeSetItem(self, origin: Any, node: Any) -> None:
+        """Remove item from export set (not implemented for 3ds Max).
+        
+        Args:
+            origin: Export state instance.
+            node: Node to remove.
+        """
         pass
 
     @err_catcher(name=__name__)
-    def sm_export_preDelete(self, origin):
+    def sm_export_preDelete(self, origin: Any) -> None:
+        """Pre-deletion cleanup for export state (not implemented for 3ds Max).
+        
+        Args:
+            origin: Export state instance.
+        """
         pass
 
     @err_catcher(name=__name__)
-    def sm_export_colorObjList(self, origin):
+    def sm_export_colorObjList(self, origin: Any) -> None:
+        """Color object list frame to indicate selection.
+        
+        Args:
+            origin: Export state instance.
+        """
         origin.f_objectList.setStyleSheet("QFrame { border: 3px solid rgb(200,0,0); }")
 
     @err_catcher(name=__name__)
-    def sm_export_unColorObjList(self, origin):
+    def sm_export_unColorObjList(self, origin: Any) -> None:
+        """Reset object list frame color.
+        
+        Args:
+            origin: Export state instance.
+        """
         origin.f_objectList.setStyleSheet("QFrame { border: 3px solid rgb(68,68,68); }")
 
     @err_catcher(name=__name__)
-    def sm_export_typeChanged(self, origin, idx):
+    def sm_export_typeChanged(self, origin: Any, idx: Any) -> None:
+        """Handle export type change.
+        
+        Args:
+            origin: Export state instance.
+            idx: Selected export type index.
+        """
         origin.w_additionalOptions.setVisible(not idx in ["ShotCam", ".max"])
     #endregion
 
     #region Import
     @err_catcher(name=__name__)
-    def sm_import_startup(self, origin):
+    def sm_import_startup(self, origin: Any) -> None:
+        """Initialize import state UI.
+        
+        Args:
+            origin: Import state instance.
+        """
         origin.f_abcPath.setVisible(True)
 
     @err_catcher(name=__name__)
-    def importAbc(self, importPath, origin=None):
+    def importAbc(self, importPath: str, origin: Optional[Any] = None) -> Any:
+        """Import Alembic file.
+        
+        Args:
+            importPath: Path to Alembic file.
+            origin: Import state instance. Defaults to None.
+            
+        Returns:
+            'updated' if existing nodes updated, otherwise import result.
+        """
         if origin.chb_abcPath.isChecked():
             for i in origin.nodes:
                 if not self.isNodeValid(origin, i):
@@ -569,7 +889,13 @@ class Prism_3dsMax_Functions(object):
         return result
 
     @err_catcher(name=__name__)
-    def importFbx(self, importPath, origin=None):
+    def importFbx(self, importPath: str, origin: Optional[Any] = None) -> None:
+        """Import FBX file.
+        
+        Args:
+            importPath: Path to FBX file.
+            origin: Import state instance. Defaults to None.
+        """
         rt.execute('FBXImporterSetParam "Mode" #create')
         rt.execute('FBXImporterSetParam "ConvertUnit" #cm')
 
@@ -602,7 +928,16 @@ class Prism_3dsMax_Functions(object):
         return result
 
     @err_catcher(name=__name__)
-    def importUsd(self, importPath, origin=None):
+    def importUsd(self, importPath: str, origin: Optional[Any] = None) -> Any:
+        """Import USD file.
+        
+        Args:
+            importPath: Path to USD file.
+            origin: Import state instance. Defaults to None.
+            
+        Returns:
+            'updated' if existing nodes updated, otherwise import result.
+        """
         if origin.chb_abcPath.isChecked():
             for i in origin.nodes:
                 if not self.isNodeValid(origin, i):
@@ -626,7 +961,18 @@ class Prism_3dsMax_Functions(object):
         return result
 
     @err_catcher(name=__name__)
-    def sm_import_importToApp(self, origin, doImport, update, impFileName):
+    def sm_import_importToApp(self, origin: Any, doImport: bool, update: bool, impFileName: str) -> Dict:
+        """Import file into 3ds Max.
+        
+        Args:
+            origin: Import state instance.
+            doImport: Whether to proceed with import.
+            update: Whether this is an update operation.
+            impFileName: Path to file to import.
+        
+        Returns:
+            Dictionary with result and doImport status.
+        """
         impFileName = os.path.normpath(impFileName)
         fileName = os.path.splitext(os.path.basename(impFileName))
         ext = fileName[1]
@@ -754,11 +1100,21 @@ record != undefined\n\
         return {"result": result, "doImport": doImport}
 
     @err_catcher(name=__name__)
-    def sm_import_updateObjects(self, origin):
+    def sm_import_updateObjects(self, origin: Any) -> None:
+        """Update imported objects list (not implemented for 3ds Max).
+        
+        Args:
+            origin: Import state instance.
+        """
         pass
 
     @err_catcher(name=__name__)
-    def sm_import_removeNameSpaces(self, origin):
+    def sm_import_removeNameSpaces(self, origin: Any) -> None:
+        """Remove namespaces from imported node names.
+        
+        Args:
+            origin: Import state instance.
+        """
         for nodeHandle in origin.nodes:
             if not self.isNodeValid(origin, nodeHandle):
                 continue
@@ -773,7 +1129,14 @@ record != undefined\n\
         origin.updateUi()
 
     @err_catcher(name=__name__)
-    def sm_import_updateListItem(self, origin, item, nodeHandle):
+    def sm_import_updateListItem(self, origin: Any, item: Any, nodeHandle: Any) -> None:
+        """Update import list item appearance based on node validity.
+        
+        Args:
+            origin: Import state instance.
+            item: QListWidgetItem to update.
+            nodeHandle: Node handle to check.
+        """
         if self.isNodeValid(origin, nodeHandle):
             item.setBackground(QColor(0, 150, 0))
         else:
@@ -784,7 +1147,15 @@ record != undefined\n\
     # states are stored in File > File properties > Custom > 
     # PrismStates and PrismImports (for import paths)
     @err_catcher(name=__name__)
-    def getImportPaths(self, origin):
+    def getImportPaths(self, origin: Any) -> Any:
+        """Get list of import paths from scene.
+        
+        Args:
+            origin: State Manager instance.
+        
+        Returns:
+            False if no imports found, otherwise property value.
+        """
         num = rt.fileProperties.findProperty(rt.Name('custom'), "PrismImports")
         if num == 0:
             return False
@@ -792,21 +1163,46 @@ record != undefined\n\
             return rt.fileProperties.getPropertyValue(rt.Name('custom'), num)
 
     @err_catcher(name=__name__)
-    def sm_saveStates(self, origin, buf):
+    def sm_saveStates(self, origin: Any, buf: Any) -> None:
+        """Save State Manager states to scene (not implemented for 3ds Max).
+        
+        Args:
+            origin: State Manager instance.
+            buf: Buffer data.
+        """
         rt.fileProperties.addProperty(rt.Name('custom'), "PrismStates", buf)
 
     @err_catcher(name=__name__)
-    def sm_saveImports(self, origin, importPaths):
+    def sm_saveImports(self, origin: Any, importPaths: List) -> None:
+        """Save import paths to scene (not implemented for 3ds Max).
+        
+        Args:
+            origin: State Manager instance.
+            importPaths: List of import paths.
+        """
         rt.fileProperties.addProperty(rt.Name('custom'), "PrismImports", importPaths)
 
     @err_catcher(name=__name__)
-    def sm_readStates(self, origin):
+    def sm_readStates(self, origin: Any) -> Optional[str]:
+        """Read State Manager states from scene.
+        
+        Args:
+            origin: State Manager instance.
+        
+        Returns:
+            None (not implemented for 3ds Max).
+        """
         num = rt.fileProperties.findProperty(rt.Name('custom'), "PrismStates")
         if num != 0:
             return rt.fileProperties.getPropertyValue(rt.Name('custom'), num)
 
     @err_catcher(name=__name__)
-    def sm_deleteStates(self, origin):
+    def sm_deleteStates(self, origin: Any) -> None:
+        """Delete State Manager states from scene (not implemented for 3ds Max).
+        
+        Args:
+            origin: State Manager instance.
+        """
         num = rt.fileProperties.findProperty(rt.Name('custom'), "PrismStates")
         if num != 0:
             rt.fileProperties.deleteProperty(rt.Name('custom'), "PrismStates")
@@ -814,14 +1210,26 @@ record != undefined\n\
 
     #region Playblast
     @err_catcher(name=__name__)
-    def sm_playblast_startup(self, origin):
+    def sm_playblast_startup(self, origin: Any) -> None:
+        """Initialize playblast state.
+        
+        Args:
+            origin: Playblast state instance.
+        """
         frange = self.getFrameRange(origin)
         origin.sp_rangeStart.setValue(frange[0])
         origin.sp_rangeEnd.setValue(frange[1])
         origin.cb_rangeType.removeItem(origin.cb_rangeType.findText("Single Frame"))
 
     @err_catcher(name=__name__)
-    def sm_playblast_createPlayblast(self, origin, jobFrames, outputName):
+    def sm_playblast_createPlayblast(self, origin: Any, jobFrames: List, outputName: str) -> None:
+        """Create playblast/viewport capture.
+        
+        Args:
+            origin: Playblast state instance.
+            jobFrames: List of frames to capture.
+            outputName: Output file path template.
+        """
         # TODO look for playblast api?
         if origin.curCam is not None:
             self.setCurrentViewportCamera(origin, origin.curCam)
@@ -833,8 +1241,7 @@ record != undefined\n\
                 )
 
         outputName = os.path.splitext(outputName)[0].rstrip("#") + os.path.splitext(outputName)[1]
-        rt.execute(
-            """
+        cmd = """
 dnSendKeys = (dotNetClass "System.Windows.Forms.SendKeys")
 dnmarshal = (dotNetClass "System.Runtime.InteropServices.Marshal")
 insidedialog = false
@@ -923,17 +1330,28 @@ ViewCubeOps.Visibility = false
     )
 ViewCubeOps.Visibility = True
 animationrange = interval tmpanimrange.x tmpanimrange.y
-"""
-            % (
-                outputName.replace("\\", "\\\\"),
-                jobFrames[0],
-                jobFrames[1],
-                outputName.replace("\\", "\\\\"),
-            ),
+""" % (
+            outputName.replace("\\", "\\\\"),
+            jobFrames[0],
+            jobFrames[1],
+            outputName.replace("\\", "\\\\"),
         )
+        try:
+            rt.execute(cmd)
+        except Exception as e:
+            msg = "Playblast creation failed: %s" % str(e)
+            self.core.popup(msg)
 
     @err_catcher(name=__name__)
-    def sm_playblast_preExecute(self, origin):
+    def sm_playblast_preExecute(self, origin: Any) -> List:
+        """Pre-execution checks for playblast state.
+        
+        Args:
+            origin: Playblast state instance.
+        
+        Returns:
+            List of warning messages.
+        """
         warnings = []
 
         rangeType = origin.cb_rangeType.currentText()
@@ -951,7 +1369,15 @@ animationrange = interval tmpanimrange.x tmpanimrange.y
         return warnings
 
     @err_catcher(name=__name__)
-    def sm_playblast_execute(self, origin):
+    def sm_playblast_execute(self, origin: Any) -> Optional[List[str]]:
+        """Execute playblast state.
+        
+        Args:
+            origin: Playblast state instance.
+        
+        Returns:
+            List of error messages if execution failed, None otherwise.
+        """
         rangeType = origin.cb_rangeType.currentText()
         startFrame, endFrame = origin.getFrameRange(rangeType)
 
@@ -962,7 +1388,12 @@ animationrange = interval tmpanimrange.x tmpanimrange.y
             ]
 
     @err_catcher(name=__name__)
-    def captureViewportThumbnail(self):
+    def captureViewportThumbnail(self) -> Optional[Any]:
+        """Capture current viewport as thumbnail image.
+        
+        Returns:
+            QPixmap of viewport capture or None if failed.
+        """
         import tempfile
         path = tempfile.NamedTemporaryFile(suffix=".jpg").name
         viewSize = rt.getViewSize()
@@ -981,15 +1412,36 @@ animationrange = interval tmpanimrange.x tmpanimrange.y
         return pm
 
     @err_catcher(name=__name__)
-    def getCurrentRenderer(self, origin):
+    def getCurrentRenderer(self, origin: Any) -> str:
+        """Get current render engine name.
+        
+        Args:
+            origin: Originating object.
+        
+        Returns:
+            Renderer name.
+        """
         return rt.execute("classof renderers.current as string")
 
     @err_catcher(name=__name__)
-    def sm_render_isVray(self, origin):
+    def sm_render_isVray(self, origin: Any) -> bool:
+        """Check if V-Ray is the current renderer.
+        
+        Args:
+            origin: Render state instance.
+        
+        Returns:
+            True if V-Ray renderer, False otherwise.
+        """
         return rt.execute('matchpattern (classof renderers.current as string) pattern: "V_Ray*"')
 
     @err_catcher(name=__name__)
-    def sm_render_startup(self, origin):
+    def sm_render_startup(self, origin: Any) -> None:
+        """Initialize render state.
+        
+        Args:
+            origin: Render state instance.
+        """
         origin.sp_rangeStart.setValue(
             rt.execute("animationrange.start.frame")
         )
@@ -998,7 +1450,15 @@ animationrange = interval tmpanimrange.x tmpanimrange.y
         )
 
     @err_catcher(name=__name__)
-    def sm_render_getAovNames(self, rsFilter=False):
+    def sm_render_getAovNames(self, rsFilter: bool = False) -> List[str]:
+        """Get list of available AOV (render pass) names.
+        
+        Args:
+            rsFilter: Whether to filter for Redshift. Defaults to False.
+        
+        Returns:
+            List of AOV names.
+        """
         aovs = []
         elementMgr = rt.maxOps.GetCurRenderElementMgr()
         if not elementMgr.GetElementsActive():
@@ -1016,7 +1476,12 @@ animationrange = interval tmpanimrange.x tmpanimrange.y
         return aovs
 
     @err_catcher(name=__name__)
-    def sm_render_getAovNamesRedshiftLightGroups(self):
+    def sm_render_getAovNamesRedshiftLightGroups(self) -> List[str]:
+        """Get Redshift light group names.
+        
+        Returns:
+            List of light group names.
+        """
         aovs = []
         elementMgr = rt.maxOps.GetCurRenderElementMgr()
         if not elementMgr.GetElementsActive():
@@ -1038,7 +1503,12 @@ animationrange = interval tmpanimrange.x tmpanimrange.y
         return aovs
 
     @err_catcher(name=__name__)
-    def sm_render_refreshPasses(self, origin):
+    def sm_render_refreshPasses(self, origin: Any) -> None:
+        """Refresh render passes list.
+        
+        Args:
+            origin: Render state instance.
+        """
         if hasattr(origin, "w_redshift"):
             isRs = self.getCurrentRenderer(origin) == "Redshift_Renderer"
             origin.w_redshift.setHidden((not isRs) or (not origin.gb_submit.isChecked()))
@@ -1051,11 +1521,22 @@ animationrange = interval tmpanimrange.x tmpanimrange.y
             origin.tw_passes.addTopLevelItem(item)
 
     @err_catcher(name=__name__)
-    def sm_render_openPasses(self, origin, item=None):
+    def sm_render_openPasses(self, origin: Any, item: Optional[Any] = None) -> None:
+        """Open render passes manager.
+        
+        Args:
+            origin: Render state instance.
+            item: Optional item to select. Defaults to None.
+        """
         rt.renderSceneDialog.open()
 
     @err_catcher(name=__name__)
-    def removeAOV(self, aovName):
+    def removeAOV(self, aovName: str) -> None:
+        """Remove AOV/render pass from scene.
+        
+        Args:
+            aovName: Name of AOV to remove.
+        """
         elementMgr = rt.maxOps.GetCurRenderElementMgr()
         
         for i in range(elementMgr.NumRenderElements()):
@@ -1065,7 +1546,15 @@ animationrange = interval tmpanimrange.x tmpanimrange.y
                 break
 
     @err_catcher(name=__name__)
-    def sm_render_preExecute(self, origin):
+    def sm_render_preExecute(self, origin: Any) -> List:
+        """Pre-execution checks for render state.
+        
+        Args:
+            origin: Render state instance.
+        
+        Returns:
+            List of warning messages.
+        """
         warnings = []
 
         if getattr(origin, "chb_tileJob", None) and origin.chb_tileJob.isChecked():
@@ -1087,7 +1576,15 @@ animationrange = interval tmpanimrange.x tmpanimrange.y
         return warnings
 
     @err_catcher(name=__name__)
-    def sm_render_preSubmit(self, origin, rSettings):
+    def sm_render_preSubmit(self, origin: Any, rSettings: Dict) -> None:
+        """Configure render settings before submission.
+        
+        Modifies rSettings dictionary in place.
+        
+        Args:
+            origin: Render state instance.
+            rSettings: Render settings dictionary.
+        """
         isRs = self.getCurrentRenderer(origin) == "Redshift_Renderer"
         if isRs and "Beauty" in self.sm_render_getAovNames():
             rSettings["outputName"] = rSettings["outputName"].replace("beauty", "Beauty")
@@ -1155,7 +1652,17 @@ animationrange = interval tmpanimrange.x tmpanimrange.y
         rt.rendOutPutFilename = outputName
 
     @err_catcher(name=__name__)
-    def sm_render_startLocalRender(self, origin, outputName, rSettings):
+    def sm_render_startLocalRender(self, origin: Any, outputName: str, rSettings: Dict) -> str:
+        """Start local render.
+        
+        Args:
+            origin: Render state instance.
+            outputName: Output file path.
+            rSettings: Render settings dictionary.
+            
+        Returns:
+            Result message string (success or error message).
+        """
         if origin.chb_resOverride.isChecked():
             resolution = self.getResolution()
 
@@ -1207,7 +1714,13 @@ animationrange = interval tmpanimrange.x tmpanimrange.y
             return "Execute Canceled: unknown error (view console for more information)"
 
     @err_catcher(name=__name__)
-    def sm_render_undoRenderSettings(self, origin, rSettings):
+    def sm_render_undoRenderSettings(self, origin: Any, rSettings: Dict) -> None:
+        """Restore original render settings.
+        
+        Args:
+            origin: Render state instance.
+            rSettings: Render settings dictionary.
+        """
         if "elementsActive" in rSettings:
             elementMgr = rt.maxOps.GetCurRenderElementMgr()
             
@@ -1231,7 +1744,16 @@ animationrange = interval tmpanimrange.x tmpanimrange.y
             rt.rendUseActiveView = rSettings["rendUseActiveView"]
 
     @err_catcher(name=__name__)
-    def sm_render_getDeadlineParams(self, origin, dlParams, homeDir):
+    def sm_render_getDeadlineParams(self, origin: Any, dlParams: Dict, homeDir: str) -> None:
+        """Get Deadline render farm submission parameters.
+        
+        Modifies dlParams dictionary in place.
+        
+        Args:
+            origin: Render state instance.
+            dlParams: Deadline parameters dictionary.
+            homeDir: Home directory path.
+        """
         dlParams["pluginInfoFile"] = os.path.join(
             homeDir, "temp", "3dsmax_plugin_info.job"
         )
@@ -1330,7 +1852,15 @@ camName)""")
             dlParams["arguments"].append(msPath)
 
     @err_catcher(name=__name__)
-    def sm_render_getRenderPasses(self, origin):
+    def sm_render_getRenderPasses(self, origin: Any) -> Dict:
+        """Get currently enabled render passes.
+        
+        Args:
+            origin: Render state instance.
+        
+        Returns:
+            Dictionary of render passes.
+        """
         if self.sm_render_isVray(origin):
             return self.core.getConfig(
                 "defaultpasses", "max_vray", configPath=self.core.prismIni
@@ -1341,7 +1871,14 @@ camName)""")
             )
 
     @err_catcher(name=__name__)
-    def sm_render_addRenderPass(self, origin, passName, steps):
+    def sm_render_addRenderPass(self, origin: Any, passName: str, steps: List) -> None:
+        """Add render pass to scene.
+        
+        Args:
+            origin: Render state instance.
+            passName: Name of render pass to add.
+            steps: List of steps to execute.
+        """
         if rt.execute(passName) is not None:
             rt.execute("(MaxOps.GetCurRenderElementMgr()).AddRenderElement(%s())" % passName)
     #endregion
@@ -1349,43 +1886,93 @@ camName)""")
     #region Pre/Post
     # TODO possible to rename origTime to origFrame?
     @err_catcher(name=__name__)
-    def sm_preExecute(self, origin):
+    def sm_preExecute(self, origin: Any) -> None:
+        """Store original state before State Manager execution.
+        
+        Args:
+            origin: State instance.
+        """
         origin.origTimeRange = self.getFrameRange(origin)
         origin.origTime = self.getCurrentFrame()
 
     @err_catcher(name=__name__)
-    def sm_postExecute(self, origin):
+    def sm_postExecute(self, origin: Any) -> None:
+        """Restore original state after State Manager execution.
+        
+        Args:
+            origin: State instance.
+        """
         self.setFrameRange(origin, origin.origTimeRange[0],origin.origTimeRange[1])
         self.setCurrentFrame(origin, origin.origTime)
     #endregion
 
     @err_catcher(name=__name__)
-    def getResolution(self):
+    def getResolution(self) -> List[int]:
+        """Get render resolution.
+        
+        Returns:
+            List of [width, height].
+        """
         return [rt.renderWidth, rt.renderHeight]
 
     @err_catcher(name=__name__)
-    def setResolution(self, width=None, height=None):
+    def setResolution(self, width: Optional[int] = None, height: Optional[int] = None) -> None:
+        """Set render resolution.
+        
+        Args:
+            width: Width in pixels. Defaults to None.
+            height: Height in pixels. Defaults to None.
+        """
         if width:
             rt.renderWidth = width
         if height:
             rt.renderHeight = height
 
     @err_catcher(name=__name__)
-    def getAppVersion(self, origin):
+    def getAppVersion(self, origin: Any) -> List[int]:
+        """Get 3ds Max application version.
+        
+        Args:
+            origin: Originating object.
+        
+        Returns:
+            Version as list of integers [major, minor, build, revision].
+        """
         # 3dsMax major version is offset by 2
         # 3dsMax2020 will be 22 for example
         versionSegmentStringList = rt.execute( 'getFileVersion "$max/3dsmax.exe"').split()[0].split(',')
         return [int(versionSegmentString) for versionSegmentString in versionSegmentStringList]
 
     @err_catcher(name=__name__)
-    def autosaveEnabled(self, origin):
+    def autosaveEnabled(self, origin: Any) -> bool:
+        """Check if autosave is enabled.
+        
+        Args:
+            origin: Originating object.
+        
+        Returns:
+            True if autosave enabled, False otherwise.
+        """
         return rt.execute( "autosave.Enable")
         
     @err_catcher(name=__name__)
-    def sm_createRenderPressed(self, origin):
+    def sm_createRenderPressed(self, origin: Any) -> None:
+        """Handle create render state button press.
+        
+        Args:
+            origin: State Manager instance.
+        """
         origin.createPressed("Render")
 
-    def sm_getExternalFiles(self, origin):
+    def sm_getExternalFiles(self, origin: Any) -> List:
+        """Get list of external files (textures, etc.) used in scene.
+        
+        Args:
+            origin: State Manager instance.
+        
+        Returns:
+            List of [external_files_list, empty_list].
+        """
         extFiles = rt.execute(
             "mapfiles=#()\n\
 fn addmap mapfile =\n\
@@ -1402,18 +1989,41 @@ for mapfile in mapfiles collect mapfile",
         return [extFiles, []]
 
     @err_catcher(name=__name__)
-    def sm_setActivePalette(self, origin, listWidget, inactive, inactivef, activef):
+    def sm_setActivePalette(self, origin: Any, listWidget: Any, inactive: Any, inactivef: Any, activef: Any) -> None:
+        """Set active/inactive color palettes for State Manager widgets.
+        
+        Args:
+            origin: State Manager instance.
+            listWidget: List widget to update.
+            inactive: Inactive palette.
+            inactivef: Inactive frame widget.
+            activef: Active frame widget.
+        """
         activef.setPalette(origin.activePalette)
         inactivef.setPalette(origin.inactivePalette)
 
     @err_catcher(name=__name__)
-    def setCurrentViewportCamera(self, origin, cameraHandle):
+    def setCurrentViewportCamera(self, origin: Any, cameraHandle: Any) -> None:
+        """Set viewport to use specified camera.
+        
+        Args:
+            origin: Originating object.
+            cameraHandle: Camera node handle.
+        """
         viewport = rt.viewport
         camera = rt.maxOps.getNodeByHandle(cameraHandle)
         viewport.setCamera(camera)
 
     @err_catcher(name=__name__)
-    def deleteNodes(self, origin, handles):
+    def deleteNodes(self, origin: Any, handles: List) -> None:
+        """Delete nodes by handle.
+        
+        Called when import state gets deleted to clean up imported nodes.
+        
+        Args:
+            origin: Import state instance.
+            handles: List of node handles to delete.
+        """
         # Called when import state gets deleted
         # Deletes nodes of connected import state
         nodes = [rt.maxOps.getNodeByHandle(handle) for handle in handles]
@@ -1435,7 +2045,16 @@ True\n\
             rt.delete(nodes)
 
     @err_catcher(name=__name__)
-    def getMaxScriptDeadlineScript(self, outputPath, camera):
+    def getMaxScriptDeadlineScript(self, outputPath: str, camera: str) -> str:
+        """Generate MaxScript for Deadline render farm submission.
+        
+        Args:
+            outputPath: Output path for render.
+            camera: Camera name.
+        
+        Returns:
+            MaxScript code as string.
+        """
         script = """
 try
 (

@@ -40,11 +40,18 @@ from qtpy.QtCore import *
 from qtpy.QtGui import *
 from qtpy.QtWidgets import *
 
+from typing import Any, Dict, List, Optional, Tuple
 from PrismUtils.Decorators import err_catcher_plugin as err_catcher
 
 
 class Prism_Maya_externalAccess_Functions(object):
-    def __init__(self, core, plugin):
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize external access functions and register callbacks.
+        
+        Args:
+            core: Prism core instance
+            plugin: Plugin instance
+        """
         self.core = core
         self.plugin = plugin
         self.core.registerCallback(
@@ -67,9 +74,18 @@ class Prism_Maya_externalAccess_Functions(object):
         self.core.registerCallback(
             "projectSettings_loadUI", self.projectSettings_loadUI, plugin=self.plugin
         )
+        self.core.registerCallback(
+            "getAvailableSceneBuildingSteps", self.getAvailableSceneBuildingSteps, plugin=self.plugin
+        )
 
     @err_catcher(name=__name__)
-    def userSettings_loadUI(self, origin, tab):
+    def userSettings_loadUI(self, origin: Any, tab: Any) -> None:
+        """Load Maya-specific UI elements into user settings tab.
+        
+        Args:
+            origin: User settings dialog instance
+            tab: QWidget tab to add Maya settings to
+        """
         if self.core.appPlugin.pluginName == "Maya":
             origin.w_addModulePath = QWidget()
             origin.b_addModulePath = QPushButton(
@@ -121,9 +137,18 @@ class Prism_Maya_externalAccess_Functions(object):
         tab.lo_settings.addWidget(origin.chb_mayaPluginPaths, 3, 2)
 
     @err_catcher(name=__name__)
-    def userSettings_saveSettings(self, origin, settings):
+    def userSettings_saveSettings(self, origin: Any, settings: Dict[str, Any]) -> None:
+        """Save Maya-specific user settings.
+        
+        Args:
+            origin: User settings dialog instance
+            settings: Settings dictionary to update
+        """
         if "maya" not in settings:
             settings["maya"] = {}
+
+        if not hasattr(origin, "cb_mayaSceneType"):
+            return
 
         settings["maya"]["saveSceneType"] = origin.cb_mayaSceneType.currentText()
         settings["maya"]["setMayaProject"] = origin.chb_mayaProject.isChecked()
@@ -141,7 +166,13 @@ class Prism_Maya_externalAccess_Functions(object):
                 self.core.appPlugin.addProjectPaths()
 
     @err_catcher(name=__name__)
-    def userSettings_loadSettings(self, origin, settings):
+    def userSettings_loadSettings(self, origin: Any, settings: Dict[str, Any]) -> None:
+        """Load Maya-specific user settings into UI.
+        
+        Args:
+            origin: User settings dialog instance
+            settings: Settings dictionary to  read from
+        """
         if "maya" in settings:
             if "saveSceneType" in settings["maya"]:
                 saveType = settings["maya"]["saveSceneType"]
@@ -158,7 +189,15 @@ class Prism_Maya_externalAccess_Functions(object):
                 origin.chb_mayaPluginPaths.setChecked(pluginPaths)
 
     @err_catcher(name=__name__)
-    def getAutobackPath(self, origin):
+    def getAutobackPath(self, origin: Any) -> Tuple[str, str]:
+        """Get Maya autoback/autosave folder path and file filter string.
+        
+        Args:
+            origin: Originating instance
+            
+        Returns:
+            Tuple of (autoback_path, file_filter_string)
+        """
         autobackpath = ""
         if self.core.appPlugin.pluginName == "Maya":
             import maya.cmds as cmds
@@ -182,7 +221,15 @@ class Prism_Maya_externalAccess_Functions(object):
         return autobackpath, fileStr
 
     @err_catcher(name=__name__)
-    def getScenefilePaths(self, scenePath):
+    def getScenefilePaths(self, scenePath: str) -> List[str]:
+        """Get associated files for a Maya scene (XGen, ABC caches).
+        
+        Args:
+            scenePath: Path to Maya scene file
+            
+        Returns:
+            List of related file names in same directory
+        """
         xgenfiles = [
             x
             for x in os.listdir(os.path.dirname(scenePath))
@@ -192,7 +239,15 @@ class Prism_Maya_externalAccess_Functions(object):
         return xgenfiles
 
     @err_catcher(name=__name__)
-    def copySceneFile(self, origin, origFile, targetPath, mode="copy"):
+    def copySceneFile(self, origin: Any, origFile: str, targetPath: str, mode: str = "copy") -> None:
+        """Copy or move Maya scene file along with associated files.
+        
+        Args:
+            origin: Originating instance
+            origFile: Source Maya scene path
+            targetPath: Target destination path
+            mode: "copy" or "move"
+        """
         xgenfiles = self.getScenefilePaths(origFile)
         for i in xgenfiles:
             curFilePath = os.path.join(os.path.dirname(origFile), i).replace("\\", "/")
@@ -204,7 +259,12 @@ class Prism_Maya_externalAccess_Functions(object):
                     shutil.move(curFilePath, tFilePath)
 
     @err_catcher(name=__name__)
-    def getPresetScenes(self, presetScenes):
+    def getPresetScenes(self, presetScenes: List[Dict[str, Any]]) -> None:
+        """Add Maya preset scenes to the preset scenes list.
+        
+        Args:
+            presetScenes: List to append preset scene dicts to
+        """
         if os.getenv("PRISM_SHOW_DEFAULT_SCENEFILE_PRESETS", "1") != "1":
             return
 
@@ -213,7 +273,13 @@ class Prism_Maya_externalAccess_Functions(object):
         presetScenes += scenes
 
     @err_catcher(name=__name__)
-    def preProjectSettingsLoad(self, origin, settings):
+    def preProjectSettingsLoad(self, origin: Any, settings: Dict[str, Any]) -> None:
+        """Load Maya project settings into UI before display.
+        
+        Args:
+            origin: Project settings dialog instance
+            settings: Project settings dictionary
+        """
         if settings:
             if "maya" in settings:
                 if "setPrefix" in settings["maya"]:
@@ -221,13 +287,22 @@ class Prism_Maya_externalAccess_Functions(object):
 
                 if "useRelativePaths" in settings["maya"]:
                     origin.chb_mayaRelative.setChecked(settings["maya"]["useRelativePaths"])
-            
-            if "sceneBuilding" in settings:
-                if "maya_apply_abc_caches" in settings["sceneBuilding"]:
-                    origin.w_mayaAbcCaches.setDftTasks(settings["sceneBuilding"]["maya_apply_abc_caches"])
+
+            if hasattr(origin, "sb_maya"):
+                sbData = settings.get("sceneBuilding", {})
+                savedSteps = sbData.get("maya_steps") or []
+                if savedSteps:
+                    origin.sb_maya.tw_steps.clear()
+                    origin.sb_maya.addSteps(savedSteps)
 
     @err_catcher(name=__name__)
-    def preProjectSettingsSave(self, origin, settings):
+    def preProjectSettingsSave(self, origin: Any, settings: Dict[str, Any]) -> None:
+        """Save Maya project settings from UI.
+        
+        Args:
+            origin: Project settings dialog instance
+            settings: Project settings dictionary to update
+        """
         if "maya" not in settings:
             settings["maya"] = {}
 
@@ -237,18 +312,30 @@ class Prism_Maya_externalAccess_Functions(object):
         rel = origin.chb_mayaRelative.isChecked()
         settings["maya"]["useRelativePaths"] = rel
 
-        if "sceneBuilding" not in settings:
-            settings["sceneBuilding"] = {}
+        if hasattr(origin, "sb_maya"):
+            if "sceneBuilding" not in settings:
+                settings["sceneBuilding"] = {}
 
-        val = origin.w_mayaAbcCaches.dftTasks()
-        settings["sceneBuilding"]["maya_apply_abc_caches"] = val
+            settings["sceneBuilding"]["maya_steps"] = origin.sb_maya.getSteps()
 
     @err_catcher(name=__name__)
-    def projectSettings_loadUI(self, origin):
+    def projectSettings_loadUI(self, origin: Any) -> None:
+        """Load Maya project settings UI.
+        
+        Args:
+            origin: Project settings dialog instance
+        """
         self.addUiToProjectSettings(origin)
 
     @err_catcher(name=__name__)
-    def addUiToProjectSettings(self, projectSettings):
+    def addUiToProjectSettings(self, projectSettings: Any) -> None:
+        """Add Maya-specific widgets to project settings dialog.
+        
+        Creates selection set prefix config, relative paths toggle, and scene building options.
+        
+        Args:
+            projectSettings: Project settings dialog instance
+        """
         projectSettings.w_maya = QGroupBox("Maya")
         lo_maya = QGridLayout()
         projectSettings.w_maya.setLayout(lo_maya)
@@ -276,18 +363,66 @@ class Prism_Maya_externalAccess_Functions(object):
         lo_maya.addWidget(projectSettings.chb_mayaRelative, 1, 2)
 
         projectSettings.w_prjSettings.layout().addWidget(projectSettings.w_maya)
+        projectSettings.sb_maya = projectSettings.addSceneBuildingApp("Maya", iconPath=self.appIcon)
+        dftSteps = self.getAvailableSceneBuildingSteps()
+        dftSteps = [s for s in dftSteps["results"] if s["name"] not in ["createModelHierarchy", "applyAbcCaches", "runCode"]]
+        projectSettings.sb_maya.addSteps(dftSteps)
 
-        if not hasattr(projectSettings, "w_sceneBuildingMaya"):
-            projectSettings.w_sceneBuildingMaya = QGroupBox("Maya")
-            projectSettings.lo_sceneBuildingMaya = QVBoxLayout(projectSettings.w_sceneBuildingMaya)
-            idx = projectSettings.lo_sceneBuilding.count()
-            projectSettings.lo_sceneBuilding.insertWidget(idx - 1, projectSettings.w_sceneBuildingMaya)
+    @err_catcher(name=__name__)
+    def getAvailableSceneBuildingSteps(self, app: str = "") -> dict:
+        """Get available scene building steps.
+        
+        Args:
+            app: Application name
+            
+        Returns:
+            List of step names
+        """
+        if app and app != "Maya":
+            return {"combine": True, "results": []}
+        
+        steps = self.core.entities.getDefaultSceneBuildingSteps()
+        steps = [s for s in steps if s["name"] not in ["importProducts"]]
 
-        from PrismUtils import ProjectWidgets
-        dftTasks = {
-            "entities": [],
-            "departments": [],
-            "tasks": [],
-        }
-        projectSettings.w_mayaAbcCaches = ProjectWidgets.DefaultSettingItem(projectSettings, "Apply Alembic Caches:", dftTasks)
-        projectSettings.lo_sceneBuildingMaya.addWidget(projectSettings.w_mayaAbcCaches)
+        mayaSteps = [
+            {
+                "name": "createModelHierarchy",
+                "label": "Create Model Hierarchy",
+                "function": "self.core.appPlugin.buildSceneCreateModelHierarchy"
+            },
+            {
+                "name": "importProducts",
+                "label": "Import Products",
+                "function": "self.core.appPlugin.buildSceneImportProducts",
+                "settings": [
+                    {
+                        "type": "combobox",
+                        "name": "mode",
+                        "label": "Mode",
+                        "items": ["Reference", "Import"],
+                        "value": "Reference"
+                    },
+                    {
+                        "type": "lineedit",
+                        "name": "namespace",
+                        "label": "Namespace",
+                        "value": "{entity}_{task}"
+                    },
+                    {
+                        "type": "checkbox",
+                        "name": "ignoreMaster",
+                        "label": "Ignore Master Versions",
+                        "value": False,
+                    }
+                ]
+            },
+            {
+                "name": "applyAbcCaches",
+                "label": "Apply Alembic Caches",
+                "function": "self.core.appPlugin.buildSceneApplyAbcCaches"
+            },
+        ]
+
+        steps += mayaSteps
+        result = {"combine": True, "results": steps}
+        return result

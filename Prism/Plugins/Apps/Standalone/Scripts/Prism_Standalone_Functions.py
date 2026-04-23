@@ -215,7 +215,6 @@ class Prism_Standalone_Functions(object):
             self.core.popup("Executable doesn't exist: %s" % executable)
             return
 
-        script
         if not os.path.isabs(script):
             script = os.path.join(
                 self.core.prismRoot.replace("/", "\\"), "Scripts", script

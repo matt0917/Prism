@@ -32,8 +32,11 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from __future__ import annotations
+
 import os
 import logging
+from typing import Optional, Dict, List, Any, Union
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -46,7 +49,31 @@ logger = logging.getLogger(__name__)
 
 
 class SanityChecks(object):
-    def __init__(self, core):
+    """Performs sanity checks and validations for project and scene states.
+    
+    This class runs various checks when opening projects or scenes to ensure
+    consistency with project settings. Checks include framerate, resolution,
+    framerange, import versions, and restart requirements.
+    
+    Attributes:
+        core: PrismCore instance
+        checksToRun (Dict): Dictionary of check categories and their checks
+    
+    Example:
+        ```python
+        checks = SanityChecks(core)
+        result = checks.runChecks("onSceneOpen")
+        if not result["passed"]:
+            print("Some checks failed")
+        ```
+    """
+
+    def __init__(self, core: Any) -> None:
+        """Initialize SanityChecks manager.
+        
+        Args:
+            core: PrismCore instance
+        """
         self.core = core
         self.checksToRun = {
             "onOpenProjectBrowser": {
@@ -73,7 +100,16 @@ class SanityChecks(object):
         }
 
     @err_catcher(name=__name__)
-    def runChecks(self, category, settings=None):
+    def runChecks(self, category: str, settings: Optional[Dict] = None) -> Dict[str, Any]:
+        """Run all checks for a given category.
+        
+        Args:
+            category: Check category (e.g., "onSceneOpen", "onOpenProjectBrowser")
+            settings: Optional settings dictionary. Defaults to None.
+            
+        Returns:
+            Dictionary with 'passed' boolean and list of 'checks' results
+        """
         result = {"passed": True, "checks": []}
         if category not in self.checksToRun:
             return result
@@ -92,7 +128,15 @@ class SanityChecks(object):
         return result
 
     @err_catcher(name=__name__)
-    def checkRestartRequired(self, settings=None):
+    def checkRestartRequired(self, settings: Optional[Dict] = None) -> bool:
+        """Check if Prism restart is required.
+        
+        Args:
+            settings: Optional settings with 'quiet' key. Defaults to None.
+            
+        Returns:
+            True if check passed or restart not required, False otherwise
+        """
         quiet = (settings or {}).get("quiet", False)
         if self.core.restartRequired and not quiet:
             appName = self.core.appPlugin.pluginName
@@ -103,7 +147,14 @@ class SanityChecks(object):
         return not self.core.restartRequired
 
     @err_catcher(name=__name__)
-    def checkImportVersions(self, settings=None):
+    def checkImportVersions(self, settings: Optional[Dict[str, Any]] = None) -> None:
+        """Check if imported products have newer versions available.
+        
+        Shows popup if updates are available for State Manager imports.
+        
+        Args:
+            settings: Optional dict with 'accept' and 'value' keys for automation
+        """
         settings = settings or {}
         checkImpVersions = self.core.getConfig("globals", "check_import_versions")
         if checkImpVersions is None:
@@ -177,7 +228,12 @@ class SanityChecks(object):
                     msg.show()
 
     @err_catcher(name=__name__)
-    def onImportVersionsClicked(self, button):
+    def onImportVersionsClicked(self, button: Union[str, Any]) -> None:
+        """Handle import version check dialog button click.
+        
+        Args:
+            button: Button text string or button object clicked
+        """
         if self.core.isStr(button):
             result = button
         else:
@@ -192,7 +248,14 @@ class SanityChecks(object):
             sm.gb_import.setChecked(True)
 
     @err_catcher(name=__name__)
-    def checkFramerange(self, settings=None):
+    def checkFramerange(self, settings: Optional[Dict[str, Any]] = None) -> None:
+        """Check if scene frame range matches shot/asset frame range.
+        
+        Shows popup if mismatch detected, offers to update scene.
+        
+        Args:
+            settings: Optional dict with 'accept' and 'value' keys for automation
+        """
         settings = settings or {}
         if not getattr(self.core.appPlugin, "hasFrameRange", True):
             return
@@ -267,7 +330,14 @@ class SanityChecks(object):
                     msg.show()
 
     @err_catcher(name=__name__)
-    def onCheckFramerangeClicked(self, button, shotRange, handleRange=None):
+    def onCheckFramerangeClicked(self, button: Union[str, Any], shotRange: Tuple[int, int], handleRange: Optional[Tuple[int, int]] = None) -> None:
+        """Handle frame range check dialog button click.
+        
+        Args:
+            button: Button object or result string
+            shotRange: Shot frame range (start, end)
+            handleRange: Range with handles (start, end). Defaults to None.
+        """
         if self.core.isStr(button):
             result = button
         else:
@@ -279,7 +349,14 @@ class SanityChecks(object):
             self.core.setFrameRange(int(handleRange[0]), int(handleRange[1]))
 
     @err_catcher(name=__name__)
-    def checkFPS(self, settings=None):
+    def checkFPS(self, settings: Optional[Dict[str, Any]] = None) -> None:
+        """Check if scene FPS matches project/entity FPS.
+        
+        Shows popup if mismatch detected, offers to update scene FPS.
+        
+        Args:
+            settings: Optional dict with 'accept' and 'value' keys for automation
+        """
         settings = settings or {}
         forceFPS = self.core.getConfig(
             "globals", "forcefps", configPath=self.core.prismIni
@@ -320,7 +397,7 @@ class SanityChecks(object):
         for idx, val in enumerate(vInfo):
             l_infoName = QLabel(val[0] + ":\t")
             l_info = QLabel(val[1])
-            lay_info.addWidget(l_infoName)
+            lay_info.addWidget(l_infoName, idx, 0)
             lay_info.addWidget(l_info, idx, 1)
 
         lay_info.addItem(
@@ -351,7 +428,13 @@ class SanityChecks(object):
                 msg.show()
 
     @err_catcher(name=__name__)
-    def onCheckFpsClicked(self, button, projectFps):
+    def onCheckFpsClicked(self, button: Union[str, Any], projectFps: float) -> None:
+        """Handle FPS check dialog button click.
+        
+        Args:
+            button: Button text string or button object clicked
+            projectFps: Target FPS to set
+        """
         if self.core.isStr(button):
             result = button
         else:
@@ -361,7 +444,14 @@ class SanityChecks(object):
             self.core.appPlugin.setFPS(self.core, float(projectFps))
 
     @err_catcher(name=__name__)
-    def checkResolution(self, settings=None):
+    def checkResolution(self, settings: Optional[Dict[str, Any]] = None) -> None:
+        """Check if scene resolution matches project/entity resolution.
+        
+        Shows popup if mismatch detected, offers to update scene resolution.
+        
+        Args:
+            settings: Optional dict with 'accept' and 'value' keys for automation
+        """
         settings = settings or {}
         forceRes = self.core.getConfig(
             "globals", "forceResolution", configPath=self.core.prismIni
@@ -454,7 +544,13 @@ class SanityChecks(object):
                 self.dlg_res.show()
 
     @err_catcher(name=__name__)
-    def onCheckResolutionClicked(self, button, projectResolution):
+    def onCheckResolutionClicked(self, button: Union[str, Any], projectResolution: Tuple[int, int]) -> None:
+        """Handle resolution check dialog button click.
+        
+        Args:
+            button: Button object or result string
+            projectResolution: Resolution tuple (width, height)
+        """
         if self.core.isStr(button):
             result = button
         else:
@@ -464,7 +560,8 @@ class SanityChecks(object):
             self.core.appPlugin.setResolution(*projectResolution)
 
     @err_catcher(name=__name__)
-    def checkAppVersion(self):
+    def checkAppVersion(self) -> None:
+        """Check if application version is compatible with Prism."""
         fversion = self.core.getConfig(
             "globals", "forceversions", configPath=self.core.prismIni
         )

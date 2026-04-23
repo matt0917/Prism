@@ -31,9 +31,16 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
+"""
+Houdini ImportFile state for Prism State Manager.
+
+Manages importing of external files (Alembic, FBX, Redshift Proxy, HDAs, etc.)
+into Houdini scenes with automatic version tracking and update capabilities.
+"""
 
 import os
 import logging
+from typing import Any, Optional, Dict, List, Tuple
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -48,27 +55,60 @@ logger = logging.getLogger(__name__)
 
 
 class ImportFileClass(object):
+    """State for importing external files into Houdini.
+    
+    Manages import of various file fiformats with automatic version tracking, update 
+    notifications, and organized import nodes. Supports Alembic, FBX, Redshift Proxy,
+    HDAs, shot cameras, and custom import handlers via callbacks.
+    
+    Attributes:
+        className: Class identifier string.
+        listType: State list category ("Import").
+        state: QTreeWidgetItem representing this state.
+        core: PrismCore instance.
+        stateManager: StateManager instance.
+        node: Houdini node associated with this import.
+        importTarget: Parent node for imported geometry.
+        fileNode: File node created for this import.
+        taskName: Optional task identifier.
+        importHandlers: Dictionary mapping file extensions to import/update functions.
+    """
     className = "ImportFile"
     listType = "Import"
 
     @err_catcher(name=__name__)
     def setup(
         self,
-        state,
-        core,
-        stateManager,
-        node=None,
-        importPath=None,
-        stateData=None,
-        openProductsBrowser=True,
-        settings=None,
-    ):
+        state: Any,
+        core: Any,
+        stateManager: Any,
+        node: Optional[Any] = None,
+        importPath: Optional[str] = None,
+        stateData: Optional[Dict[str, Any]] = None,
+        openProductsBrowser: bool = True,
+        settings: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Initialize the ImportFile state with UI and settings.
+        
+        Sets up import handlers for different file formats (Alembic, FBX, Redshift Proxy),
+        optionally opens Products Browser for file selection, and loads saved state data.
+        
+        Args:
+            state: QTreeWidgetItem representing this state.
+            core: PrismCore instance.
+            stateManager: StateManager instance.
+            node: Optional existing import node to connect.
+            importPath: Optional file path to import.
+            stateData: Optional saved state data to load.
+            openProductsBrowser: Whether to open Products Browser if no import path.
+            settings: Optional additional settings dictionary.
+        """
         self.state = state
         self.core = core
         self.stateManager = stateManager
         self.taskName = None
 
-        stateNameTemplate = "{entity}_{product}_{version}"
+        stateNameTemplate = "{entity}_{product}_{version}{#}"
         self.stateNameTemplate = self.core.getConfig(
             "globals",
             "defaultImportStateName",
@@ -135,7 +175,12 @@ class ImportFileClass(object):
         self.updateUi()
 
     @err_catcher(name=__name__)
-    def loadData(self, data):
+    def loadData(self, data: Dict[str, Any]) -> None:
+        """Load saved state data into the UI.
+        
+        Args:
+            data: Dictionary containing saved state settings.
+        """
         if "statename" in data:
             self.e_name.setText(data["statename"])
         if "filepath" in data:
@@ -163,7 +208,12 @@ class ImportFileClass(object):
         self.core.callback("onStateSettingsLoaded", self, data)
 
     @err_catcher(name=__name__)
-    def requestImportPaths(self):
+    def requestImportPaths(self) -> bool:
+        """Request import paths from user via Products Browser.
+        
+        Returns:
+            True if path selection was successful.
+        """
         result = self.core.callback("requestImportPath", self)
         for res in result:
             if isinstance(res, dict) and res.get("importPaths") is not None:
@@ -181,7 +231,15 @@ class ImportFileClass(object):
         return importPaths
 
     @err_catcher(name=__name__)
-    def findNode(self, path):
+    def findNode(self, path: str) -> Optional[Any]:
+        """Find existing import node for given file path.
+        
+        Args:
+            path: File path to search for in existing nodes.
+            
+        Returns:
+            Houdini node if found, None otherwise.
+        """
         for node in hou.node("/").allSubChildren():
             if (
                 node.userData("PrismPath") is not None
@@ -193,7 +251,12 @@ class ImportFileClass(object):
         return None
 
     @err_catcher(name=__name__)
-    def setNode(self, node):
+    def setNode(self, node: Any) -> None:
+        """Assign a Houdini node to this import state.
+        
+        Args:
+            node: Houdini node to associate with state.
+        """
         if not self.core.appPlugin.isNodeValid(self, node):
             return
 
@@ -204,12 +267,21 @@ class ImportFileClass(object):
             self.importTarget = node
             self.node.addEventCallback([hou.nodeEventType.BeingDeleted], self.onNodeDeleted)
 
-    def onNodeDeleted(self, event_type, **kwargs):
+    def onNodeDeleted(self, event_type: Any, **kwargs: Any) -> None:
+        """Handle Houdini node deletion event.
+        
+        Automatically removes this import state when its associated node is deleted.
+        
+        Args:
+            event_type: Event type from Houdini.
+            **kwargs: Event data including deleted node.
+        """
         if kwargs["node"] == self.node:
             self.stateManager.deleteState(self.state, silent=True)
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect UI widget signals to their handler methods."""
         self.e_name.textChanged.connect(self.nameChanged)
         self.e_name.editingFinished.connect(self.stateManager.saveStatesToScene)
         self.b_browse.clicked.connect(self.browse)
@@ -227,7 +299,12 @@ class ImportFileClass(object):
             )
 
     @err_catcher(name=__name__)
-    def nameChanged(self, text=None):
+    def nameChanged(self, text: Optional[str] = None) -> None:
+        """Handle state name text change.
+        
+        Args:
+            text: New state name text (or None to use current text).
+        """
         text = self.e_name.text()
         cacheData = self.core.paths.getCachePathData(self.getImportPath())
         if cacheData.get("type") == "asset":
@@ -263,18 +340,42 @@ class ImportFileClass(object):
         self.state.setText(0, name)
 
     @err_catcher(name=__name__)
-    def getSortKey(self):
+    def getSortKey(self) -> str:
+        """Get sort key for state list ordering.
+        
+        Returns:
+            Sort key string based on file path.
+        """
         cacheData = self.core.paths.getCachePathData(self.getImportPath())
         return cacheData.get("product")
 
     @err_catcher(name=__name__)
-    def isShotCam(self, path=None):
+    def isShotCam(self, path: Optional[str] = None) -> bool:
+        """Check if import path is a shot camera.
+        
+        Args:
+            path: File path to check (or None to use current import path).
+            
+        Returns:
+            True if path is a shot camera export.
+        """
         if not path:
             path = self.getImportPath()
+            if not path:
+                return False
+
         return path.endswith(".abc") and "/_ShotCam/" in path
 
     @err_catcher(name=__name__)
-    def isPrismImportNode(self, node):
+    def isPrismImportNode(self, node: Any) -> bool:
+        """Check if node is a Prism-managed import node.
+        
+        Args:
+            node: Houdini node to check.
+            
+        Returns:
+            True if node is managed by Prism.
+        """
         if not self.core.appPlugin.isNodeValid(self, node):
             return False
 
@@ -284,7 +385,12 @@ class ImportFileClass(object):
         return False
 
     @err_catcher(name=__name__)
-    def autoUpdateChanged(self, checked):
+    def autoUpdateChanged(self, checked: bool) -> None:
+        """Handle auto-update checkbox state change.
+        
+        Args:
+            checked: Whether auto-update is enabled.
+        """
         self.w_latestVersion.setVisible(not checked)
         self.w_importLatest.setVisible(not checked)
 
@@ -297,7 +403,8 @@ class ImportFileClass(object):
         self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def browse(self):
+    def browse(self) -> None:
+        """Open Products Browser to select import file."""
         importPaths = self.requestImportPaths()
         if importPaths:
             importPath = importPaths[-1]
@@ -306,7 +413,12 @@ class ImportFileClass(object):
             self.updateUi()
 
     @err_catcher(name=__name__)
-    def openFolder(self, pos):
+    def openFolder(self, pos: Any) -> None:
+        """Open import file folder in file explorer.
+        
+        Args:
+            pos: Menu position (not used).
+        """
         path = hou.text.expandString(self.getImportPath())
         if os.path.isfile(path):
             path = os.path.dirname(path)
@@ -314,7 +426,8 @@ class ImportFileClass(object):
         self.core.openFolder(path)
 
     @err_catcher(name=__name__)
-    def goToNode(self):
+    def goToNode(self) -> None:
+        """Navigate to and select the import node in Houdini network view."""
         if not self.core.uiAvailable:
             return
 
@@ -335,7 +448,12 @@ class ImportFileClass(object):
             paneTab.homeToSelection()
 
     @err_catcher(name=__name__)
-    def autoNameSpaceChanged(self, checked):
+    def autoNameSpaceChanged(self, checked: bool) -> None:
+        """Handle auto namespace checkbox change.
+        
+        Args:
+            checked: Whether auto namespace is enabled.
+        """
         self.b_nameSpaces.setEnabled(not checked)
         if not self.stateManager.standalone:
             if checked:
@@ -343,7 +461,15 @@ class ImportFileClass(object):
             self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def getImportPath(self, expand=True):
+    def getImportPath(self, expand: bool = True) -> str:
+        """Get the import file path.
+        
+        Args:
+            expand: Whether to expand environment variables in path.
+            
+        Returns:
+            Import file path string.
+        """
         path = getattr(self, "importPath", "")
         if path:
             path = path.replace("\\", "/")
@@ -357,7 +483,12 @@ class ImportFileClass(object):
         return path
 
     @err_catcher(name=__name__)
-    def setImportPath(self, path):
+    def setImportPath(self, path: str) -> None:
+        """Set the import file path.
+        
+        Args:
+            path: File path to import from.
+        """
         path = self.core.appPlugin.getPathRelativeToProject(path) if self.core.appPlugin.getUseRelativePath() else path
         self.importPath = path
         self.w_currentVersion.setToolTip(path)
@@ -366,7 +497,15 @@ class ImportFileClass(object):
         self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def runSanityChecks(self, cachePath):
+    def runSanityChecks(self, cachePath: str) -> List[List[str]]:
+        """Run validation checks on import path.
+        
+        Args:
+            cachePath: Cache file path to validate.
+            
+        Returns:
+            List of warning/error messages.
+        """
         result = self.checkFrameRange(cachePath)
         if not result:
             return False
@@ -374,7 +513,15 @@ class ImportFileClass(object):
         return True
 
     @err_catcher(name=__name__)
-    def checkFrameRange(self, cachePath):
+    def checkFrameRange(self, cachePath: str) -> List[str]:
+        """Check if import frame range matches scene frame range.
+        
+        Args:
+            cachePath: Cache file path to check.
+            
+        Returns:
+            List containing warning message if mismatch, empty list otherwise.
+        """
         versionInfoPath = self.core.getVersioninfoPath(
             self.core.products.getVersionInfoPathFromProductFilepath(cachePath)
         )
@@ -402,7 +549,15 @@ class ImportFileClass(object):
         return True
 
     @err_catcher(name=__name__)
-    def importHDA(self, path):
+    def importHDA(self, path: str) -> bool:
+        """Import a Houdini Digital Asset.
+        
+        Args:
+            path: Path to HDA file.
+            
+        Returns:
+            True if import was successful.
+        """
         try:
             self.node.destroy()
         except:
@@ -412,7 +567,16 @@ class ImportFileClass(object):
             hou.hda.installFile(path, force_use_assets=True)
 
     @err_catcher(name=__name__)
-    def importShotCam(self, importPath, cacheData=None):
+    def importShotCam(self, importPath: str, cacheData: Optional[Dict[str, Any]] = None) -> bool:
+        """Import a shot camera.
+        
+        Args:
+            importPath: Path to camera file.
+            cacheData: Optional cache metadata dictionary.
+            
+        Returns:
+            True if import was successful.
+        """
         self.fileNode = None
         entityName = self.core.entities.getEntityName(cacheData)
         node = hou.node("/obj").createNode("alembicarchive", "IMPORT_%s_ShotCam" % entityName, force_valid_node_name=True)
@@ -425,7 +589,12 @@ class ImportFileClass(object):
         self.loadShotcamResolution(cacheData)
 
     @err_catcher(name=__name__)
-    def loadShotcamResolution(self, cacheData):
+    def loadShotcamResolution(self, cacheData: Dict[str, Any]) -> None:
+        """Load and apply shot camera resolution from cache data.
+        
+        Args:
+            cacheData: Cache metadata containing resolution info.
+        """
         resolution = cacheData.get("resolution") if cacheData else None
         if resolution:
             for node in self.node.allSubChildren():
@@ -434,7 +603,16 @@ class ImportFileClass(object):
                     self.core.appPlugin.setNodeParm(node, "resy", val=resolution[1])
 
     @err_catcher(name=__name__)
-    def importAlembic(self, importPath, taskName):
+    def importAlembic(self, importPath: str, taskName: str) -> bool:
+        """Import an Alembic file.
+        
+        Args:
+            importPath: Path to Alembic file.
+            taskName: Task identifier for import organization.
+            
+        Returns:
+            True if import was successful.
+        """
         self.fileNode = self.importTarget.createNode("alembic")
         self.fileNode.moveToGoodPosition()
         parmPath = self.core.appPlugin.getPathRelativeToProject(importPath) if self.core.appPlugin.getUseRelativePath() else importPath
@@ -448,7 +626,16 @@ class ImportFileClass(object):
             self.fileNode.parm("groupnames").set(4)
 
     @err_catcher(name=__name__)
-    def importFBX(self, importPath, taskName):
+    def importFBX(self, importPath: str, taskName: str) -> bool:
+        """Import an FBX file.
+        
+        Args:
+            importPath: Path to FBX file.
+            taskName: Task identifier for import organization.
+            
+        Returns:
+            True if import was successful.
+        """
         if self.isPrismImportNode(self.node):
             self.importFile(importPath, taskName)
         else:
@@ -509,7 +696,16 @@ class ImportFileClass(object):
             self.node.layoutChildren()
 
     @err_catcher(name=__name__)
-    def importRedshiftProxy(self, importPath, taskName):
+    def importRedshiftProxy(self, importPath: str, taskName: str) -> bool:
+        """Import a Redshift Proxy file.
+        
+        Args:
+            importPath: Path to Redshift Proxy file.
+            taskName: Task identifier for import organization.
+            
+        Returns:
+            True if import was successful.
+        """
         if not hou.nodeType(hou.sopNodeTypeCategory(), "Redshift_Proxy_Output"):
             msg = (
                 "Format is not supported, because Redshift is not available in Houdini."
@@ -533,7 +729,16 @@ class ImportFileClass(object):
         self.node.parm("RS_objprop_proxy_file").set(parmPath)
 
     @err_catcher(name=__name__)
-    def importFile(self, importPath, taskName):
+    def importFile(self, importPath: str, taskName: Optional[str] = None) -> bool:
+        """Import a generic file using appropriate handler.
+        
+        Args:
+            importPath: Path to file to import.
+            taskName: Optional task identifier.
+            
+        Returns:
+            True if import was successful.
+        """
         try:
             self.fileNode = self.importTarget.createNode("file")
         except:
@@ -550,7 +755,15 @@ class ImportFileClass(object):
         self.fileNode.parm("file").set(parmPath)
 
     @err_catcher(name=__name__)
-    def getImportNetworkBox(self, create=True):
+    def getImportNetworkBox(self, create: bool = True) -> Optional[Any]:
+        """Get or create the import network box.
+        
+        Args:
+            create: Whether to create network box if it doesn't exist.
+            
+        Returns:
+            Houdini network box node, or None if not found.
+        """
         nwBox = hou.node("/obj").findNetworkBox("Import")
         if not nwBox and create:
             nwBox = hou.node("/obj").createNetworkBox("Import")
@@ -559,7 +772,12 @@ class ImportFileClass(object):
         return nwBox
 
     @err_catcher(name=__name__)
-    def addNodeToImportNetworkBox(self, node):
+    def addNodeToImportNetworkBox(self, node: Any) -> None:
+        """Add a node to the import network box.
+        
+        Args:
+            node: Houdini node to add to network box.
+        """
         nwBox = self.getImportNetworkBox()
         nwBox.addNode(node)
         nwBox.fitAroundContents()
@@ -572,14 +790,28 @@ class ImportFileClass(object):
         node.setColor(hou.Color(0.451, 0.369, 0.796))
 
     @err_catcher(name=__name__)
-    def removeImportNetworkBox(self, force=False):
+    def removeImportNetworkBox(self, force: bool = False) -> None:
+        """Remove the import network box if empty.
+        
+        Args:
+            force: Whether to force removal even if not empty.
+        """
         nwBox = self.getImportNetworkBox(create=False)
         if nwBox:
             if not nwBox.nodes() or force:
                 nwBox.destroy()
 
     @err_catcher(name=__name__)
-    def createImportNodes(self, importPath, cacheData=None):
+    def createImportNodes(self, importPath: str, cacheData: Optional[Dict[str, Any]] = None) -> bool:
+        """Create Houdini import nodes for the specified file.
+        
+        Args:
+            importPath: Path to file to import.
+            cacheData: Optional cache metadata.
+            
+        Returns:
+            True if nodes were created successfully.
+        """
         if self.node is not None:
             try:
                 self.node.destroy()
@@ -602,7 +834,17 @@ class ImportFileClass(object):
         self.addNodeToImportNetworkBox(self.node)
 
     @err_catcher(name=__name__)
-    def handleImport(self, importPath, cacheData=None, objMerge=True):
+    def handleImport(self, importPath: str, cacheData: Optional[Dict[str, Any]] = None, objMerge: bool = True) -> bool:
+        """Handle import operation using appropriate handler for file type.
+        
+        Args:
+            importPath: Path to file to import.
+            cacheData: Optional cache metadata.
+            objMerge: Whether to create object merge nodes.
+            
+        Returns:
+            True if import was successful.
+        """
         if self.isShotCam(importPath):
             self.importShotCam(importPath, cacheData)
         else:
@@ -643,7 +885,16 @@ class ImportFileClass(object):
             self.objMerge()
 
     @err_catcher(name=__name__)
-    def handleUpdate(self, importPath, cacheData=None):
+    def handleUpdate(self, importPath: str, cacheData: Optional[Dict[str, Any]] = None) -> bool:
+        """Handle update operation for existing import.
+        
+        Args:
+            importPath: Path to updated file.
+            cacheData: Optional cache metadata.
+            
+        Returns:
+            True if update was successful.
+        """
         extension = os.path.splitext(importPath)[1]
         if extension in self.importHandlers:
             self.importHandlers[extension]["update"](importPath, cacheData)
@@ -651,7 +902,16 @@ class ImportFileClass(object):
             self.updateImportNodes(importPath, cacheData)
 
     @err_catcher(name=__name__)
-    def updateImportNodes(self, importPath, cacheData=None):
+    def updateImportNodes(self, importPath: str, cacheData: Optional[Dict[str, Any]] = None) -> bool:
+        """Update existing import nodes with new file path.
+        
+        Args:
+            importPath: New import file path.
+            cacheData: Optional cache metadata.
+            
+        Returns:
+            True if update was successful.
+        """
         prevTaskName = self.node.name().split("_")[-1]
         cacheData = cacheData or {}
         taskName = cacheData.get("product")
@@ -696,7 +956,15 @@ class ImportFileClass(object):
             self.core.appPlugin.setNodeParm(self.fileNode, pathParm, val=parmPath)
 
     @err_catcher(name=__name__)
-    def importObject(self, objMerge=True):
+    def importObject(self, objMerge: bool = True) -> bool:
+        """Import object from current import path.
+        
+        Args:
+            objMerge: Whether to create object merge nodes.
+            
+        Returns:
+            True if import was successful.
+        """
         if self.stateManager.standalone:
             return False
 
@@ -793,7 +1061,13 @@ class ImportFileClass(object):
         return True
 
     @err_catcher(name=__name__)
-    def importLatest(self, refreshUi=True, selectedStates=True):
+    def importLatest(self, refreshUi: bool = True, selectedStates: bool = True) -> None:
+        """Import the latest version of the file.
+        
+        Args:
+            refreshUi: Whether to refresh UI after import.
+            selectedStates: Whether to only update selected states.
+        """
         if refreshUi:
             self.updateUi()
 
@@ -823,7 +1097,8 @@ class ImportFileClass(object):
         self.stateManager.applyChangesToSelection = prevState
 
     @err_catcher(name=__name__)
-    def objMerge(self):
+    def objMerge(self) -> None:
+        """Create object merge nodes for imported geometry."""
         if not self.core.uiAvailable:
             return
 
@@ -880,7 +1155,12 @@ class ImportFileClass(object):
         mNode.setCurrent(True, clear_all_selected=True)
 
     @err_catcher(name=__name__)
-    def checkLatestVersion(self):
+    def checkLatestVersion(self) -> Optional[str]:
+        """Check if a newer version is available.
+        
+        Returns:
+            Latest version string if newer version exists, None otherwise.
+        """
         path = self.getImportPath()
         curVersionName = self.core.products.getVersionFromFilepath(path) or ""
         curVersionData = {"version": curVersionName, "path": path}
@@ -893,7 +1173,12 @@ class ImportFileClass(object):
         return curVersionData, latestVersionData
 
     @err_catcher(name=__name__)
-    def setStateColor(self, status):
+    def setStateColor(self, status: str) -> None:
+        """Set state item color based on version status.
+        
+        Args:
+            status: Version status ('ok', 'warning', 'error').
+        """
         if status == "ok":
             statusColor = QColor(0, 130, 0)
         elif status == "warning":
@@ -907,7 +1192,8 @@ class ImportFileClass(object):
         self.stateManager.tw_import.repaint()
 
     @err_catcher(name=__name__)
-    def updateUi(self):
+    def updateUi(self) -> None:
+        """Update all UI elements based on current state."""
         importPath = self.getImportPath()
         if importPath and os.path.splitext(importPath)[1] == ".hda":
             self.gb_options.setVisible(False)
@@ -1002,7 +1288,8 @@ class ImportFileClass(object):
         self.b_objMerge.setVisible(not isShotCam)
 
     @err_catcher(name=__name__)
-    def removeNameSpaces(self):
+    def removeNameSpaces(self) -> None:
+        """Remove namespaces from imported geometry nodes."""
         if not self.fileNode:
             msg = "No valid node connected."
             self.core.popup(msg)
@@ -1045,11 +1332,22 @@ class ImportFileClass(object):
         self.fileNode.parent().layoutChildren()
 
     @err_catcher(name=__name__)
-    def preDelete(self, item, silent=False):
+    def preDelete(self, item: Any, silent: bool = False) -> None:
+        """Perform cleanup before state deletion.
+        
+        Args:
+            item: State item being deleted.
+            silent: Whether to suppress user prompts.
+        """
         self.core.appPlugin.sm_preDelete(self, item, silent)
 
     @err_catcher(name=__name__)
-    def getStateProps(self):
+    def getStateProps(self) -> Dict[str, Any]:
+        """Get state properties for serialization.
+        
+        Returns:
+            Dictionary containing state properties.
+        """
         try:
             curNode = self.node.path()
             self.node.setUserData("PrismPath", curNode)

@@ -39,6 +39,7 @@ import random
 import logging
 import tempfile
 import re
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import nuke
 if nuke.env.get("gui"):
@@ -67,12 +68,31 @@ try:
 except:
     # err_catcher = lambda name: lambda func, *args, **kwargs: func(*args, **kwargs)
     from functools import wraps
-    def err_catcher(name):
+    def err_catcher(name: str) -> Any:
+        """Create error catching decorator (fallback when Prism not available).
+        
+        Args:
+            name: Module name for error logging
+            
+        Returns:
+            Decorator function
+        """
         return lambda x, y=name, z=False: err_handler(x, name=y, plugin=z)
 
-    def err_handler(func, name="", plugin=False):
+    def err_handler(func: Any, name: str = "", plugin: bool = False) -> Any:
+        """Wrap function with error handling (fallback when Prism not available).
+        
+        Args:
+            func: Function to wrap
+            name: Module name for error logging
+            plugin: Whether this is a plugin function
+            
+        Returns:
+            Wrapped function
+        """
         @wraps(func)
-        def func_wrapper(*args, **kwargs):
+        def func_wrapper(*args: Any, **kwargs: Any) -> Any:
+            """Execute wrapped function (no-op wrapper when Prism unavailable)."""
             return func(*args, **kwargs)
 
         return func_wrapper
@@ -82,7 +102,16 @@ logger = logging.getLogger(__name__)
 
 
 class Prism_Nuke_Functions(object):
-    def __init__(self, core, plugin):
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize Nuke functions module.
+        
+        Sets up callbacks for scene events, file drops, environment variables,
+        and OCIO refresh handlers.
+        
+        Args:
+            core: The Prism core instance
+            plugin: The plugin instance
+        """
         self.core = core
         self.plugin = plugin
 
@@ -112,8 +141,18 @@ class Prism_Nuke_Functions(object):
         nuke.addOnUserCreate(self.refreshOcio, nodeClass="Root")
         self.isRenderingFlipbook = False
 
+        if os.getenv("PRISM_NUKE_LOAD_OIIO", "0") == "0":  # OIIO seems to crash Nuke
+            self.core.plugins.monkeyPatch(self.core.media.getOIIO, lambda: None, self.plugin)
+
     @err_catcher(name=__name__)
-    def startup(self, origin):
+    def startup(self, origin: Any) -> None:
+        """Execute Nuke plugin startup sequence.
+        
+        Initializes Qt parent, adds plugin paths, menus, and callbacks.
+        
+        Args:
+            origin: The Prism core instance initiating startup
+        """
         if self.core.uiAvailable:
             origin.timer.stop()
 
@@ -130,10 +169,10 @@ class Prism_Nuke_Functions(object):
             # origin.messageParent = QWidget()
             # origin.messageParent.setParent(nukeQtParent, Qt.Window)
             origin.messageParent = nukeQtParent
-            if platform.system() != "Windows" and self.core.useOnTop:
-                origin.messageParent.setWindowFlags(
-                    origin.messageParent.windowFlags() ^ Qt.WindowStaysOnTopHint
-                )
+            # if platform.system() != "Windows" and self.core.useOnTop:  # not needed in newer Nuke versions and seems to crash Nuke
+            #     origin.messageParent.setWindowFlags(
+            #         origin.messageParent.windowFlags() ^ Qt.WindowStaysOnTopHint
+            #     )
 
         self.addPluginPaths()
         if self.core.uiAvailable:
@@ -142,7 +181,8 @@ class Prism_Nuke_Functions(object):
         self.addCallbacks()
 
     @err_catcher(name=__name__)
-    def addPluginPaths(self):
+    def addPluginPaths(self) -> None:
+        """Add Prism Gizmos directory to Nuke's plugin path."""
         gdir = os.path.join(
             os.path.abspath(os.path.dirname(os.path.dirname(__file__))), "Gizmos"
         )
@@ -150,14 +190,24 @@ class Prism_Nuke_Functions(object):
         nuke.pluginAddPath(gdir)
 
     @err_catcher(name=__name__)
-    def addMenus(self):
+    def getMultiShotEnabled(self) -> bool:
+        """Check if Nuke multi-shot mode is enabled.
+        
+        Returns:
+            True if Nuke 17+ and PRISM_NUKE_ENABLE_MULTISHOT=1
+        """
+        return (nuke.NUKE_VERSION_MAJOR >= 17) and os.getenv("PRISM_NUKE_ENABLE_MULTISHOT", "0") == "1"
+
+    @err_catcher(name=__name__)
+    def addMenus(self) -> None:
+        """Add Prism menu items to Nuke's menu bar and toolbar."""
         nuke.menu("Nuke").addCommand("Prism/Save", self.saveScene, "Ctrl+s")
         nuke.menu("Nuke").addCommand("Prism/Save Version", self.core.saveScene, "Alt+Shift+s")
         nuke.menu("Nuke").addCommand("Prism/Save Comment...", self.core.saveWithComment, "Ctrl+Shift+S")
         nuke.menu("Nuke").addCommand("Prism/Project Browser...", self.core.projectBrowser)
         nuke.menu("Nuke").addCommand("Prism/Settings...", self.core.prismSettings)
         nuke.menu("Nuke").addCommand("Prism/Manage Media Versions...", self.openMediaVersionsDialog)
-        if (nuke.NUKE_VERSION_MAJOR >= 16) or (nuke.NUKE_VERSION_MAJOR == 15 and nuke.NUKE_VERSION_MINOR >= 2) and os.getenv("PRISM_NUKE_ENABLE_MULTISHOT", "0") == "1":
+        if self.getMultiShotEnabled():
             nuke.menu("Nuke").addCommand("Prism/Import Shots...", self.onImportShotsTriggered)
 
         nuke.menu("Nuke").addCommand("Prism/Export Nodes...", self.onExportTriggered)
@@ -178,25 +228,43 @@ class Prism_Nuke_Functions(object):
             toolbar.addCommand("Prism/WritePrism", lambda: nuke.createNode("WritePrism"), "w", shortcutContext=2)
 
     @err_catcher(name=__name__)
-    def addCallbacks(self):
+    def addCallbacks(self) -> None:
+        """Register Nuke callbacks for script events and file operations."""
         nuke.addOnScriptLoad(self.core.sceneOpen)
         nuke.addFilenameFilter(self.expandEnvVarsInFilepath)
         nuke.addOnScriptSave(self.core.scenefileSaved)
         nuke.addOnUserCreate(self.onUserNodeCreated)
-        if os.getenv("PRISM_NUKE_ENABLE_MULTISHOT", "0") == "1":
+        if self.getMultiShotEnabled():
             nuke.addKnobChanged(self.onRootKnobChanged, node=nuke.Root())
+            nuke.addAfterUserSetGsvValue(self.onAfterUserSetGsvValue)
 
         import nukescripts
         nukescripts.drop.addDropDataCallback(self.dropHandler)
 
     @err_catcher(name=__name__)
-    def dropHandler(self, mimeType, text):
+    def dropHandler(self, mimeType: str, text: str) -> Optional[bool]:
+        """Handle drag-and-drop of media files into Nuke.
+        
+        Creates Read nodes for dropped image sequences or files.
+        
+        Args:
+            mimeType: MIME type of dropped data
+            text: File or directory path that was dropped
+            
+        Returns:
+            True if media was imported successfully, None otherwise
+        """
         if not getattr(self.core, "projectPath", None):
             return
 
         text = text.replace("\\", "/")
         useRel = self.core.getConfig("nuke", "useRelativePaths", dft=False, config="user")
-        if os.path.isdir(text):
+        try:
+            isDir = os.path.isdir(text)
+        except Exception:
+            return None
+
+        if isDir:
             srcs = self.core.media.getImgSources(text)
         elif os.path.isfile(text):
             srcs = [text]
@@ -228,7 +296,15 @@ class Prism_Nuke_Functions(object):
                 return True
 
     @err_catcher(name=__name__)
-    def makePathRelative(self, path):
+    def makePathRelative(self, path: str) -> str:
+        """Convert absolute path to project-relative path using PRISM_JOB variable.
+        
+        Args:
+            path: Absolute file path
+            
+        Returns:
+            Path with project root replaced by %PRISM_JOB or %PRISM_JOB%
+        """
         path = path.replace("\\", "/")
         prjPath = self.core.projectPath.replace("\\", "/").rstrip("/")
         newVars = (nuke.NUKE_VERSION_MAJOR >= 16) or (nuke.NUKE_VERSION_MAJOR == 15 and nuke.NUKE_VERSION_MINOR >= 2)
@@ -240,7 +316,17 @@ class Prism_Nuke_Functions(object):
         return relPath
 
     @err_catcher(name=__name__)
-    def expandEnvVarsInFilepath(self, path):
+    def expandEnvVarsInFilepath(self, path: str) -> str:
+        """Expand environment variables in file paths.
+        
+        Replaces %PRISM_JOB% with actual project path when relative paths are enabled.
+        
+        Args:
+            path: File path potentially containing environment variables
+            
+        Returns:
+            Expanded file path
+        """
         if not self.core.getConfig("nuke", "useRelativePaths", dft=False, config="user"):
             return path
 
@@ -252,7 +338,16 @@ class Prism_Nuke_Functions(object):
         return expanded_path
 
     @err_catcher(name=__name__)
-    def updatedEnvironmentVars(self, reason, envVars, beforeRefresh=False):
+    def updatedEnvironmentVars(self, reason: str, envVars: List[Dict[str, str]], beforeRefresh: bool = False) -> None:
+        """Handle environment variable updates.
+        
+        Refreshes OCIO configuration when OCIO environment variable changes.
+        
+        Args:
+            reason: Reason for update (e.g., "refreshProject", "unloadProject")
+            envVars: List of changed environment variables
+            beforeRefresh: Whether this is called before project refresh
+        """
         doReload = False
 
         if reason == "refreshProject" and getattr(self, "unloadedOCIO", False):
@@ -271,17 +366,32 @@ class Prism_Nuke_Functions(object):
             self.refreshOcio()
 
     @err_catcher(name=__name__)
-    def refreshOcio(self):
+    def refreshOcio(self) -> None:
+        """Refresh Nuke's OCIO color management configuration.
+        
+        Updates Nuke's root node to use custom OCIO config from environment variable.
+        """
         ocio = os.getenv("OCIO", "")
         if ocio:
             r = nuke.root()
-            r["colorManagement"].setValue("OCIO")
+            try:
+                r["colorManagement"].setValue("OCIO")
+            except Exception:
+                return
+
             r["OCIO_config"].setValue("custom")
             r["customOCIOConfigPath"].setValue(ocio.replace("\\", "/"))
             r.knob("reloadConfig").execute()
 
     @err_catcher(name=__name__)
-    def sceneOpen(self, origin):
+    def sceneOpen(self, origin: Any) -> None:
+        """Handle scene open event.
+        
+        Starts autosave timer if enabled.
+        
+        Args:
+            origin: The Prism core instance
+        """
         if self.core.shouldAutosaveTimerRun():
             origin.startAutosaveTimer()
 
@@ -304,13 +414,27 @@ class Prism_Nuke_Functions(object):
         self.refreshWriteNodes()
 
     @err_catcher(name=__name__)
-    def onShowVersionsClicked(self, button):
+    def onShowVersionsClicked(self, button: Any) -> None:
+        """Handle Show Versions button click from media update notification.
+        
+        Args:
+            button: The button that was clicked
+        """
         result = button.text()
         if result == "Show Versions...":
             self.openMediaVersionsDialog()
 
     @err_catcher(name=__name__)
-    def getCurrentFileName(self, origin, path=True):
+    def getCurrentFileName(self, origin: Any, path: bool = True) -> str:
+        """Get current Nuke script filename.
+        
+        Args:
+            origin: The calling instance
+            path: If True return full path, if False return basename only
+            
+        Returns:
+            Current script filepath or empty string if no script loaded
+        """
         try:
             currentFileName = nuke.value("root.name")
             if currentFileName:
@@ -328,15 +452,43 @@ class Prism_Nuke_Functions(object):
         return currentFileName
 
     @err_catcher(name=__name__)
-    def getCurrentSceneFiles(self, origin):
+    def getCurrentSceneFiles(self, origin: Any) -> List[str]:
+        """Get list of files associated with current scene.
+        
+        Args:
+            origin: The calling instance
+            
+        Returns:
+            List containing current scene filepath
+        """
         return [self.core.getCurrentFileName()]
 
     @err_catcher(name=__name__)
-    def getSceneExtension(self, origin):
+    def getSceneExtension(self, origin: Any) -> str:
+        """Get the default scene file extension.
+        
+        Args:
+            origin: The calling instance
+            
+        Returns:
+            Default Nuke script extension (.nk)
+        """
         return self.sceneFormats[0]
 
     @err_catcher(name=__name__)
-    def saveScene(self, origin=None, filepath=None, details={}):
+    def saveScene(self, origin: Optional[Any] = None, filepath: Optional[str] = None, details: Optional[Dict[str, Any]] = None) -> str:
+        """Save the current Nuke script.
+        
+        Args:
+            origin: The calling instance
+            filepath: Destination filepath, or None to save to current location
+            details: Dictionary of save details
+            
+        Returns:
+            Saved filepath
+        """
+        if details is None:
+            details = {}
         try:
             if filepath:
                 return nuke.scriptSaveAs(filename=filepath, overwrite=1)
@@ -347,57 +499,133 @@ class Prism_Nuke_Functions(object):
             return ""
 
     @err_catcher(name=__name__)
-    def getImportPaths(self, origin):
+    def getImportPaths(self, origin: Any) -> bool:
+        """Get import paths from the scene.
+        
+        Args:
+            origin: The calling instance
+            
+        Returns:
+            False (not implemented for Nuke)
+        """
         return False
 
     @err_catcher(name=__name__)
-    def getFrameRange(self, origin):
+    def getFrameRange(self, origin: Any) -> List[float]:
+        """Get current frame range from Nuke script.
+        
+        Args:
+            origin: The calling instance
+            
+        Returns:
+            List containing [start_frame, end_frame]
+        """
         startframe = nuke.root().knob("first_frame").value()
         endframe = nuke.root().knob("last_frame").value()
 
         return [startframe, endframe]
 
     @err_catcher(name=__name__)
-    def getCurrentFrame(self):
+    def getCurrentFrame(self) -> float:
+        """Get current frame number.
+        
+        Returns:
+            Current frame in timeline
+        """
         currentFrame = nuke.root().knob("frame").value()
         return currentFrame
 
     @err_catcher(name=__name__)
-    def setFrameRange(self, origin, startFrame, endFrame):
+    def setFrameRange(self, origin: Any, startFrame: Union[int, float], endFrame: Union[int, float]) -> None:
+        """Set frame range in Nuke script.
+        
+        Args:
+            origin: The calling instance
+            startFrame: First frame
+            endFrame: Last frame
+        """
         nuke.root().knob("first_frame").setValue(float(startFrame))
         nuke.root().knob("last_frame").setValue(float(endFrame))
 
     @err_catcher(name=__name__)
-    def getFPS(self, origin):
+    def getFPS(self, origin: Any) -> Any:
+        """Get frames per second from Nuke script.
+        
+        Args:
+            origin: The calling instance
+            
+        Returns:
+            Frames per second
+        """
         return nuke.knob("root.fps")
 
     @err_catcher(name=__name__)
-    def setFPS(self, origin, fps):
+    def setFPS(self, origin: Any, fps: Union[int, float]) -> Any:
+        """Set frames per second in Nuke script.
+        
+        Args:
+            origin: The calling instance
+            fps: Frames per second
+            
+        Returns:
+            Result of nuke.knob() call
+        """
         return nuke.knob("root.fps", str(fps))
 
     @err_catcher(name=__name__)
-    def getResolution(self):
+    def getResolution(self) -> List[int]:
+        """Get resolution from Nuke script format.
+        
+        Returns:
+            List containing [width, height]
+        """
         resFormat = [nuke.root().width(), nuke.root().height()]
         return resFormat
 
     @err_catcher(name=__name__)
-    def setResolution(self, width=None, height=None, pixelAspect=None):
+    def setResolution(self, width: Optional[int] = None, height: Optional[int] = None, pixelAspect: Optional[float] = None) -> Any:
+        """Set resolution in Nuke script.
+        
+        Args:
+            width: Image width in pixels
+            height: Image height in pixels
+            pixelAspect: Pixel aspect ratio
+            
+        Returns:
+            Result of nuke.knob() call
+        """
         if pixelAspect:
             return nuke.knob("root.format", "%s %s 0 0 %s %s %s" % (width, height, width, height, pixelAspect))
         else:
             return nuke.knob("root.format", "%s %s" % (width, height))
 
     @err_catcher(name=__name__)
-    def getPixelAspectRatio(self):
+    def getPixelAspectRatio(self) -> float:
+        """Get pixel aspect ratio from Nuke script.
+        
+        Returns:
+            Pixel aspect ratio
+        """
         return nuke.root().pixelAspect()
 
     @err_catcher(name=__name__)
-    def setPixelAspectRatio(self, pixelAspect):
+    def setPixelAspectRatio(self, pixelAspect: float) -> None:
+        """Set pixel aspect ratio in Nuke script.
+        
+        Args:
+            pixelAspect: Pixel aspect ratio
+        """
+        fmt = nuke.root().format()
         res = self.getResolution()
         self.setResolution(res[0], res[1], pixelAspect)
 
     @err_catcher(name=__name__)
-    def updateNukeNodes(self):
+    def updateNukeNodes(self) -> None:
+        """Update selected Read nodes to latest media versions.
+        
+        Scans selected Read nodes and updates file paths to use the latest
+        available versions from Prism's media products.
+        """
         updatedNodes = []
 
         for i in nuke.selectedNodes():
@@ -452,20 +680,55 @@ class Prism_Nuke_Functions(object):
     #     nukescripts.showRenderDialog(nodes, False)
 
     @err_catcher(name=__name__)
-    def getCamNodes(self, origin, cur=False):
+    def getCamNodes(self, origin: Any, cur: bool = False) -> List[str]:
+        """Get list of cameras in the scene.
+        
+        Args:
+            origin: The calling instance
+            cur: If True, only return currently selected camera
+            
+        Returns:
+            List of camera names
+        """
         sceneCams = ["nuke"]
         return sceneCams
 
     @err_catcher(name=__name__)
-    def getCamName(self, origin, handle):
+    def getCamName(self, origin: Any, handle: Any) -> Any:
+        """Get name of a camera from its handle.
+        
+        Args:
+            origin: The calling instance
+            handle: Camera handle
+            
+        Returns:
+            Camera name (same as handle)
+        """
         return handle
 
     @err_catcher(name=__name__)
-    def isNodeValid(self, origin, handle):
+    def isNodeValid(self, origin: Any, handle: Any) -> bool:
+        """Check if a node handle is valid.
+        
+        Args:
+            origin: The calling instance
+            handle: Node handle to check
+            
+        Returns:
+            True (all nodes considered valid in Nuke)
+        """
         return True
 
     @err_catcher(name=__name__)
-    def readNode_onBrowseClicked(self, node, quiet=False):
+    def readNode_onBrowseClicked(self, node: Any, quiet: bool = False) -> None:
+        """Handle Browse button click on Read node.
+        
+        Opens media browser dialog to select media files.
+        
+        Args:
+            node: The Read node
+            quiet: If True, suppress error popups
+        """
         if hasattr(self, "dlg_media"):
             self.dlg_media.close()
 
@@ -480,7 +743,15 @@ class Prism_Nuke_Functions(object):
         self.dlg_media.show()
 
     @err_catcher(name=__name__)
-    def readNode_mediaSelected(self, node, version):
+    def readNode_mediaSelected(self, node: Any, version: Dict[str, Any]) -> None:
+        """Handle media selection from browser for Read node.
+        
+        Sets the selected media version as the Read node's file path.
+        
+        Args:
+            node: The Read node
+            version: Selected media version context
+        """
         mediaFiles = self.core.mediaProducts.getFilesFromContext(version)
         validFiles = self.core.media.filterValidMediaFiles(mediaFiles)
         if not validFiles:
@@ -507,31 +778,77 @@ class Prism_Nuke_Functions(object):
             node.knob("file").fromUserText(path)
 
     @err_catcher(name=__name__)
-    def readNode_onOpenInClicked(self, node):
+    def readNode_onOpenInClicked(self, node: Any) -> None:
+        """Handle Open In Explorer button click on Read node.
+        
+        Args:
+            node: The Read node
+        """
         self.core.openFolder(node.knob("file").value())
 
     @err_catcher(name=__name__)
-    def createReadWithBrowse(self):
+    def createReadWithBrowse(self) -> None:
+        """Create a new Read node and immediately open media browser."""
         readNode = nuke.createNode("Read")
         self.readNode_onBrowseClicked(readNode, quiet=True)
 
     @err_catcher(name=__name__)
-    def getIdentifierFromNode(self, node):
-        return node.knob("identifier").evaluate()
+    def getIdentifierFromNode(self, node: Any) -> str:
+        """Get state identifier from a node's knobs.
+        
+        Args:
+            node: The Nuke node
+            
+        Returns:
+            Identifier string or empty string  if none found
+        """
+        try:
+            idf = node.knob("identifier").evaluate()
+        except Exception:
+            idf = ""
+
+        return idf
 
     @err_catcher(name=__name__)
-    def getCommentFromNode(self, node):
+    def getCommentFromNode(self, node: Any) -> str:
+        """Get comment from a node's comment knob.
+        
+        Args:
+            node: The Nuke node
+            
+        Returns:
+            Comment string
+        """
         return node.knob("comment").value()
 
     @err_catcher(name=__name__)
-    def sm_render_fixOutputPath(self, origin, outputName, singleFrame=False, state=None):
+    def sm_render_fixOutputPath(self, origin: Any, outputName: str, singleFrame: bool = False, state: Optional[Any] = None) -> str:
+        """Fix output path for rendering (convert to relative if enabled).
+        
+        Args:
+            origin: The calling instance
+            outputName: Output file path
+            singleFrame: Whether rendering a single frame
+            state: The state manager state
+            
+        Returns:
+            Fixed output path
+        """
         if self.core.getConfig("nuke", "useRelativePaths", dft=False, config="user"):
             outputName = self.makePathRelative(outputName)
 
         return outputName
 
     @err_catcher(name=__name__)
-    def getRenderVersionFromWriteNode(self, node):
+    def getRenderVersionFromWriteNode(self, node: Any) -> Optional[str]:
+        """Get render version string from Write node knobs.
+        
+        Args:
+            node: The Write node or group
+            
+        Returns:
+            Version string (e.g. "v0001") or None if autoversion enabled
+        """
         version = None
         if node.knob("autoversion") and not node.knob("autoversion").value():
             intVersion = node.knob("renderversion").value()
@@ -540,7 +857,21 @@ class Prism_Nuke_Functions(object):
         return version
 
     @err_catcher(name=__name__)
-    def getOutputPath(self, node, group=None, render=False, updateValues=True, force=False):
+    def getOutputPath(self, node: Any, group: Optional[Any] = None, render: bool = False, updateValues: bool = True, force: bool = False) -> str:
+        """Get output path for a Write node.
+        
+        Generates output filepath based on task, file type, version, and location.
+        
+        Args:
+            node: The Write node
+            group: The node group (WritePrism gizmo)
+            render: Whether this is for an actual render
+            updateValues: Whether to update node knob values
+            force: Force path calculation even in non-GUI mode
+            
+        Returns:
+            Output file path
+        """
         if self.isRenderingFlipbook:
             return
 
@@ -585,11 +916,27 @@ class Prism_Nuke_Functions(object):
         return outputName
 
     @err_catcher(name=__name__)
-    def startRender(self, node, group=None, start=None, end=None, dependencies=None):
+    def startRender(self, node: Any, group: Optional[Any] = None, start: Optional[int] = None, end: Optional[int] = None, dependencies: Optional[List[Any]] = None, submit: Optional[bool] = None) -> Optional[bool]:
+        """Start rendering a Write node.
+        
+        Either submits to render farm or renders locally.
+        
+        Args:
+            node: The Write node
+            group: The node group (WritePrism gizmo)
+            start: Start frame
+            end: End frame
+            dependencies: List of dependency nodes 
+            submit: Whether to submit to farm (overrides node knob)
+            
+        Returns:
+            True if render started successfully, None/False otherwise
+        """
         if not group:
             group = node
 
-        if group.knob("submitJob").value():
+        submit = submit if submit is not None else group.knob("submitJob").value()
+        if submit:
             return self.openFarmSubmitter(node, group, dependencies=dependencies)
 
         taskName = self.getIdentifierFromNode(group)
@@ -644,7 +991,13 @@ class Prism_Nuke_Functions(object):
         self.core.callback("postRender", **kwargs)
 
     @err_catcher(name=__name__)
-    def showPrevVersions(self, node, group=None):
+    def showPrevVersions(self, node: Any, group: Optional[Any] = None) -> None:
+        """Show version selection dialog for a Write node.
+        
+        Args:
+            node: The Write node
+            group: The node group (WritePrism gizmo)
+        """
         if not group:
             group = node
 
@@ -659,7 +1012,13 @@ class Prism_Nuke_Functions(object):
         self.dlg_version.show()
 
     @err_catcher(name=__name__)
-    def startedRendering(self, node, outputPath):
+    def startedRendering(self, node: Any, outputPath: str) -> None:
+        """Mark a node as currently rendering.
+        
+        Args:
+            node: The Write node that started rendering
+            outputPath: Output file path being rendered
+        """
         nodePath = node.fullName()
         self.isRendering[nodePath] = [True, outputPath]
 
@@ -677,13 +1036,29 @@ class Prism_Nuke_Functions(object):
                 prevKnobE.setValue(outputPath)
 
     @err_catcher(name=__name__)
-    def isNodeRendering(self, node):
+    def isNodeRendering(self, node: Any) -> bool:
+        """Check if a node is currently rendering.
+        
+        Args:
+            node: The Write node to check
+            
+        Returns:
+            True if node is rendering, False otherwise
+        """
         nodePath = node.fullName()
         rendering = nodePath in self.isRendering and self.isRendering[nodePath][0]
         return rendering
 
     @err_catcher(name=__name__)
-    def getPathFromRenderingNode(self, node):
+    def getPathFromRenderingNode(self, node: Any) -> str:
+        """Get the output path for a rendering node.
+        
+        Args:
+            node: The Write node
+            
+        Returns:
+            Output path or empty string if not rendering
+        """
         nodePath = node.fullName()
         if nodePath in self.isRendering:
             return self.isRendering[nodePath][1]
@@ -691,30 +1066,76 @@ class Prism_Nuke_Functions(object):
             return ""
 
     @err_catcher(name=__name__)
-    def finishedRendering(self, node):
+    def finishedRendering(self, node: Any) -> None:
+        """Mark a node as finished rendering.
+        
+        Args:
+            node: The Write node that finished rendering
+        """
         nodePath = node.fullName()
         if nodePath in self.isRendering:
             del self.isRendering[nodePath]
 
     @err_catcher(name=__name__)
-    def getAppVersion(self, origin):
+    def getAppVersion(self, origin: Any) -> str:
+        """Get Nuke version string.
+        
+        Args:
+            origin: The calling instance
+            
+        Returns:
+            Nuke version string (e.g. "15.0v4")
+        """
         return nuke.NUKE_VERSION_STRING
 
     @err_catcher(name=__name__)
-    def onProjectBrowserStartup(self, origin):
+    def onProjectBrowserStartup(self, origin: Any) -> None:
+        """Handle Project Browser startup event.
+        
+        Disables State Manager action in Nuke.
+        
+        Args:
+            origin: The Project Browser instance
+        """
         origin.actionStateManager.setEnabled(False)
 
     @err_catcher(name=__name__)
-    def onPreMediaPlayerDragged(self, origin, urlList):
+    def onPreMediaPlayerDragged(self, origin: Any, urlList: List[str]) -> None:
+        """Handle pre-drag event for media player.
+        
+        Limits to first URL only.
+        
+        Args:
+            origin: The media player instance
+            urlList: List of URLs being dragged (modified in-place)
+        """
         urlList[:] = [urlList[0]]
 
     @err_catcher(name=__name__)
-    def newScene(self, force=False):
+    def newScene(self, force: bool = False) -> bool:
+        """Create a new empty Nuke script.
+        
+        Args:
+            force: Force new scene without saving
+            
+        Returns:
+            True if successful
+        """
         nuke.scriptClear()
         return True
 
     @err_catcher(name=__name__)
-    def openScene(self, origin, filepath, force=False):
+    def openScene(self, origin: Any, filepath: str, force: bool = False) -> bool:
+        """Open a Nuke script file.
+        
+        Args:
+            origin: The calling instance
+            filepath: Path to the .nk file
+            force: Force open without saving current script
+            
+        Returns:
+            True if successful, False otherwise
+        """
         if os.path.splitext(filepath)[1] not in self.sceneFormats:
             return False
 
@@ -735,7 +1156,16 @@ class Prism_Nuke_Functions(object):
         return True
 
     @err_catcher(name=__name__)
-    def importImages(self, filepath=None, mediaBrowser=None, parent=None):
+    def importImages(self, filepath: Optional[str] = None, mediaBrowser: Optional[Any] = None, parent: Optional[Any] = None) -> None:
+        """Import images into Nuke.
+        
+        Provides options to import current AOV, all AOVs, or layout all AOVs.
+        
+        Args:
+            filepath: File path to import
+            mediaBrowser: Media browser instance
+            parent: Parent widget for dialogs
+        """
         if mediaBrowser:
             if mediaBrowser.origin.getCurrentAOV() and mediaBrowser.origin.w_preview.cb_layer.count() > 1:
                 fString = "Please select an import option:"
@@ -755,7 +1185,17 @@ class Prism_Nuke_Functions(object):
                 return
 
     @err_catcher(name=__name__)
-    def importMedia(self, filepath, start=None, end=None):
+    def importMedia(self, filepath: str, start: Optional[int] = None, end: Optional[int] = None) -> Any:
+        """Import media file(s) as a Read node.
+        
+        Args:
+            filepath: Path to media file or sequence
+            start: Start frame for sequence
+            end: End frame for sequence
+            
+        Returns:
+            The created Read node
+        """
         if "#"*self.core.framePadding not in filepath:
             filepath = self.core.media.getSequenceFromFilename(filepath)
 
@@ -778,7 +1218,12 @@ class Prism_Nuke_Functions(object):
         return read_node
 
     @err_catcher(name=__name__)
-    def nukeImportSource(self, origin):
+    def nukeImportSource(self, origin: Any) -> None:
+        """Import source media product as Read nodes.
+        
+        Args:
+            origin: The media browser instance
+        """
         sourceData = origin.compGetImportSource()
 
         for i in sourceData:
@@ -799,7 +1244,12 @@ class Prism_Nuke_Functions(object):
                 node.knob("last").setValue(lastFrame)
 
     @err_catcher(name=__name__)
-    def nukeImportPasses(self, origin):
+    def nukeImportPasses(self, origin: Any) -> None:
+        """Import all passes/AOVs from media product as Read nodes.
+        
+        Args:
+            origin: The media browser instance
+        """
         sourceData = origin.compGetImportPasses()
 
         for i in sourceData:
@@ -820,7 +1270,15 @@ class Prism_Nuke_Functions(object):
                 node.knob("last").setValue(lastFrame)
 
     @err_catcher(name=__name__)
-    def nukeLayout(self, origin):
+    def nukeLayout(self, origin: Any) -> None:
+        """Layout all AOVs/passes in organized node tree with compositing setup.
+        
+        Creates Read nodes for all passes and sets up merge operations, shuffle
+        nodes, and beauty pass output.
+        
+        Args:
+            origin: The media browser instance
+        """
         if nuke.env["nc"]:
             msg = "This feature is disabled because of the scripting limitations in Nuke non-commercial."
             self.core.popup(msg)
@@ -1080,17 +1538,29 @@ class Prism_Nuke_Functions(object):
     @err_catcher(name=__name__)
     def createBeautyPass(
         self,
-        origin,
-        filePath,
-        firstFrame,
-        lastFrame,
-        curPass,
-        nukeXPos,
-        nukeSetupWidth,
-        nukeBeautyYDistance,
-        nukeBackDropFontSize,
-    ):
-
+        origin: Any,
+        filePath: str,
+        firstFrame: int,
+        lastFrame: int,
+        curPass: str,
+        nukeXPos: int,
+        nukeSetupWidth: int,
+        nukeBeautyYDistance: int,
+        nukeBackDropFontSize: int,
+    ) -> None:
+        """Create beauty/RGB pass Read node in layout.
+        
+        Args:
+            origin: The media browser instance
+            filePath: Path to beauty pass files
+            firstFrame: First frame
+            lastFrame: Last frame
+            curPass: Pass name
+            nukeXPos: X position for node
+            nukeSetupWidth: Width of setup area
+            nukeBeautyYDistance: Y distance for beauty pass
+            nukeBackDropFontSize: Backdrop font size
+        """
         curReadNode = nuke.createNode(
             "Read",
             'file "%s" first %s last %s origfirst %s origlast %s'
@@ -1148,17 +1618,31 @@ class Prism_Nuke_Functions(object):
     @err_catcher(name=__name__)
     def createComponentPass(
         self,
-        origin,
-        filePath,
-        firstFrame,
-        lastFrame,
-        curPass,
-        nukeXPos,
-        nukeSetupWidth,
-        nukeSetupHeight,
-        nukeBackDropFontSize,
-        nukeYDistance,
-    ):
+        origin: Any,
+        filePath: str,
+        firstFrame: int,
+        lastFrame: int,
+        curPass: str,
+        nukeXPos: int,
+        nukeSetupWidth: int,
+        nukeSetupHeight: int,
+        nukeBackDropFontSize: int,
+        nukeYDistance: int,
+    ) -> None:
+        """Create component pass Read node in layout with merge operations.
+        
+        Args:
+            origin: The media browser instance
+            filePath: Path to component pass files
+            firstFrame: First frame
+            lastFrame: Last frame
+            curPass: Pass name
+            nukeXPos: X position for node
+            nukeSetupWidth: Width of setup area
+            nukeSetupHeight: Height of setup area
+            nukeBackDropFontSize: Backdrop font size
+            nukeYDistance: Y distance between passes
+        """
 
         curReadNode = nuke.createNode(
             "Read",
@@ -1244,9 +1728,19 @@ class Prism_Nuke_Functions(object):
 
     @err_catcher(name=__name__)
     def createMaskPass(
-        self, origin, filePath, firstFrame, lastFrame, nukeXPos, nukeSetupWidth, idx
-    ):
-
+        self, origin: Any, filePath: str, firstFrame: int, lastFrame: int, nukeXPos: int, nukeSetupWidth: int, idx: int
+    ) -> None:
+        """Create mask/matte pass Read node with RGB shuffle nodes.
+        
+        Args:
+            origin: The media browser instance
+            filePath: Path to mask pass files
+            firstFrame: First frame
+            lastFrame: Last frame
+            nukeXPos: X position for node
+            nukeSetupWidth: Width of setup area
+            idx: Index for positioning multiple masks
+        """
         curReadNode = nuke.createNode(
             "Read",
             'file "%s" first %s last %s origfirst %s origlast %s'
@@ -1303,9 +1797,19 @@ class Prism_Nuke_Functions(object):
 
     @err_catcher(name=__name__)
     def createUtilityPass(
-        self, origin, filePath, firstFrame, lastFrame, nukeXPos, nukeSetupWidth, idx
-    ):
-
+        self, origin: Any, filePath: str, firstFrame: int, lastFrame: int, nukeXPos: int, nukeSetupWidth: int, idx: int
+    ) -> None:
+        """Create utility pass Read node.
+        
+        Args:
+            origin: The media browser instance
+            filePath: Path to utility pass files
+            firstFrame: First frame
+            lastFrame: Last frame
+            nukeXPos: X position for node
+            nukeSetupWidth: Width of setup area
+            idx: Index for positioning multiple utility passes
+        """
         curReadNode = nuke.createNode(
             "Read",
             'file "%s" first %s last %s origfirst %s origlast %s'
@@ -1327,45 +1831,74 @@ class Prism_Nuke_Functions(object):
         self.utilityNodes.append(curReadNode)
 
     @err_catcher(name=__name__)
-    def postSaveScene(self, origin, filepath, versionUp, comment, isPublish, details):
-        """
-        origin:     PrismCore instance
-        filepath:   The filepath of the scenefile, which was saved
-        versionUp:  (bool) True if this save increments the version of that scenefile
-        comment:    The string, which is used as the comment for the scenefile. Empty string if no comment was given.
-        isPublish:  (bool) True if this save was triggered by a publish
+    def postSaveScene(self, origin: Any, filepath: str, versionUp: bool, comment: str, isPublish: bool, details: Dict[str, Any]) -> None:
+        """Post-save callback to refresh Write nodes after scene save.
+        
+        Args:
+            origin: PrismCore instance
+            filepath: The filepath of the scene that was saved
+            versionUp: True if this save increments the version
+            comment: Comment for the scenefile
+            isPublish: True if this was a publish save
+            details: Additional save details
         """
         self.refreshWriteNodes()
 
     @err_catcher(name=__name__)
-    def postBuildScene(self, **kwargs):
+    def postBuildScene(self, **kwargs: Any) -> None:
+        """Post-build callback after scene build completes.
+        
+        Refreshes OCIO and optionally loads media based on project settings.
+        
+        Args:
+            **kwargs: Keyword arguments with entity, department, task details
+        """
         self.core.appPlugin.refreshOcio()
-        sbData = self.core.getConfig("sceneBuilding", config="project")
-        details = kwargs["entity"].copy()
-        details["department"] = kwargs["department"]
-        details["task"] = kwargs["task"]
-        if "nuke_load_media" in sbData:
-            if self.core.entities.doesContextMatchTaskFilters(sbData["nuke_load_media"], details):
-                self.buildScene()
 
     @err_catcher(name=__name__)
-    def buildScene(self):
-        entity = self.core.getCurrentScenefileData()
-        idfs = self.core.mediaProducts.getIdentifiersFromEntity(entity)
-        plates = []
+    def buildSceneLoadMedia(self, step: Dict[str, Any], context: Dict[str, Any]) -> None:
+        """
+        Scene building step function to load media for an entity.
+        
+        Args:
+            step: Step settings dict.
+            context: Current scene building context dict with entity, department, task info.
+        """
+        idfs = self.core.mediaProducts.getIdentifiersFromEntity(context)
+        matchingIdfs = []
 
         import fnmatch
-        plateNames = [name.strip().lower() for name in os.getenv("PRISM_NUKE_LOAD_MEDIA", "plate*, light*").split(",")]
+        stepsNames = [name.strip().lower() for name in step["settings"][0]["value"].split(",")]
         for idf in idfs:
             group = (self.core.mediaProducts.getGroupFromIdentifier(idf) or "").lower()
             idfName = idf["identifier"].lower()
             valid = False
-            for plateName in plateNames:
-                if fnmatch.fnmatch(group, plateName) or fnmatch.fnmatch(idfName, plateName):
+            for stepsName in stepsNames:
+                if fnmatch.fnmatch(group, stepsName) or fnmatch.fnmatch(idfName, stepsName):
                     valid = True
                     break
 
-            if not valid:
+            if valid:
+                matchingIdfs.append(idfName)
+
+        self.loadMediaForEntity(context, matchingIdfs)
+
+    @err_catcher(name=__name__)
+    def loadMediaForEntity(self, entity: Dict[str, Any], identifiers: list[str]) -> None:
+        """Load media files for an entity based on specified identifiers.
+        
+        Args:
+            entity: The entity dictionary containing media information.
+            identifiers: List of identifier strings to filter media.
+        """
+        idfs = self.core.mediaProducts.getIdentifiersFromEntity(entity)
+        mediaPaths = []
+        identifiers = [idf.lower() for idf in identifiers]
+
+        import fnmatch
+        for idf in idfs:
+            idfName = idf["identifier"].lower()
+            if idfName not in identifiers:
                 continue
 
             version = self.core.mediaProducts.getVersion(entity, idf["identifier"], mediaType=idf.get("mediaType"))
@@ -1374,11 +1907,11 @@ class Prism_Nuke_Functions(object):
 
             platePath = self.core.mediaProducts.getFileFromVersion(version, findExisting=True)
             if platePath:
-                plates.append(platePath)
+                mediaPaths.append(platePath)
 
         readNodes = []
-        for idx, plate in enumerate(plates):
-            readNode = self.core.appPlugin.importMedia(plate)
+        for idx, mediaPath in enumerate(mediaPaths):
+            readNode = self.core.appPlugin.importMedia(mediaPath)
             readNode.setXpos(idx * 200)
             readNode.setYpos(0)
             readNodes.append(readNode)
@@ -1404,29 +1937,41 @@ class Prism_Nuke_Functions(object):
         viewers[0].setYpos(400)
 
     @err_catcher(name=__name__)
-    def refreshWriteNodes(self):
+    def refreshWriteNodes(self) -> None:
+        """Refresh all Write and WritePrism nodes to update output paths."""
         for node in nuke.allNodes():
             nodeClass = node.Class()
-            if nodeClass == "WritePrism":
+            if nodeClass == "WritePrism" and node.knob("refresh"):
                 node.knob("refresh").execute()
             elif nodeClass == "Write":
                 if node.knob("tab_prism") and node.knob("refresh"):
                     node.knob("refresh").execute()
 
     @err_catcher(name=__name__)
-    def onUserNodeCreated(self):
-        node = nuke.thisNode()
+    def onUserNodeCreated(self) -> None:
+        """Callback when user creates a node.
+        
+        Adds Prism UI elements to Write and Read nodes automatically.
+        """
+        try:
+            node = nuke.thisNode()
+            bool(node)
+        except Exception:
+            # Node not properly attached in callback context
+            return
+
         if not node:
             return
 
         try:
             nodeClass = node.Class()
-        except:
-            pass
+        except Exception:
+            # Unable to get node class
+            return
 
         try:
             group = nuke.thisGroup()
-        except:
+        except Exception:
             group = None
 
         addWriteKnobs = os.environ.get("PRISM_NUKE_WRITE_ADD_KNOBS", "1") == "1"
@@ -1458,15 +2003,38 @@ class Prism_Nuke_Functions(object):
         self.core.callback("onNukeNodeCreated", **kwargs)
 
     @err_catcher(name=__name__)
-    def onRootKnobChanged(self):
-        knob = nuke.thisKnob()
-        if knob.name() != "gsv":
+    def onRootKnobChanged(self) -> None:
+        """Callback when root node knob changes.
+        
+        Refreshes GSVs when multi-shot GSV knob is modified.
+        """
+        try:
+            knob = nuke.thisKnob()
+        except (ValueError, RuntimeError):
+            return
+
+        if not knob or knob.name() != "gsv":
             return
 
         self.refreshGSVs()
 
     @err_catcher(name=__name__)
-    def addUiToWriteNode(self, node):
+    def onAfterUserSetGsvValue(self, gsv: Any) -> None:
+        """Callback after GSV value is set.
+        
+        Args:
+            gsv: The GSV that was modified
+        """
+        pass
+        # self.core.popup(gsv)
+
+    @err_catcher(name=__name__)
+    def addUiToWriteNode(self, node: Any) -> None:
+        """Add Prism UI elements (knobs) to a Write node.
+        
+        Args:
+            node: The Write node
+        """
         knobs = ["identifier", "comment", "location", "fileName", "refresh", "startRender", "showPrevVersions", "submitJob", "prevFileName", "openDir"]
         for knob in knobs:
             k = node.knob(knob)
@@ -1522,7 +2090,12 @@ class Prism_Nuke_Functions(object):
         node.knob("afterRender").setValue("try: pcore.appPlugin.finishedRendering(nuke.thisNode())\nexcept: pass")
 
     @err_catcher(name=__name__)
-    def addUiToReadNode(self, node):
+    def addUiToReadNode(self, node: Any) -> None:
+        """Add Prism UI elements (knobs) to a Read node.
+        
+        Args:
+            node: The Read node
+        """
         knobs = ["identifier", "comment", "location", "fileName", "refresh", "startRender", "showPrevVersions", "submitJob", "prevFileName", "openDir"]
         for knob in knobs:
             k = node.knob(knob)
@@ -1543,16 +2116,24 @@ class Prism_Nuke_Functions(object):
         node.addKnob(knobExplorer)
 
     @err_catcher(name=__name__)
-    def readGizmoCreated(self):
+    def readGizmoCreated(self) -> None:
+        """Callback when ReadPrism gizmo is created."""
         pass
 
     @err_catcher(name=__name__)
-    def writeGizmoCreated(self):
+    def writeGizmoCreated(self) -> None:
+        """Callback when WritePrism gizmo is created.
+        
+        Initializes output path, knobs, and default identifier.
+        """
         group = nuke.thisGroup()
         self.getOutputPath(nuke.thisNode(), group)
 
         cmd = "try:\n\tpcore.getPlugin(\"Nuke\").updateNodeUI(\"writePrism\", nuke.toNode(nuke.thisNode().fullName().rsplit(\".\", 1)[0]))\nexcept:\n\tpass"
-        nuke.thisNode().node("WritePrismBase").knob("knobChanged").setValue(cmd)
+        base = nuke.thisNode().node("WritePrismBase")
+        if base:
+            base.knob("knobChanged").setValue(cmd)
+
         idfKnob = nuke.thisNode().knob("identifier")
         if idfKnob and not idfKnob.value():
             idf = self.core.getCurrentScenefileData().get("task")
@@ -1572,7 +2153,15 @@ class Prism_Nuke_Functions(object):
         self.core.callback("onWriteGizmoCreated", **kwargs)
 
     @err_catcher(name=__name__)
-    def updateNodeUI(self, nodeType, node):
+    def updateNodeUI(self, nodeType: str, node: Any) -> None:
+        """Update node UI elements based on node type.
+        
+        Updates location dropdowns and other dynamic UI elements.
+        
+        Args:
+            nodeType: Type of node ("writePrism", "write", "read")
+            node: The node to update
+        """
         if not nuke.env.get("gui"):
             return
 
@@ -1613,7 +2202,13 @@ class Prism_Nuke_Functions(object):
                 pass
 
     @err_catcher(name=__name__)
-    def createRead(self, node, group=None):
+    def createRead(self, node: Any, group: Optional[Any] = None) -> None:
+        """Create Read node from Write node output.
+        
+        Args:
+            node: The Write node
+            group: The node group
+        """
         if group:
             group.end()
 
@@ -1668,7 +2263,14 @@ class Prism_Nuke_Functions(object):
             self.core.popup("No media files found.\nMake sure the rendering is completed and try again.")
 
     @err_catcher(name=__name__)
-    def sm_render_getDeadlineParams(self, origin, dlParams, homeDir):
+    def sm_render_getDeadlineParams(self, origin: Any, dlParams: Dict[str, Any], homeDir: str) -> None:
+        """Get Deadline render farm submission parameters.
+        
+        Args:
+            origin: The state manager instance
+            dlParams: Dictionary of Deadline parameters to populate
+            homeDir: Prism home directory
+        """
         dlParams["jobInfoFile"] = os.path.join(homeDir, "temp", "nuke_submit_info.job")
         dlParams["pluginInfoFile"] = os.path.join(
             homeDir, "temp", "nuke_plugin_info.job"
@@ -1710,7 +2312,17 @@ class Prism_Nuke_Functions(object):
         dlParams["pluginInfos"]["WriteNode"] = origin.node.fullName()
 
     @err_catcher(name=__name__)
-    def openFarmSubmitter(self, node, group=None, dependencies=None):
+    def openFarmSubmitter(self, node: Any, group: Optional[Any] = None, dependencies: Optional[List[Any]] = None) -> Optional[Any]:
+        """Open farm submission dialog for Write node rendering.
+        
+        Args:
+            node: The Write node
+            group: The node group
+            dependencies: List of dependency jobs
+            
+        Returns:
+            Error list if failed, None otherwise
+        """
         if not group:
             group = node
 
@@ -1719,7 +2331,7 @@ class Prism_Nuke_Functions(object):
             self.core.popup("Please choose an identifier")
             return
 
-        fileName = self.getOutputPath(node, group)
+        fileName = self.getOutputPath(node, group, force=True)
         if fileName == "FileNotInPipeline":
             self.core.showFileNotInProjectWarning(title="Warning")
             return
@@ -1745,6 +2357,10 @@ class Prism_Nuke_Functions(object):
                 ]
 
         sm = self.core.getStateManager()
+        if not sm:
+            self.core.popup("Failed to create the State Manager.")
+            return
+
         state = sm.createState("ImageRender")
         state.ui.mediaType = "2drenders"
         if not state.ui.cb_manager.count():
@@ -1772,7 +2388,15 @@ class Prism_Nuke_Functions(object):
             self.submitter.submit()
 
     @err_catcher(name=__name__)
-    def openInClicked(self, node, group=None):
+    def openInClicked(self, node: Any, group: Optional[Any] = None) -> None:
+        """Handle Open In Explorer button click on Write node.
+        
+        Shows context menu with options to play, browse, or open folder.
+        
+        Args:
+            node: The Write node
+            group: The node group
+        """
         if not group:
             group = node
 
@@ -1801,14 +2425,29 @@ class Prism_Nuke_Functions(object):
         menu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def openInMediaBrowser(self, path):
+    def openInMediaBrowser(self, path: str) -> None:
+        """Open path in Prism Media Browser.
+        
+        Args:
+            path: File path to show in Media Browser
+        """
         self.core.projectBrowser()
         self.core.pb.showTab("Media")
         data = self.core.paths.getRenderProductData(path, mediaType="2drenders")
         self.core.pb.mediaBrowser.showRender(entity=data, identifier=data.get("identifier", "") + " (2d)", version=data.get("version"))
 
     @err_catcher(name=__name__)
-    def sm_getExternalFiles(self, origin):
+    def sm_getExternalFiles(self, origin: Any) -> List[Any]:
+        """Get external files referenced by nodes in the scene.
+        
+        Scans Read nodes and other file-referencing nodes for dependencies.
+        
+        Args:
+            origin: The state manager instance
+            
+        Returns:
+            List containing [absolute file paths set, empty list]
+        """
         import re
         from collections import defaultdict
         prevSelectedNodes = nuke.selectedNodes() or []
@@ -1895,20 +2534,45 @@ class Prism_Nuke_Functions(object):
         return [found['absolute'], []]
 
     @err_catcher(name=__name__)
-    def sm_render_preExecute(self, origin):
+    def sm_render_preExecute(self, origin: Any) -> List[str]:
+        """Pre-render execution callback.
+        
+        Args:
+            origin: The state manager instance
+            
+        Returns:
+            List of warnings
+        """
         warnings = []
         return warnings
 
     @err_catcher(name=__name__)
-    def sm_render_preSubmit(self, origin, rSettings):
+    def sm_render_preSubmit(self, origin: Any, rSettings: Dict[str, Any]) -> None:
+        """Pre-farm-submission callback.
+        
+        Args:
+            origin: The state manager instance
+            rSettings: Render settings dictionary
+        """
         pass
 
     @err_catcher(name=__name__)
-    def sm_render_undoRenderSettings(self, origin, rSettings):
+    def sm_render_undoRenderSettings(self, origin: Any, rSettings: Dict[str, Any]) -> None:
+        """Undo render settings changes.
+        
+        Args:
+            origin: The state manager instance
+            rSettings: Render settings dictionary
+        """
         pass
 
     @err_catcher(name=__name__)
-    def captureViewportThumbnail(self):
+    def captureViewportThumbnail(self) -> Optional[Any]:
+        """Capture Nuke viewer as thumbnail image.
+        
+        Returns:
+            QPixmap of captured frame or None if failed
+        """
         if "fnFlipbookRenderer" not in globals():
             logger.debug("failed to capture thumbnail because the \"fnFlipbookRenderer\" module isn't available.")
             return
@@ -1925,7 +2589,12 @@ class Prism_Nuke_Functions(object):
         prevSelectedNodes = nuke.selectedNodes() or []
 
         inputNode = viewer.node().input(inputNr)
-        dlg = renderdialog._getFlipbookDialog(inputNode)
+        try:
+            dlg = renderdialog._getFlipbookDialog(inputNode)
+        except Exception as e:
+            logger.warning("Error getting flipbook dialog for thumbnail capture: %s" % e)
+            return
+
         factory = flipbooking.gFlipbookFactory
         names = factory.getNames()
         flipbook = factory.getApplication(names[0])
@@ -1945,7 +2614,11 @@ class Prism_Nuke_Functions(object):
         return pm
 
     @err_catcher(name=__name__)
-    def onImportShotsTriggered(self):
+    def onImportShotsTriggered(self) -> None:
+        """Handle Import Shots menu action.
+        
+        Opens shot list dialog for multi-shot workflow.
+        """
         dlg = ShotListDlg(self)
         dlg.w_entities.getPage("Shots").tw_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         dlg.entitiesAdded.connect(self.loadShotsIntoNuke)
@@ -1953,7 +2626,14 @@ class Prism_Nuke_Functions(object):
         dlg.exec_()
 
     @err_catcher(name=__name__)
-    def loadShotsIntoNuke(self, data, origin=None, insert=False):
+    def loadShotsIntoNuke(self, data: List[Dict[str, Any]], origin: Optional[Any] = None, insert: bool = False) -> None:
+        """Load shots into Nuke sequencer (multi-shot workflow).
+        
+        Args:
+            data: List of shot data dictionaries
+            origin: The calling instance
+            insert: Insert mode flag
+        """
         node_read = nuke.nodes.Read(name="Shot_Read", xpos=0, ypos=0, file="%{prism.multishot_read}")
         node_switch = nuke.nodes.VariableSwitch(name="Shot_Switch", xpos=0, ypos=400)
         node_switch.connectInput(0, node_read)
@@ -1978,7 +2658,8 @@ class Prism_Nuke_Functions(object):
         self.refreshGSVs()
 
     @err_catcher(name=__name__)
-    def refreshGSVs(self):
+    def refreshGSVs(self) -> None:
+        """Refresh Global Script Variables for multi-shot workflow."""
         try:
             gsv_knob = nuke.root()["gsv"]
         except:
@@ -2081,12 +2762,27 @@ class Prism_Nuke_Functions(object):
             self.refreshGSVs()
 
     @err_catcher(name=__name__)
-    def getShotsFromScene(self):
+    def getShotsFromScene(self) -> List[str]:
+        """Get shot list from Nuke script (multi-shot workflow).
+        
+        Returns:
+            List of shot names
+        """
         knob = nuke.root()["gsv"]
         return knob.getListOptions("prism.shot")
 
     @err_catcher(name=__name__)
-    def onExportTriggered(self, selectedPaths=None):
+    def onExportTriggered(self, selectedPaths: Optional[List[str]] = None) -> Optional[bool]:
+        """Handle Export Nodes menu action.
+        
+        Opens export dialog for selected nodes.
+        
+        Args:
+            selectedPaths: Optional list of file paths
+            
+        Returns:
+            False if file not in pipeline, None otherwise
+        """
         sm = self.core.getStateManager()
         if not sm:
             return
@@ -2113,23 +2809,47 @@ class Prism_Nuke_Functions(object):
         self.dlg_export.show()
 
     @err_catcher(name=__name__)
-    def onStateManagerOpen(self, origin):
+    def onStateManagerOpen(self, origin: Any) -> None:
+        """Callback when State Manager opens.
+        
+        Loads Nuke export state class.
+        
+        Args:
+            origin: The State Manager instance
+        """
         import default_Export
         import default_Export_ui
 
         class NukeExportClass(QWidget, default_Export_ui.Ui_wg_Export, NukeExport, default_Export.ExportClass):
-            def __init__(self):
+            def __init__(self) -> None:
+                """Initialize Nuke export state widget combining default export and Nuke-specific functionality."""
                 QWidget.__init__(self)
                 self.setupUi(self)
 
         origin.loadState(NukeExportClass)
 
     @err_catcher(name=__name__)
-    def sm_export_addObjects(self, origin, objects=None):
+    def sm_export_addObjects(self, origin: Any, objects: Optional[List[Any]] = None) -> None:
+        """Add objects to export state.
+        
+        Args:
+            origin: The export state instance
+            objects: List of objects to add
+        """
         pass
 
     @err_catcher(name=__name__)
-    def sm_export_preExecute(self, origin, startFrame, endFrame):
+    def sm_export_preExecute(self, origin: Any, startFrame: int, endFrame: int) -> List[List[Any]]:
+        """Pre-export execution callback.
+        
+        Args:
+            origin: The export state instance
+            startFrame: First frame
+            endFrame: Last frame
+            
+        Returns:
+            List of warnings
+        """
         warnings = []
 
         if not nuke.selectedNodes():
@@ -2146,16 +2866,40 @@ class Prism_Nuke_Functions(object):
     @err_catcher(name=__name__)
     def sm_export_exportAppObjects(
         self,
-        origin,
-        startFrame,
-        endFrame,
-        outputName,
-    ):
+        origin: Any,
+        startFrame: int,
+        endFrame: Any,
+        outputName: str,
+    ) -> str:
+        """Export selected Nuke nodes to file.
+        
+        Args:
+            origin: The export state instance
+            startFrame: First frame
+            endFrame: Last frame
+            outputName: Output file path
+            
+        Returns:
+            Output file path
+        """
         nuke.nodeCopy(outputName)
         return outputName
 
     @err_catcher(name=__name__)
-    def sm_import_importToApp(self, origin, doImport, update, impFileName):
+    def sm_import_importToApp(self, origin: Any, doImport: Any, update: Any, impFileName: str) -> Dict[str, Any]:
+        """Import file into Nuke.
+        
+        Handles .nk scripts (pasted, livegroup, precomp) and 3D files (obj, fbx, abc).
+        
+        Args:
+            origin: The import state instance
+            doImport: Import mode
+            update: Update mode
+            impFileName: File path to import
+            
+        Returns:
+            Dictionary with result and doImport keys
+        """
         fileName = os.path.splitext(os.path.basename(impFileName))
         result = False
 
@@ -2189,7 +2933,15 @@ class Prism_Nuke_Functions(object):
         return {"result": result, "doImport": doImport}
 
     @err_catcher(name=__name__)
-    def importCamera(self, data, filepath):
+    def importCamera(self, data: Dict[str, Any], filepath: str) -> None:
+        """Import camera from file into Nuke.
+        
+        Creates Camera3, Scene, and ScanlineRender nodes.
+        
+        Args:
+            data: Camera data dictionary
+            filepath: Path to camera file
+        """
         path = filepath.replace("\\", "/")
         node_read = nuke.nodes.Camera3(read_from_file_link=True, file_link=path)
         node_scene = nuke.nodes.Scene(xpos=node_read.xpos()+300, ypos=node_read.ypos())
@@ -2199,7 +2951,17 @@ class Prism_Nuke_Functions(object):
         node_scene.connectInput(0, node_read)
 
     @err_catcher(name=__name__)
-    def productSelectorContextMenuRequested(self, origin, widget, pos, menu):
+    def productSelectorContextMenuRequested(self, origin: Any, widget: Any, pos: Any, menu: Any) -> None:
+        """Add custom menu items to product selector context menu.
+        
+        Adds Import Camera option for FBX/ABC files.
+        
+        Args:
+            origin: The product selector instance
+            widget: The tree widget
+            pos: Click position
+            menu: Context menu
+        """
         if widget == origin.tw_versions:
             row = widget.rowAt(pos.y())
             if row != -1:
@@ -2219,7 +2981,11 @@ class Prism_Nuke_Functions(object):
                         menu.insertAction(0, action)
 
     @err_catcher(name=__name__)
-    def openMediaVersionsDialog(self):
+    def openMediaVersionsDialog(self) -> None:
+        """Open media versions management dialog.
+        
+        Shows dialog to update Read nodes to latest media versions.
+        """
         if hasattr(self, "dlg_mediaVersions") and self.core.isObjectValid(self.dlg_mediaVersions) and self.dlg_mediaVersions.isVisible():
             self.dlg_mediaVersions.close()
 
@@ -2230,14 +2996,32 @@ class Prism_Nuke_Functions(object):
 if nuke.env.get("gui") and "fnFlipbookRenderer" in globals():
     class PrismRenderedFlipbook(fnFlipbookRenderer.SynchronousRenderedFlipbook):
 
-        def __init__(self, flipbookDialog, flipbookToRun):
+        def __init__(self, flipbookDialog: Any, flipbookToRun: Any) -> None:
+            """Initialize Prism flipbook renderer.
+            
+            Args:
+                flipbookDialog: The flipbook dialog instance
+                flipbookToRun: The flipbook application to run
+            """
             fnFlipbookRenderer.SynchronousRenderedFlipbook.__init__(self, flipbookDialog, flipbookToRun)
 
-        def doFlipbook(self, outputpath, frame):
+        def doFlipbook(self, outputpath: str, frame: int) -> None:
+            """Execute flipbook render.
+            
+            Args:
+                outputpath: Output file path
+                frame: Frame number to render
+            """
             self.initializeFlipbookNode()
             self.renderFlipbookNode(outputpath, frame)
 
-        def renderFlipbookNode(self, outputpath, frame):
+        def renderFlipbookNode(self, outputpath: str, frame: int) -> None:
+            """Render flipbook node to file.
+            
+            Args:
+                outputpath: Output file path
+                frame: Frame number to render
+            """
             self._writeNode['file'].setValue(outputpath)
             self._writeNode['file_type'].setValue("jpeg")
             curSpace = self._writeNode['colorspace'].value()
@@ -2269,7 +3053,14 @@ if nuke.env.get("gui") and "fnFlipbookRenderer" in globals():
 
 
 class Farm_Submitter(QDialog):
-    def __init__(self, plugin, state, dependencies=None):
+    def __init__(self, plugin: Any, state: Any, dependencies: Optional[List[Any]] = None) -> None:
+        """Initialize farm submission dialog.
+        
+        Args:
+            plugin: The Nuke plugin instance
+            state: The ImageRender state
+            dependencies: List of dependency jobs
+        """
         super(Farm_Submitter, self).__init__()
         self.plugin = plugin
         self.core = self.plugin.core
@@ -2279,7 +3070,8 @@ class Farm_Submitter(QDialog):
         self.setupUi()
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Setup farm submission dialog UI."""
         self.setWindowTitle("Prism Farm Submitter - %s" % self.state.ui.node.fullName())
         self.lo_main = QVBoxLayout()
         self.setLayout(self.lo_main)
@@ -2305,21 +3097,33 @@ class Farm_Submitter(QDialog):
         self.b_submit.clicked.connect(self.submit)
 
     @err_catcher(name=__name__)
-    def closeEvent(self, event):
+    def closeEvent(self, event: Any) -> None:
+        """Handle dialog close event.
+        
+        Args:
+            event: The close event
+        """
         self.saveCurrentSettings()
 
     @err_catcher(name=__name__)
-    def saveCurrentSettings(self):
+    def saveCurrentSettings(self) -> None:
+        """Save current farm submission settings to user config."""
         settings = self.state.ui.getStateProps()
         self.core.setConfig("nuke", "renderSubmissionSettings", val=settings, config="user")
 
     @err_catcher(name=__name__)
-    def loadSettings(self, settings=None):
+    def loadSettings(self, settings: Optional[Dict[str, Any]] = None) -> None:
+        """Load farm submission settings.
+        
+        Args:
+            settings: Settings dictionary, or None to load from config
+        """
         settings = settings or self.core.getConfig("nuke", "renderSubmissionSettings") or {}
         self.state.ui.loadData(settings)
 
     @err_catcher(name=__name__)
-    def submit(self):
+    def submit(self) -> None:
+        """Submit render job to farm."""
         self.hide()
         self.state.ui.gb_submit.setCheckable(True)
         self.state.ui.gb_submit.setChecked(True)
@@ -2362,7 +3166,13 @@ class ShotListDlg(QDialog):
     entitiesAdded = Signal(object)
     entitiesInserted = Signal(object)
 
-    def __init__(self, origin, parent=None):
+    def __init__(self, origin: Any, parent: Optional[Any] = None) -> None:
+        """Initialize shot list dialog.
+        
+        Args:
+            origin: The Nuke plugin instance
+            parent: Parent widget
+        """
         super(ShotListDlg, self).__init__()
         self.parentDlg = parent
         self.plugin = origin.plugin
@@ -2370,7 +3180,8 @@ class ShotListDlg(QDialog):
         self.setupUi()
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Setup shot list dialog UI."""
         title = "Choose Shots"
 
         self.setWindowTitle(title)
@@ -2397,11 +3208,22 @@ class ShotListDlg(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def itemDoubleClicked(self, item, column):
+    def itemDoubleClicked(self, item: Any, column: int) -> None:
+        """Handle item double click.
+        
+        Args:
+            item: The tree widget item
+            column: Column number
+        """
         self.buttonClicked("add")
 
     @err_catcher(name=__name__)
-    def buttonClicked(self, button):
+    def buttonClicked(self, button: Any) -> None:
+        """Handle button click.
+        
+        Args:
+            button: The button or button text
+        """
         if button == "add" or button.text() in ["Add", "Insert"]:
             entities = self.w_entities.getCurrentData(returnOne=False)
             if isinstance(entities, dict):
@@ -2427,14 +3249,28 @@ class ShotListDlg(QDialog):
         self.close()
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Get recommended dialog size.
+        
+        Returns:
+            QSize with width and height
+        """
         return QSize(500, 500)
 
 
 class NukeExport(object):
     className = "NukeExport"
 
-    def setup(self, state, core, stateManager, node=None, stateData=None):
+    def setup(self, state: Any, core: Any, stateManager: Any, node: Optional[Any] = None, stateData: Optional[Dict[str, Any]] = None) -> None:
+        """Setup Nuke export state.
+        
+        Args:
+            state: The state instance
+            core: The Prism core instance
+            stateManager: The State Manager instance
+            node: Optional node to export
+            stateData: Optional state data to load
+        """
         super(NukeExport, self).setup(state, core, stateManager, node, stateData)
         self.w_name.setVisible(False)
         self.w_range.setVisible(False)
@@ -2450,7 +3286,13 @@ class NukeExport(object):
 
 
 class ExporterDlg(QDialog):
-    def __init__(self, origin, state):
+    def __init__(self, origin: Any, state: Any) -> None:
+        """Initialize node export dialog.
+        
+        Args:
+            origin: The Nuke plugin instance
+            state: The export state
+        """
         super(ExporterDlg, self).__init__()
         self.origin = origin
         self.plugin = self.origin.plugin
@@ -2465,13 +3307,19 @@ class ExporterDlg(QDialog):
         self.setupUi()
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Get recommended dialog size.
+        
+        Returns:
+            QSize with width and height
+        """
         hint = super(ExporterDlg, self).sizeHint()
         hint += QSize(100, 0)
         return hint
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Setup export dialog UI."""
         self.setWindowTitle("Prism - Export Selected Nodes")
         self.lo_main = QVBoxLayout()
         self.setLayout(self.lo_main)
@@ -2482,7 +3330,12 @@ class ExporterDlg(QDialog):
         self.b_submit.clicked.connect(self.submit)
 
     @err_catcher(name=__name__)
-    def closeEvent(self, event):
+    def closeEvent(self, event: Any) -> None:
+        """Handle dialog close event.
+        
+        Args:
+            event: The close event
+        """
         curItem = self.core.sm.getCurrentItem(self.core.sm.activeList)
         if self.state and curItem and id(self.state) == id(curItem):
             self.core.sm.showState()
@@ -2493,7 +3346,8 @@ class ExporterDlg(QDialog):
         event.accept()
 
     @err_catcher(name=__name__)
-    def submit(self):
+    def submit(self) -> None:
+        """Submit export operation with selected nodes."""
         self.hide()
 
         sanityChecks = True
@@ -2530,11 +3384,13 @@ class ExporterDlg(QDialog):
 
 
 class Prism_NoQt(object):
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize Nuke plugin in non-Qt mode (command line rendering)."""
         self.addPluginPaths()
         nuke.addFilenameFilter(self.expandEnvVarsInFilepath)
 
-    def addPluginPaths(self):
+    def addPluginPaths(self) -> None:
+        """Add Prism Gizmos directory to Nuke's plugin path."""
         gdir = os.path.join(
             os.path.abspath(os.path.dirname(os.path.dirname(__file__))), "Gizmos"
         )
@@ -2542,7 +3398,15 @@ class Prism_NoQt(object):
         nuke.pluginAddPath(gdir)
 
     @err_catcher(name=__name__)
-    def expandEnvVarsInFilepath(self, path):
+    def expandEnvVarsInFilepath(self, path: str) -> str:
+        """Expand environment variables in file paths (non-Qt mode).
+        
+        Args:
+            path: File path potentially containing environment variables
+            
+        Returns:
+            Expanded file path
+        """
         if os.getenv("PRISM_NUKE_USE_RELATIVE_PATHS", "1") == "0":
             return path
 
@@ -2555,7 +3419,14 @@ class VersionDlg(QDialog):
 
     versionSelected = Signal(object)
 
-    def __init__(self, parent, node, group):
+    def __init__(self, parent: Any, node: Any, group: Any) -> None:
+        """Initialize version selection dialog.
+        
+        Args:
+            parent: Parent plugin instance
+            node: The Write node
+            group: The node group
+        """
         super(VersionDlg, self).__init__()
         self.plugin = parent
         self.core = self.plugin.core
@@ -2565,7 +3436,12 @@ class VersionDlg(QDialog):
         self.setupUi()
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Setup version selection dialog UI with MediaBrowser.
+        
+        Validates scene is saved in Prism project and node has identifier.
+        Creates UI with embedded MediaBrowser and accept/cancel buttons.
+        """
         filepath = self.core.getCurrentFileName()
         entity = self.core.getScenefileData(filepath)
         if not entity or not entity.get("type"):
@@ -2623,11 +3499,23 @@ class VersionDlg(QDialog):
             return
 
     @err_catcher(name=__name__)
-    def itemDoubleClicked(self, item):
+    def itemDoubleClicked(self, item: Any) -> None:
+        """Handle double-click on version list item.
+        
+        Args:
+            item: The clicked list widget item
+        """
         self.buttonClicked("select")
 
     @err_catcher(name=__name__)
-    def buttonClicked(self, button):
+    def buttonClicked(self, button: Any) -> None:
+        """Handle dialog button clicks.
+        
+        Validates selected version and emits versionSelected signal.
+        
+        Args:
+            button: Either 'select' string or QPushButton object
+        """
         if button == "select" or button.text() == "Use Selected Version":
             version = self.w_browser.getCurrentVersion()
             if not version:
@@ -2650,7 +3538,13 @@ class ReadMediaDialog(QDialog):
 
     mediaSelected = Signal(object)
 
-    def __init__(self, parent, node):
+    def __init__(self, parent: Any, node: Any) -> None:
+        """Initialize media selection dialog.
+        
+        Args:
+            parent: Parent plugin instance
+            node: The Read node to update
+        """
         super(ReadMediaDialog, self).__init__()
         self.plugin = parent
         self.core = self.plugin.core
@@ -2659,7 +3553,11 @@ class ReadMediaDialog(QDialog):
         self.setupUi()
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Setup media selection dialog UI with MediaBrowser.
+        
+        Creates UI with embedded MediaBrowser for navigating entities and selecting media.
+        """
         filepath = self.core.getCurrentFileName()
         entity = self.core.getScenefileData(filepath)
         title = "Select Media"
@@ -2687,11 +3585,23 @@ class ReadMediaDialog(QDialog):
         self.w_browser.navigate([entity])
 
     @err_catcher(name=__name__)
-    def itemDoubleClicked(self, item):
+    def itemDoubleClicked(self, item: Any) -> None:
+        """Handle double-click on version list item.
+        
+        Args:
+            item: The clicked list widget item
+        """
         self.buttonClicked("select")
 
     @err_catcher(name=__name__)
-    def buttonClicked(self, button):
+    def buttonClicked(self, button: Any) -> None:
+        """Handle dialog button clicks.
+        
+        Retrieves selected media (source, AOV, version, or identifier) and emits signal.
+        
+        Args:
+            button: Either 'select' string or QPushButton object
+        """
         if button == "select" or button.text() == "Open":
             data = self.w_browser.getCurrentSource()
             if not data:
@@ -2714,7 +3624,12 @@ class ReadMediaDialog(QDialog):
 class MediaVersionsDialog(QDialog):
     """Non-modal dialog for managing media versions in Read nodes"""
     
-    def __init__(self, plugin):
+    def __init__(self, plugin: Any) -> None:
+        """Initialize media versions management dialog.
+        
+        Args:
+            plugin: The Nuke plugin instance
+        """
         super(MediaVersionsDialog, self).__init__()
         self.plugin = plugin
         self.core = plugin.core
@@ -2726,8 +3641,8 @@ class MediaVersionsDialog(QDialog):
         self.refreshNodes()
     
     @err_catcher(name=__name__)
-    def setupUi(self):
-        """Setup the dialog UI"""
+    def setupUi(self) -> None:
+        """Setup the dialog UI with tree widget and toolbar."""
         self.setWindowTitle("Manage Media Versions")
         self.resize(1200, 600)
         self.core.parentWindow(self)
@@ -2766,8 +3681,8 @@ class MediaVersionsDialog(QDialog):
         self.setLayout(layout)
         
     @err_catcher(name=__name__)
-    def setupColumns(self):
-        """Setup tree widget columns"""
+    def setupColumns(self) -> None:
+        """Setup tree widget columns with proper widths."""
         columns = ["Node Name", "Asset/Shot", "Identifier", "Version", "Status", "Filepath"]
         self.tree.setHeaderLabels(columns)
         
@@ -2780,15 +3695,20 @@ class MediaVersionsDialog(QDialog):
         self.tree.setColumnWidth(5, 400)  # Filepath
     
     @err_catcher(name=__name__)
-    def connectEvents(self):
-        """Connect UI events"""
+    def connectEvents(self) -> None:
+        """Connect UI events to handler methods."""
         self.btn_refresh.clicked.connect(self.refreshNodes)
         self.tree.customContextMenuRequested.connect(self.showContextMenu)
         self.tree.itemSelectionChanged.connect(self.onSelectionChanged)
         self.tree.itemDoubleClicked.connect(self.onItemDoubleClicked)
 
     @err_catcher(name=__name__)
-    def getOutdatedMedia(self):
+    def getOutdatedMedia(self) -> List[Any]:
+        """Get list of Read nodes with update available status.
+        
+        Returns:
+            List of tree widget items with 'update available' status
+        """
         items = []
         for item in self.nodeItems:
             status = item.text(4).lower()
@@ -2798,8 +3718,8 @@ class MediaVersionsDialog(QDialog):
         return items
 
     @err_catcher(name=__name__)
-    def refreshNodes(self):
-        """Scan all Read nodes and populate the tree widget"""
+    def refreshNodes(self) -> None:
+        """Scan all Read nodes and populate the tree widget."""
         self.tree.clear()
         self.nodeItems = []
         
@@ -2839,8 +3759,15 @@ class MediaVersionsDialog(QDialog):
         self.tree.setColumnWidth(3, self.tree.columnWidth(3) + 20)
 
     @err_catcher(name=__name__)
-    def createTreeItem(self, node):
-        """Create a tree widget item for a Read node"""
+    def createTreeItem(self, node: Any) -> Optional[Any]:
+        """Create a tree widget item for a Read node.
+        
+        Args:
+            node: The Read or DeepRead node
+            
+        Returns:
+            QTreeWidgetItem with node information, or None on error
+        """
         filepath = node.knob("file").value() or ""
         entityName = ""
         identifier = ""
@@ -2882,7 +3809,17 @@ class MediaVersionsDialog(QDialog):
         return item
 
     @err_catcher(name=__name__)
-    def getContextFromFilepath(self, filepath):
+    def getContextFromFilepath(self, filepath: str) -> Dict[str, Any]:
+        """Extract Prism context from a file path.
+        
+        Parses file path to extract entity, identifier, version, and other metadata.
+        
+        Args:
+            filepath: Path to the media file
+            
+        Returns:
+            Dictionary with context data (entity, identifier, version, etc.)
+        """
         mediaType = self.core.mediaProducts.getMediaTypeFromPath(filepath) or "2drenders"
         pathData = self.core.paths.getRenderProductData(filepath, mediaType=mediaType)
         if pathData and not pathData.get("identifier"):
@@ -2919,8 +3856,19 @@ class MediaVersionsDialog(QDialog):
         return pathData
     
     @err_catcher(name=__name__)
-    def calculateVersionStatus(self, filepath, currentVersion):
-        """Calculate version status for a media file"""
+    def calculateVersionStatus(self, filepath: str, currentVersion: str) -> Tuple[str, str]:
+        """Calculate version status for a media file.
+        
+        Args:
+            filepath: Path to the media file
+            currentVersion: Current version string from the node
+            
+        Returns:
+            Tuple of (status_text, background_color):
+                - ('latest', '#266D26') if current version is latest
+                - ('update available', '#AF571C') if newer version exists
+                - ('unknown', '#636363') if status cannot be determined
+        """
         if not filepath or not currentVersion:
             return "unknown", "#636363"  # Gray background
         
@@ -2946,11 +3894,18 @@ class MediaVersionsDialog(QDialog):
             return "unknown", "#636363"  # Gray background
 
     @err_catcher(name=__name__)
-    def createVersionComboBox(self, item):
+    def createVersionComboBox(self, item: Any) -> None:
+        """Create version combo box widget for tree item.
+        
+        Populates combo box with available versions and sets current selection.
+        Connects version change signal to update Read node.
+        
+        Args:
+            item: The tree widget item to add combo box to
+        """
         node = item.data(0, Qt.UserRole)["node"]
         filepath = node.knob("file").value() or ""
         filepath = self.plugin.expandEnvVarsInFilepath(filepath)
-        """Create version combo box for the item"""
         combo = QComboBox()
         
         # Get available versions
@@ -2981,8 +3936,15 @@ class MediaVersionsDialog(QDialog):
         self.tree.setItemWidget(item, 3, combo)
 
     @err_catcher(name=__name__)
-    def getAvailableVersions(self, filepath):
-        """Get available versions for a media file"""
+    def getAvailableVersions(self, filepath: str) -> List[str]:
+        """Get available versions for a media file.
+        
+        Args:
+            filepath: Path to the media file
+            
+        Returns:
+            List of version strings sorted in descending order (latest first)
+        """
         mediaType = self.core.mediaProducts.getMediaTypeFromPath(filepath) or "2drenders"
         pathData = self.core.paths.getRenderProductData(filepath, mediaType=mediaType)
         if not pathData:
@@ -3008,8 +3970,18 @@ class MediaVersionsDialog(QDialog):
         return sorted(versionNames, reverse=True)
     
     @err_catcher(name=__name__)
-    def onVersionChanged(self, node, version):
-        """Handle version change in combo box"""
+    def onVersionChanged(self, node: Any, version: str) -> bool:
+        """Handle version change in combo box.
+        
+        Updates the Read node's file path to the selected version.
+        
+        Args:
+            node: The Read node to update
+            version: Version string selected from combo box
+            
+        Returns:
+            True if successful, False otherwise
+        """
         # Get current filepath
         currentPath = node.knob("file").value()
         currentPath = self.plugin.expandEnvVarsInFilepath(currentPath)
@@ -3056,8 +4028,14 @@ class MediaVersionsDialog(QDialog):
         return True
                 
     @err_catcher(name=__name__)
-    def refreshSingleItem(self, node):
-        """Refresh a single tree item"""
+    def refreshSingleItem(self, node: Any) -> None:
+        """Refresh a single tree item.
+        
+        Updates filepath, version, and status for the specified node's tree item.
+        
+        Args:
+            node: The Read node whose tree item should be refreshed
+        """
         # Find the item for this node
         for i in range(self.tree.topLevelItemCount()):
             item = self.tree.topLevelItem(i)
@@ -3085,8 +4063,14 @@ class MediaVersionsDialog(QDialog):
                 break
     
     @err_catcher(name=__name__)
-    def groupItemsByShot(self, items):
-        """Group tree items by shot"""
+    def groupItemsByShot(self, items: List[Any]) -> None:
+        """Group tree items by shot.
+        
+        Creates parent shot items and nests Read nodes under them.
+        
+        Args:
+            items: List of QTreeWidgetItem objects to group
+        """
         shotGroups = {}
         
         for item in items:
@@ -3107,8 +4091,14 @@ class MediaVersionsDialog(QDialog):
             shotGroups[shotName].addChild(item)
 
     @err_catcher(name=__name__)
-    def showContextMenu(self, position):
-        """Show context menu"""
+    def showContextMenu(self, position: Any) -> None:
+        """Show context menu for tree widget.
+        
+        Provides options to update nodes, toggle grouping, and refresh.
+        
+        Args:
+            position: Mouse position in tree widget coordinates
+        """
         menu = QMenu()
         
         # Check if any items are selected
@@ -3136,8 +4126,12 @@ class MediaVersionsDialog(QDialog):
         menu.exec_(self.tree.mapToGlobal(position))
     
     @err_catcher(name=__name__)
-    def updateSelectedToLatest(self):
-        """Update all selected nodes to their latest versions"""
+    def updateSelectedToLatest(self) -> None:
+        """Update all selected nodes to their latest versions.
+        
+        Iterates through selected tree items and updates their Read nodes
+        to the latest available version.
+        """
         selectedItems = self.tree.selectedItems()
         if not selectedItems:
             return
@@ -3195,14 +4189,17 @@ class MediaVersionsDialog(QDialog):
         self.refreshNodes()
     
     @err_catcher(name=__name__)
-    def toggleGroupByShot(self):
-        """Toggle grouping by shot"""
+    def toggleGroupByShot(self) -> None:
+        """Toggle grouping by shot and refresh tree display."""
         self.groupByShot = not self.groupByShot
         self.refreshNodes()
     
     @err_catcher(name=__name__)
-    def onSelectionChanged(self):
-        """Handle tree widget selection change - sync with Nuke node selection"""
+    def onSelectionChanged(self) -> None:
+        """Handle tree widget selection change - sync with Nuke node selection.
+        
+        Synchronizes tree selection with Nuke's node graph selection.
+        """
         try:
             # Get selected tree items
             selectedItems = self.tree.selectedItems()
@@ -3225,8 +4222,15 @@ class MediaVersionsDialog(QDialog):
             logger.warning(f"Failed to sync selection: {str(e)}")
     
     @err_catcher(name=__name__)
-    def onItemDoubleClicked(self, item, column):
-        """Handle double-click on tree item - frame to node in Nuke"""
+    def onItemDoubleClicked(self, item: Any, column: int) -> None:
+        """Handle double-click on tree item - frame to node in Nuke.
+        
+        Selects the node and frames it in the node graph.
+        
+        Args:
+            item: The double-clicked tree widget item
+            column: The column index that was double-clicked
+        """
         try:
             node = item.data(0, Qt.UserRole)["node"]
             if not node or not hasattr(node, 'setSelected'):

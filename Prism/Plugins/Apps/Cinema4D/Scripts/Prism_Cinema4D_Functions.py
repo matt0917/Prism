@@ -38,6 +38,7 @@ import time
 import traceback
 import logging
 import tempfile
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -52,7 +53,16 @@ logger = logging.getLogger(__name__)
 
 
 class Prism_Cinema4D_Functions(object):
-    def __init__(self, core, plugin):
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize Cinema4D functions handler.
+        
+        Sets up export handlers for various formats (ABC, FBX, OBJ, RS, ASS, C4D),
+        adds Cinema4D scripts folder to Python path, and registers callbacks.
+        
+        Args:
+            core: Prism core instance
+            plugin: Plugin instance
+        """
         self.core = core
         self.plugin = plugin
         self.exportHandlers = {
@@ -84,7 +94,15 @@ class Prism_Cinema4D_Functions(object):
         )
 
     @err_catcher(name=__name__)
-    def startup(self, origin):
+    def startup(self, origin: Any) -> None:
+        """Initialize Prism UI on Cinema4D startup.
+        
+        Sets up window icon, message parent widget, applies Cinema4D stylesheet,
+        and starts autosave timer.
+        
+        Args:
+            origin: Prism core instance
+        """
         origin.timer.stop()
         appIcon = QIcon(self.appIcon)
         qapp = QApplication.instance()
@@ -100,7 +118,15 @@ class Prism_Cinema4D_Functions(object):
         origin.startAutosaveTimer()
 
     @err_catcher(name=__name__)
-    def pluginMessage(self, id, data):
+    def pluginMessage(self, id: int, data: Any) -> None:
+        """Handle Cinema4D plugin messages.
+        
+        Creates Prism menu entries in Cinema4D main menu on build menu message.
+        
+        Args:
+            id: Message identifier (c4d.C4DPL_BUILDMENU for menu building)
+            data: Message data
+        """
         if id == c4d.C4DPL_BUILDMENU:
             mainMenu = c4d.gui.GetMenuResource("M_EDITOR")
             pluginsMenu = c4d.gui.SearchPluginMenuResource()
@@ -119,16 +145,40 @@ class Prism_Cinema4D_Functions(object):
                 mainMenu.InsData(c4d.MENURESOURCE_STRING, menu)
 
     @err_catcher(name=__name__)
-    def autosaveEnabled(self, origin):
+    def autosaveEnabled(self, origin: Any) -> bool:
+        """Check if Cinema4D autosave is enabled.
+        
+        Args:
+            origin: Callback origin object
+            
+        Returns:
+            True if Cinema4D autosave preference is enabled
+        """
         return c4d.plugins.FindPlugin(465001626, c4d.PLUGINTYPE_PREFS)[c4d.PREF_FILE_AUTOEVERY]
 
     @err_catcher(name=__name__)
-    def sceneOpen(self, origin):
+    def sceneOpen(self, origin: Any) -> None:
+        """Handle scene open event.
+        
+        Starts autosave timer if autosaving should be enabled.
+        
+        Args:
+            origin: Prism core instance
+        """
         if self.core.shouldAutosaveTimerRun():
             origin.startAutosaveTimer()
 
     @err_catcher(name=__name__)
-    def getCurrentFileName(self, origin, path=True):
+    def getCurrentFileName(self, origin: Any, path: bool = True) -> str:
+        """Get current Cinema4D scene filename.
+        
+        Args:
+            origin: Callback origin object
+            path: If True, return full path; if False, filename only
+            
+        Returns:
+            Full filepath or filename, or empty string if no document
+        """
         doc = c4d.documents.GetActiveDocument()
         if not doc:
             return ""
@@ -139,11 +189,29 @@ class Prism_Cinema4D_Functions(object):
             return doc.GetDocumentName()
 
     @err_catcher(name=__name__)
-    def getSceneExtension(self, origin):
+    def getSceneExtension(self, origin: Any) -> str:
+        """Get Cinema4D scene file extension.
+        
+        Args:
+            origin: Callback origin object
+            
+        Returns:
+            Scene format extension (".c4d")
+        """
         return self.sceneFormats[0]
 
     @err_catcher(name=__name__)
-    def saveScene(self, origin, filepath, details={}):
+    def saveScene(self, origin: Any, filepath: str, details: dict = {}) -> bool:
+        """Save current Cinema4D scene to file.
+        
+        Args:
+            origin: Callback origin object
+            filepath: Destination file path
+            details: Additional save details (unused)
+            
+        Returns:
+            True if save successful, False otherwise
+        """
         doc = c4d.documents.GetActiveDocument()
         doc.SetDocumentPath(os.path.dirname(filepath))
         doc.SetDocumentName(os.path.basename(filepath))
@@ -152,7 +220,15 @@ class Prism_Cinema4D_Functions(object):
         return result
 
     @err_catcher(name=__name__)
-    def getImportPaths(self, origin):
+    def getImportPaths(self, origin: Any) -> Optional[Union[bool, str]]:
+        """Get stored import paths from document user data.
+        
+        Args:
+            origin: Callback origin object
+            
+        Returns:
+            Stored import paths string, False if empty, or None if no document
+        """
         doc = c4d.documents.GetActiveDocument()
         if not doc:
             return
@@ -164,14 +240,31 @@ class Prism_Cinema4D_Functions(object):
         return value
 
     @err_catcher(name=__name__)
-    def getFrameRange(self, origin):
+    def getFrameRange(self, origin: Any) -> List[int]:
+        """Get document frame range.
+        
+        Args:
+            origin: Callback origin object
+            
+        Returns:
+            [start_frame, end_frame] as integers
+        """
         doc = c4d.documents.GetActiveDocument()
         startframe = doc.GetMinTime().GetFrame(doc.GetFps())
         endframe = doc.GetMaxTime().GetFrame(doc.GetFps())
         return [startframe, endframe]
 
     @err_catcher(name=__name__)
-    def setFrameRange(self, origin, startFrame, endFrame):
+    def setFrameRange(self, origin: Any, startFrame: int, endFrame: int) -> None:
+        """Set document frame range.
+        
+        Updates both render range and timeline loop range.
+        
+        Args:
+            origin: Callback origin object
+            startFrame: First frame number
+            endFrame: Last frame number
+        """
         doc = c4d.documents.GetActiveDocument()
         doc.SetMinTime(c4d.BaseTime(startFrame/doc.GetFps()))
         doc.SetMaxTime(c4d.BaseTime(endFrame/doc.GetFps()))
@@ -179,18 +272,37 @@ class Prism_Cinema4D_Functions(object):
         doc.SetLoopMaxTime(c4d.BaseTime(endFrame/doc.GetFps()))
 
     @err_catcher(name=__name__)
-    def getFPS(self, origin):
+    def getFPS(self, origin: Any) -> float:
+        """Get document frames per second.
+        
+        Args:
+            origin: Callback origin object
+            
+        Returns:
+            Frames per second (float)
+        """
         doc = c4d.documents.GetActiveDocument()
         fps = doc.GetFps()
         return fps
 
     @err_catcher(name=__name__)
-    def setFPS(self, origin, fps):
+    def setFPS(self, origin: Any, fps: float) -> None:
+        """Set document frames per second.
+        
+        Args:
+            origin: Callback origin object
+            fps: Frames per second value
+        """
         doc = c4d.documents.GetActiveDocument()
         doc.SetFps(int(fps))
 
     @err_catcher(name=__name__)
-    def getResolution(self):
+    def getResolution(self) -> List[int]:
+        """Get active render data resolution.
+        
+        Returns:
+            [width, height] in pixels
+        """
         doc = c4d.documents.GetActiveDocument()
         rd = doc.GetActiveRenderData()
         width = rd.GetDataInstance()[c4d.RDATA_XRES]
@@ -198,7 +310,13 @@ class Prism_Cinema4D_Functions(object):
         return [width, height]
 
     @err_catcher(name=__name__)
-    def setResolution(self, width=None, height=None):
+    def setResolution(self, width: Optional[int] = None, height: Optional[int] = None) -> None:
+        """Set active render data resolution.
+        
+        Args:
+            width: Render width in pixels (optional)
+            height: Render height in pixels (optional)
+        """
         doc = c4d.documents.GetActiveDocument()
         rd = doc.GetActiveRenderData()
         if width:
@@ -207,24 +325,58 @@ class Prism_Cinema4D_Functions(object):
             rd[c4d.RDATA_YRES] = height
 
     @err_catcher(name=__name__)
-    def getAppVersion(self, origin):
+    def getAppVersion(self, origin: Any) -> str:
+        """Get Cinema4D version string.
+        
+        Args:
+            origin: Callback origin object
+            
+        Returns:
+            Version string (e.g., "R21")
+        """
         return c4d.GetC4DVersion()
 
     @err_catcher(name=__name__)
-    def getProgramVersion(self, origin):
+    def getProgramVersion(self, origin: Any) -> str:
+        """Get Cinema4D version string.
+        
+        Args:
+            origin: Callback origin object
+            
+        Returns:
+            Version string (e.g., "R21")
+        """
         return c4d.GetC4DVersion()
 
     @err_catcher(name=__name__)
-    def openScene(self, origin, filepath, force=False):
+    def openScene(self, origin: Any, filepath: str, force: bool = False) -> bool:
+        """Open Cinema4D scene file.
+        
+        Args:
+            origin: Callback origin object
+            filepath: Path to .c4d file to open
+            force: If True, suppress user prompts (unused)
+            
+        Returns:
+            True always
+        """
         c4d.documents.LoadFile(filepath)
         self.core.sceneOpen()
         return True
 
     @err_catcher(name=__name__)
-    def sm_export_addObjects(self, origin, objects=None):
+    def sm_export_addObjects(self, origin: Any, objects: Optional[List[Any]] = None) -> None:
+        """Add objects to export state node list.
+        
+        Adds selected objects or specified objects to export state, storing GUIDs.
+        
+        Args:
+            origin: Export state instance
+            objects: List of Cinema4D objects to add (defaults to selection)
+        """
         if not objects:
             doc = c4d.documents.GetActiveDocument()
-            objects = doc.GetSelection()
+            objects = doc.GetSelection() or []
 
         for obj in objects:
             if not hasattr(obj, "GetGUID"):
@@ -238,7 +390,18 @@ class Prism_Cinema4D_Functions(object):
         origin.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def getNodeName(self, origin, guid):
+    def getNodeName(self, origin: Any, guid: Union[int, Any]) -> str:
+        """Get object name from GUID or object.
+        
+        Resolves GUID to object and returns its name.
+        
+        Args:
+            origin: State manager origin
+            guid: Object GUID (int) or object reference
+            
+        Returns:
+            Object name, or "invalid" if not found
+        """
         if isinstance(guid, int):
             node = self.getObject(guid)
         else:
@@ -253,7 +416,17 @@ class Prism_Cinema4D_Functions(object):
             return "invalid"
 
     @err_catcher(name=__name__)
-    def getObject(self, node):
+    def getObject(self, node: int) -> Optional[Any]:
+        """Find Cinema4D object by GUID.
+        
+        Recursively searches document for object with matching GUID.
+        
+        Args:
+            node: Object GUID to search for
+            
+        Returns:
+            Cinema4D object, or None if not found
+        """
         doc = c4d.documents.GetActiveDocument()
         obj = doc.GetFirstObject()
         while obj:
@@ -264,7 +437,18 @@ class Prism_Cinema4D_Functions(object):
             obj = obj.GetNext()
 
     @err_catcher(name=__name__)
-    def findObjByGuid(self, obj, guid):        
+    def findObjByGuid(self, obj: Any, guid: int) -> Optional[Any]:        
+        """Recursively find object with matching GUID.
+        
+        Searches object hierarchy for object with specified GUID.
+        
+        Args:
+            obj: Root object to start search from
+            guid: Target object GUID
+            
+        Returns:
+            Matching Cinema4D object, or None if not found
+        """
         if obj.GetGUID() == guid:
             return obj
         
@@ -278,7 +462,14 @@ class Prism_Cinema4D_Functions(object):
             child = child.GetNext()
 
     @err_catcher(name=__name__)
-    def selectNodes(self, origin):
+    def selectNodes(self, origin: Any) -> None:
+        """Select objects from export state node list.
+        
+        Clears selection and selects all valid objects from export state's list.
+        
+        Args:
+            origin: Export state instance
+        """
         if not origin.lw_objects.selectedItems():
             return
 
@@ -293,14 +484,31 @@ class Prism_Cinema4D_Functions(object):
         c4d.EventAdd()
 
     @err_catcher(name=__name__)
-    def isNodeValid(self, origin, handle):
+    def isNodeValid(self, origin: Any, handle: Any) -> bool:
+        """Check if node/object reference is valid.
+        
+        Args:
+            origin: State manager origin
+            handle: Object GUID (int) or object reference
+            
+        Returns:
+            True if object exists in scene
+        """
         if isinstance(handle, int):
             handle = self.getObject(handle)
 
         return bool(handle)
 
     @err_catcher(name=__name__)
-    def getAllCamerasRecursive(self, obj, cameras):
+    def getAllCamerasRecursive(self, obj: Any, cameras: List[int]) -> None:
+        """Recursively collect all camera objects.
+        
+        Traverses object hierarchy finding all camera type objects (RS Camera, Camera).
+        
+        Args:
+            obj: Root object to start search from
+            cameras: List to append found camera GUIDs to
+        """
         if obj.GetTypeName() in ["RS Camera", "Camera"]:
             cameras.append(obj.GetGUID())
         
@@ -310,7 +518,18 @@ class Prism_Cinema4D_Functions(object):
             child = child.GetNext()
 
     @err_catcher(name=__name__)
-    def getCamNodes(self, origin, cur=False):
+    def getCamNodes(self, origin: Any, cur: bool = False) -> List[str]:
+        """Get list of camera names.
+        
+        Recursively finds all camera objects in scene and returns their names.
+        
+        Args:
+            origin: Callback origin object
+            cur: Unused parameter
+            
+        Returns:
+            List of camera names
+        """
         sceneCams = []
         doc = c4d.documents.GetActiveDocument()
         obj = doc.GetFirstObject()
@@ -325,14 +544,29 @@ class Prism_Cinema4D_Functions(object):
         return sceneCams
 
     @err_catcher(name=__name__)
-    def getCamName(self, origin, handle):
-        if handle == "Current View":
-            return handle
+    def getCamName(self, origin: Any, handle: str) -> str:
+        """Get camera name from handle.
+        
+        Args:
+            origin: Callback origin object
+            handle: Camera object name
+            
+        Returns:
+            Camera name (same as handle)
+        """
+        if handle == "Current View":    return handle
 
         return self.getNodeName(origin, handle)
 
     @err_catcher(name=__name__)
-    def selectCam(self, origin):
+    def selectCam(self, origin: Any) -> None:
+        """Select camera object in scene.
+        
+        Clears selection and selects the camera stored in origin.curCam.
+        
+        Args:
+            origin: Callback origin object with curCam attribute
+        """
         if self.isNodeValid(origin, self.getObject(origin.curCam)):
             doc = c4d.documents.GetActiveDocument()
             doc.SetActiveObject(None, c4d.SELECTION_NEW)
@@ -340,11 +574,25 @@ class Prism_Cinema4D_Functions(object):
             c4d.EventAdd()
 
     @err_catcher(name=__name__)
-    def onStateManagerOpen(self, origin):
+    def onStateManagerOpen(self, origin: Any) -> None:
+        """Handle state manager window open event.
+        
+        Resizes state manager window on open.
+        
+        Args:
+            origin: State manager instance
+        """
         origin.resize(origin.width() + 50, origin.height())
 
     @err_catcher(name=__name__)
-    def sm_export_startup(self, origin):
+    def sm_export_startup(self, origin: Any) -> None:
+        """Initialize export state UI.
+        
+        Hides frame border and additional options widget.
+        
+        Args:
+            origin: Export state instance
+        """
         origin.f_objectList.setStyleSheet(
             "QFrame { border: 0px solid rgb(150,150,150); }"
         )
@@ -352,7 +600,20 @@ class Prism_Cinema4D_Functions(object):
             origin.w_additionalOptions.setVisible(False)
 
     @err_catcher(name=__name__)
-    def sm_export_exportShotcam(self, origin, startFrame, endFrame, outputName):
+    def sm_export_exportShotcam(self, origin: Any, startFrame: int, endFrame: int, outputName: str) -> Any:
+        """Export camera to Alembic and FBX.
+        
+        Exports current camera to both .abc and .fbx formats.
+        
+        Args:
+            origin: Export state instance
+            startFrame: First frame to export
+            endFrame: Last frame to export
+            outputName: Base output path (without extension)
+            
+        Returns:
+            Result from FBX export
+        """
         result = self.sm_export_exportAppObjects(
             origin,
             startFrame,
@@ -374,14 +635,30 @@ class Prism_Cinema4D_Functions(object):
     @err_catcher(name=__name__)
     def sm_export_exportAppObjects(
         self,
-        origin,
-        startFrame,
-        endFrame,
-        outputName,
-        scaledExport=False,
-        nodes=None,
-        expType=None,
-    ):
+        origin: Any,
+        startFrame: int,
+        endFrame: int,
+        outputName: str,
+        scaledExport: bool = False,
+        nodes: Optional[List[int]] = None,
+        expType: Optional[str] = None,
+    ) -> Union[str, bool]:
+        """Export Cinema4D objects to file.
+        
+        Selects objects and calls appropriate export handler based on file extension.
+        
+        Args:
+            origin: Export state instance
+            startFrame: First frame to export
+            endFrame: Last frame to export
+            outputName: Output file path
+            scaledExport: Unused parameter
+            nodes: List of object GUIDs to export (defaults to origin.nodes)
+            expType: Export format extension (defaults to extension from outputName)
+            
+        Returns:
+            Output file path if successful, error message string otherwise
+        """
         expNodes = origin.nodes
         doc = c4d.documents.GetActiveDocument()
         doc.SetActiveObject(None, c4d.SELECTION_NEW)
@@ -393,9 +670,13 @@ class Prism_Cinema4D_Functions(object):
 
         ext = origin.getOutputType()
         if ext in self.exportHandlers:
-            outputName = self.exportHandlers[ext]["exportFunction"](
+            result = self.exportHandlers[ext]["exportFunction"](
                 outputName, origin, startFrame, endFrame, expObjs
             )
+            if result:
+                outputName = result
+            else:
+                return "Canceled: Export failed"
         else:
             msg = "Canceled: Format \"%s\" is not supported." % ext
             return msg
@@ -404,7 +685,21 @@ class Prism_Cinema4D_Functions(object):
         return outputName
 
     @err_catcher(name=__name__)
-    def exportObj(self, outputName, origin, startFrame, endFrame, expNodes):
+    def exportObj(self, outputName: str, origin: Any, startFrame: int, endFrame: int, expNodes: List[Any]) -> Optional[str]:
+        """Export objects to OBJ format.
+        
+        Exports frame sequence to OBJ files using Cinema4D OBJ exporter.
+        
+        Args:
+            outputName: Output file path with #### frame padding
+            origin: Export state instance
+            startFrame: First frame to export
+            endFrame: Last frame to export
+            expNodes: List of Cinema4D objects to export
+            
+        Returns:
+            Final exported file path, or None if failed
+        """
         doc = c4d.documents.GetActiveDocument()
         plugin_id = c4d.FORMAT_OBJ2EXPORT
         plug = c4d.plugins.FindPlugin(plugin_id, c4d.PLUGINTYPE_SCENESAVER)
@@ -438,7 +733,21 @@ class Prism_Cinema4D_Functions(object):
         return outputName
 
     @err_catcher(name=__name__)
-    def exportFBX(self, outputName, origin, startFrame, endFrame, expNodes):
+    def exportFBX(self, outputName: str, origin: Any, startFrame: int, endFrame: int, expNodes: List[Any]) -> Optional[str]:
+        """Export objects to FBX format.
+        
+        Exports frame sequence to FBX files using Cinema4D FBX exporter with ASCII format.
+        
+        Args:
+            outputName: Output file path with #### frame padding
+            origin: Export state instance
+            startFrame: First frame to export
+            endFrame: Last frame to export
+            expNodes: List of Cinema4D objects to export
+            
+        Returns:
+            Final exported file path, or None if failed
+        """
         doc = c4d.documents.GetActiveDocument()
         plugin_id = c4d.FORMAT_FBX_EXPORT
         plug = c4d.plugins.FindPlugin(plugin_id, c4d.PLUGINTYPE_SCENESAVER)
@@ -466,7 +775,21 @@ class Prism_Cinema4D_Functions(object):
         return outputName
 
     @err_catcher(name=__name__)
-    def exportAlembic(self, outputName, origin, startFrame, endFrame, expNodes):
+    def exportAlembic(self, outputName: str, origin: Any, startFrame: int, endFrame: int, expNodes: List[Any]) -> Optional[str]:
+        """Export objects to Alembic format.
+        
+        Exports objects using Cinema4D's Alembic exporter.
+        
+        Args:
+            outputName: Output file path
+            origin: Export state instance
+            startFrame: First frame to export
+            endFrame: Last frame to export
+            expNodes: List of Cinema4D objects to export
+            
+        Returns:
+            Output file path, or None if failed
+        """
         doc = c4d.documents.GetActiveDocument()
         plugin_id = c4d.FORMAT_ABCEXPORT
         plug = c4d.plugins.FindPlugin(plugin_id, c4d.PLUGINTYPE_SCENESAVER)
@@ -496,7 +819,21 @@ class Prism_Cinema4D_Functions(object):
         return outputName
 
     @err_catcher(name=__name__)
-    def exportRs(self, outputName, origin, startFrame, endFrame, expNodes):
+    def exportRs(self, outputName: str, origin: Any, startFrame: int, endFrame: int, expNodes: List[Any]) -> Optional[str]:
+        """Export objects to Redshift Proxy format.
+        
+        Exports geometry to .rs proxy using Redshift exporter with animation range.
+        
+        Args:
+            outputName: Output file path
+            origin: Export state instance
+            startFrame: First frame to export
+            endFrame: Last frame to export
+            expNodes: List of Cinema4D objects to export
+            
+        Returns:
+            Output file path, or None if failed
+        """
         doc = c4d.documents.GetActiveDocument()
         import redshift as rs
         plugin_id = rs.Frsproxyexport
@@ -529,7 +866,21 @@ class Prism_Cinema4D_Functions(object):
         return outputName
 
     @err_catcher(name=__name__)
-    def exportAss(self, outputName, origin, startFrame, endFrame, expNodes):
+    def exportAss(self, outputName: str, origin: Any, startFrame: int, endFrame: int, expNodes: List[Any]) -> Optional[str]:
+        """Export objects to Arnold ASS format.
+        
+        Exports scene to Arnold ASS using arnold.scene module.
+        
+        Args:
+            outputName: Output file path
+            origin: Export state instance
+            startFrame: First frame to export
+            endFrame: Last frame to export
+            expNodes: List of Cinema4D objects to export
+            
+        Returns:
+            Output file path, or None if failed
+        """
         import arnold.scene as arnold_scene
         doc = c4d.documents.GetActiveDocument()
         if origin.chb_wholeScene.isChecked():
@@ -561,7 +912,21 @@ class Prism_Cinema4D_Functions(object):
         return outputName
 
     @err_catcher(name=__name__)
-    def exportC4d(self, outputName, origin, startFrame, endFrame, expNodes):
+    def exportC4d(self, outputName: str, origin: Any, startFrame: int, endFrame: int, expNodes: List[Any]) -> Optional[str]:
+        """Export scene to Cinema4D format.
+        
+        Exports full scene or selection to .c4d file.
+        
+        Args:
+            outputName: Output file path
+            origin: Export state instance
+            startFrame: First frame to export (unused)
+            endFrame: Last frame to export (unused)
+            expNodes: List of Cinema4D objects to export
+            
+        Returns:
+            Output file path, or None if failed
+        """
         doc = c4d.documents.GetActiveDocument()
         plugin_id = c4d.FORMAT_C4DEXPORT
         plug = c4d.plugins.FindPlugin(plugin_id, c4d.PLUGINTYPE_SCENESAVER)
@@ -587,12 +952,29 @@ class Prism_Cinema4D_Functions(object):
         return outputName
 
     @err_catcher(name=__name__)
-    def sm_export_preExecute(self, origin, startFrame, endFrame):
+    def sm_export_preExecute(self, origin: Any, startFrame: int, endFrame: int) -> List[str]:
+        """Pre-execution validation for export state.
+        
+        Args:
+            origin: Export state instance
+            startFrame: First frame to export
+            endFrame: Last frame to export
+            
+        Returns:
+            List of warning messages (empty list if no warnings)
+        """
         warnings = []
         return warnings
 
     @err_catcher(name=__name__)
-    def sm_render_startup(self, origin):
+    def sm_render_startup(self, origin: Any) -> None:
+        """Initialize render state UI.
+        
+        Hides render passes group box and shows Take layer selector.
+        
+        Args:
+            origin: Render state instance
+        """
         origin.gb_passes.setHidden(True)
         if hasattr(origin, "f_renderLayer"):
             origin.f_renderLayer.setVisible(True)
@@ -600,7 +982,17 @@ class Prism_Cinema4D_Functions(object):
         origin.l_renderLayer.setText("Take:")
 
     @err_catcher(name=__name__)
-    def sm_render_getRenderLayer(self, origin):
+    def sm_render_getRenderLayer(self, origin: Any) -> List[str]:
+        """Get available render layers (Takes).
+        
+        Returns list of Cinema4D Takes including Current, All Checked, and All Takes options.
+        
+        Args:
+            origin: Render state instance
+            
+        Returns:
+            List of Take names and special options
+        """
         rlayers = self.getTakesFromScene()
         rlayerNames = ["Current"]
         for rlayer in rlayers:
@@ -615,7 +1007,18 @@ class Prism_Cinema4D_Functions(object):
         return rlayerNames
 
     @err_catcher(name=__name__)
-    def sm_render_getIdentifiers(self, origin):
+    def sm_render_getIdentifiers(self, origin: Any) -> Optional[List[str]]:
+        """Get render identifiers for separate Take renders.
+        
+        Returns Take names if rendering All Checked Takes or All Takes with
+        separate identifiers.
+        
+        Args:
+            origin: Render state instance
+            
+        Returns:
+            List of Take names, or None if not using separate identifiers
+        """
         layer = self.getSelectedTake(origin)
         if layer == "All Checked Takes (separate identifiers)":
             rlayers = self.getTakesFromScene() or []
@@ -634,7 +1037,17 @@ class Prism_Cinema4D_Functions(object):
         return rlayers
 
     @err_catcher(name=__name__)
-    def sm_render_getLayers(self, origin):
+    def sm_render_getLayers(self, origin: Any) -> Optional[List[Any]]:
+        """Get Takes to render.
+        
+        Returns list of Take objects based on selected render layer option.
+        
+        Args:
+            origin: Render state instance
+            
+        Returns:
+            List of Take objects, or None for single Take render
+        """
         layer = self.getSelectedTake(origin)
         if layer == "All Checked Takes":
             rlayers = self.getTakesFromScene() or []
@@ -653,11 +1066,26 @@ class Prism_Cinema4D_Functions(object):
         return rlayers
 
     @err_catcher(name=__name__)
-    def getSelectedTake(self, origin):
+    def getSelectedTake(self, origin: Any) -> str:
+        """Get currently selected Take from render state.
+        
+        Args:
+            origin: Render state instance
+            
+        Returns:
+            Selected Take name
+        """
         return origin.cb_renderLayer.currentText()
 
     @err_catcher(name=__name__)
-    def sm_render_updateUi(self, origin):
+    def sm_render_updateUi(self, origin: Any) -> None:
+        """Update render state UI based on Take selection.
+        
+        Enables/disables task name field for multiple layer renders.
+        
+        Args:
+            origin: Render state instance
+        """
         multipleLayers = self.getSelectedTake(origin) in ["All Checked Takes (separate identifiers)", "All Takes (separate identifiers)"]
         origin.f_taskname.setEnabled(not multipleLayers)
         if multipleLayers:
@@ -666,7 +1094,20 @@ class Prism_Cinema4D_Functions(object):
             origin.setTaskWarn(not bool(origin.getTaskname()))
 
     @err_catcher(name=__name__)
-    def getAdditionalRenderContext(self, origin, context=None, identifier=None, layer=None):
+    def getAdditionalRenderContext(self, origin: Any, context: Optional[dict] = None, identifier: Optional[str] = None, layer: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Get additional render context for multi-Take renders.
+        
+        Returns layer context dictionary for Take-based renders.
+        
+        Args:
+            origin: Render state instance
+            context: Existing context dictionary
+            identifier: Render identifier for separate Take renders
+            layer: Layer name for multi-Take renders
+            
+        Returns:
+            Dictionary with "layer" key, or None for Main take
+        """
         selRenderLayer = origin.cb_renderLayer.currentText()
         if selRenderLayer in ["All Checked Takes (separate identifiers)", "All Takes (separate identifiers)"]:
             selRenderLayer = identifier
@@ -679,7 +1120,16 @@ class Prism_Cinema4D_Functions(object):
         return {"layer": selRenderLayer}
 
     @err_catcher(name=__name__)
-    def sm_render_preSubmit(self, origin, rSettings):
+    def sm_render_preSubmit(self, origin: Any, rSettings: dict) -> None:
+        """Pre-submission setup for render.
+        
+        Activates appropriate Take, applies its override settings, and stores
+        original Take for restoration.
+        
+        Args:
+            origin: Render state instance
+            rSettings: Render settings dictionary with identifier/layer
+        """
         renderTake = self.getSelectedTake(origin)
         if renderTake in ["All Checked Takes (separate identifiers)", "All Takes (separate identifiers)"]:
             renderTake = rSettings["identifier"]
@@ -765,7 +1215,20 @@ class Prism_Cinema4D_Functions(object):
         rd.SetData(bc)
 
     @err_catcher(name=__name__)
-    def sm_render_fixOutputPath(self, origin, outputName, singleFrame=False, state=None):
+    def sm_render_fixOutputPath(self, origin: Any, outputName: str, singleFrame: bool = False, state: Optional[Any] = None) -> str:
+        """Fix output path format for Cinema4D render.
+        
+        Adjusts frame padding in output path based on single frame or sequence render.
+        
+        Args:
+            origin: Render state instance
+            outputName: Original output file path
+            singleFrame: If True, remove frame padding
+            state: Optional state instance
+            
+        Returns:
+            Fixed output file path
+        """
         base = os.path.splitext(outputName)[0].strip("#.")
         if not singleFrame:
             base += "."
@@ -775,7 +1238,20 @@ class Prism_Cinema4D_Functions(object):
         return outputName
 
     @err_catcher(name=__name__)
-    def sm_render_startLocalRender(self, origin, outputName, rSettings):
+    def sm_render_startLocalRender(self, origin: Any, outputName: str, rSettings: dict) -> Optional[str]:
+        """Start local render in Cinema4D.
+        
+        Applies resolution override, sets camera, configures frame range and output
+        paths, then executes render using c4d.documents.RenderDocument.
+        
+        Args:
+            origin: Render state instance
+            outputName: Output file path
+            rSettings: Render settings dictionary with frame range, resolution, camera
+            
+        Returns:
+            "Result=Success" if successful, error message if failed, None if no issues
+        """
         if origin.chb_resOverride.isChecked():
             resolution = self.getResolution()
 
@@ -845,11 +1321,28 @@ class Prism_Cinema4D_Functions(object):
             return "Execute Canceled: unknown error (view console for more information)"
 
     @err_catcher(name=__name__)
-    def sm_render_undoRenderSettings(self, origin, rSettings):
+    def sm_render_undoRenderSettings(self, origin: Any, rSettings: dict) -> None:
+        """Restore render settings after submission.
+        
+        Not implemented for Cinema4D.
+        
+        Args:
+            origin: Render state instance
+            rSettings: Render settings dictionary
+        """
         pass
 
     @err_catcher(name=__name__)
-    def sm_render_getDeadlineParams(self, origin, dlParams, homeDir):
+    def sm_render_getDeadlineParams(self, origin: Any, dlParams: dict, homeDir: str) -> None:
+        """Configure Deadline submission parameters for Cinema4D.
+        
+        Sets job and plugin info file paths and Cinema4D-specific settings.
+        
+        Args:
+            origin: Render state instance
+            dlParams: Dictionary to populate with Deadline parameters
+            homeDir: Prism home directory path
+        """
         dlParams["jobInfoFile"] = os.path.join(
             homeDir, "temp", "cinema4d_submit_info.job"
         )
@@ -863,7 +1356,17 @@ class Prism_Cinema4D_Functions(object):
         dlParams["pluginInfos"]["FilePath"] = dlParams["jobInfos"]["OutputFilename0"]
 
     @err_catcher(name=__name__)
-    def getCurrentRenderer(self, origin):
+    def getCurrentRenderer(self, origin: Any) -> str:
+        """Get current render engine name.
+        
+        Returns friendly name for active Cinema4D render engine.
+        
+        Args:
+            origin: Render state instance
+            
+        Returns:
+            Renderer name (e.g., "Redshift Renderer", "Physical Renderer")
+        """
         RENDERER_NAMES = {
             c4d.RDATA_RENDERENGINE_STANDARD: "Standard Renderer",
             c4d.RDATA_RENDERENGINE_PHYSICAL: "Physical Renderer",
@@ -877,7 +1380,12 @@ class Prism_Cinema4D_Functions(object):
         rendererName = RENDERER_NAMES.get(rendererId, "Unknown Renderer")
         return rendererName
 
-    def getTakesFromScene(self):
+    def getTakesFromScene(self) -> List[Any]:
+        """Get all Takes from Cinema4D document.
+        
+        Returns:
+            List of Take objects (excluding Main take at index 0)
+        """
         takes = []
         doc = c4d.documents.GetActiveDocument()
         takeData = doc.GetTakeData()
@@ -895,18 +1403,41 @@ class Prism_Cinema4D_Functions(object):
         return takes
 
     @err_catcher(name=__name__)
-    def getCurrentSceneFiles(self, origin):
+    def getCurrentSceneFiles(self, origin: Any) -> List[str]:
+        """Get list of current scene files.
+        
+        Args:
+            origin: Callback origin object
+            
+        Returns:
+            List containing current scene file path
+        """
         curFileName = self.core.getCurrentFileName()
         scenefiles = [curFileName]
         return scenefiles
 
     @err_catcher(name=__name__)
-    def sm_render_preExecute(self, origin):
+    def sm_render_preExecute(self, origin: Any) -> List[str]:
+        """Pre-execution validation for render state.
+        
+        Args:
+            origin: Render state instance
+            
+        Returns:
+            List of warning messages (empty if no warnings)
+        """
         warnings = []
         return warnings
 
     @err_catcher(name=__name__)
-    def deleteNodes(self, origin, handles, num=0):
+    def deleteNodes(self, origin: Any, handles: List[int], num: int = 0) -> None:
+        """Delete Cinema4D objects by GUID.
+        
+        Args:
+            origin: State manager origin
+            handles: List of object GUIDs to delete
+            num: Unused parameter
+        """
         for guid in handles:
             obj = self.getObject(guid)
             if obj:
@@ -915,7 +1446,21 @@ class Prism_Cinema4D_Functions(object):
         c4d.EventAdd()
 
     @err_catcher(name=__name__)
-    def sm_import_importToApp(self, origin, doImport, update, impFileName):
+    def sm_import_importToApp(self, origin: Any, doImport: bool, update: bool, impFileName: str) -> Any:
+        """Import asset file into Cinema4D scene.
+        
+        Imports various formats (.ass, .abc, .fbx, .obj, .c4d) into scene,
+        tracking new objects and storing GUIDs in import state.
+        
+        Args:
+            origin: Import state instance
+            doImport: If True, perform import; if False, only validate
+            update: If True, update existing imported objects
+            impFileName: Path to file to import
+            
+        Returns:
+            Import result status
+        """
         doc = c4d.documents.GetActiveDocument()
         result = False
         origin.preDelete(
@@ -980,29 +1525,58 @@ class Prism_Cinema4D_Functions(object):
         return {"result": result, "doImport": doImport}
 
     @err_catcher(name=__name__)
-    def sm_import_updateObjects(self, origin):
+    def sm_import_updateObjects(self, origin: Any) -> None:
+        """Update imported objects.
+        
+        Not implemented for Cinema4D.
+        
+        Args:
+            origin: Import state instance
+        """
         pass
 
     @err_catcher(name=__name__)
-    def sm_import_removeNameSpaces(self, origin):
+    def sm_import_removeNameSpaces(self, origin: Any) -> None:
+        """Remove namespace prefixes from imported object names.
+        
+        Strips text before colon (:) from all imported object names.
+        
+        Args:
+            origin: Import state instance
+        """
         for guid in origin.nodes:
-            if not self.getObject(guid):
+            obj = self.getObject(guid)
+            if not obj:
                 continue
 
             newName = self.getNodeName(origin, guid).rsplit(":", 1)[-1]
             if newName != self.getNodeName(origin, guid):
-                self.getObject(guid).SetName(newName)
+                obj.SetName(newName)
 
         origin.updateUi()
 
     @err_catcher(name=__name__)
-    def sm_playblast_startup(self, origin):
+    def sm_playblast_startup(self, origin: Any) -> None:
+        """Initialize playblast state UI.
+        
+        Sets frame range spinboxes to document frame range.
+        
+        Args:
+            origin: Playblast state instance
+        """
         frange = self.getFrameRange(origin)
         origin.sp_rangeStart.setValue(frange[0])
         origin.sp_rangeEnd.setValue(frange[1])
 
     @err_catcher(name=__name__)
-    def getPlayblastRenderData(self):
+    def getPlayblastRenderData(self) -> Optional[Any]:
+        """Get existing Playblast render data.
+        
+        Searches for render data named "Playblast" in document.
+        
+        Returns:
+            Playblast RenderData object, or None if not found
+        """
         doc = c4d.documents.GetActiveDocument()
         rd = doc.GetFirstRenderData()
         while rd:
@@ -1012,7 +1586,14 @@ class Prism_Cinema4D_Functions(object):
             rd = rd.GetNext()
 
     @err_catcher(name=__name__)
-    def createPlayblastRenderData(self):
+    def createPlayblastRenderData(self) -> Any:
+        """Create new Playblast render data.
+        
+        Creates and inserts RenderData object named "Playblast" into document.
+        
+        Returns:
+            New RenderData object
+        """
         doc = c4d.documents.GetActiveDocument()
         rd = c4d.documents.RenderData()
         rd.SetName("Playblast")
@@ -1020,7 +1601,20 @@ class Prism_Cinema4D_Functions(object):
         return rd
 
     @err_catcher(name=__name__)
-    def sm_playblast_createPlayblast(self, origin, jobFrames, outputName):
+    def sm_playblast_createPlayblast(self, origin: Any, jobFrames: List[int], outputName: str) -> str:
+        """Create playblast viewport preview.
+        
+        Renders viewport preview to image sequence or single frame using
+        hardware renderer and Playblast render data.
+        
+        Args:
+            origin: Playblast state instance
+            jobFrames: [start_frame, end_frame] to render
+            outputName: Output file path
+            
+        Returns:
+            "Result=Success" if successful, error message otherwise
+        """
         rd = self.getPlayblastRenderData()
         if not rd:
             rd = self.createPlayblastRenderData()
@@ -1084,23 +1678,54 @@ class Prism_Cinema4D_Functions(object):
             return "Execute Canceled: unknown error (view console for more information)"
 
     @err_catcher(name=__name__)
-    def sm_playblast_preExecute(self, origin):
+    def sm_playblast_preExecute(self, origin: Any) -> List[str]:
+        """Pre-execution validation for playblast state.
+        
+        Args:
+            origin: Playblast state instance
+            
+        Returns:
+            List of warning messages (empty if no warnings)
+        """
         warnings = []
         return warnings
 
     @err_catcher(name=__name__)
-    def prePlayblast(self, **kwargs):
+    def prePlayblast(self, **kwargs: Any) -> Optional[Dict[str, str]]:
+        """Pre-playblast callback for fixing output path.
+        
+        Strips frame padding from output path and returns modified path.
+        
+        Args:
+            **kwargs: Dictionary with 'outputpath' key
+            
+        Returns:
+            Dictionary with 'outputName' key if path modified, None otherwise
+        """
         base, ext = os.path.splitext(kwargs["outputpath"])
         outputName = base.rstrip("#") + ext        
         if outputName and outputName != kwargs["outputpath"]:
             return {"outputName": outputName}
 
     @err_catcher(name=__name__)
-    def sm_playblast_execute(self, origin):
+    def sm_playblast_execute(self, origin: Any) -> None:
+        """Execute playblast render.
+        
+        Args:
+            origin: Playblast state instance
+        """
         pass
 
     @err_catcher(name=__name__)
-    def captureViewportThumbnail(self):
+    def captureViewportThumbnail(self) -> Any:
+        """Capture viewport thumbnail as pixmap.
+        
+        Renders current viewport using hardware renderer to temporary PNG,
+        loads as pixmap, then deletes temporary file.
+        
+        Returns:
+            QPixmap of viewport capture
+        """
         path = tempfile.NamedTemporaryFile(suffix=".png").name
         doc = c4d.documents.GetActiveDocument()
         bd = doc.GetActiveBaseDraw()
@@ -1132,7 +1757,15 @@ class Prism_Cinema4D_Functions(object):
         return pm
 
     @err_catcher(name=__name__)
-    def sm_saveStates(self, origin, buf):
+    def sm_saveStates(self, origin: Any, buf: str) -> None:
+        """Save state manager states to document user data.
+        
+        Stores serialized states in document's PrismStates user data field.
+        
+        Args:
+            origin: State manager instance
+            buf: Serialized states string
+        """
         doc = c4d.documents.GetActiveDocument()
         if not doc:
             return
@@ -1150,7 +1783,15 @@ class Prism_Cinema4D_Functions(object):
         c4d.EventAdd()
 
     @err_catcher(name=__name__)
-    def sm_saveImports(self, origin, importPaths):
+    def sm_saveImports(self, origin: Any, importPaths: str) -> None:
+        """Save import paths to document user data.
+        
+        Stores import paths in document's PrismImports user data field.
+        
+        Args:
+            origin: State manager instance
+            importPaths: Serialized import paths string
+        """
         doc = c4d.documents.GetActiveDocument()
         if not doc:
             return
@@ -1168,7 +1809,18 @@ class Prism_Cinema4D_Functions(object):
         c4d.EventAdd()
 
     @err_catcher(name=__name__)
-    def sm_preSaveToScene(self, origin):
+    def sm_preSaveToScene(self, origin: Any) -> Optional[bool]:
+        """Check if scene changed before saving states.
+        
+        Prompts user if scene filename changed, offering to save states, reload,
+        or close state manager.
+        
+        Args:
+            origin: State manager instance
+            
+        Returns:
+            False if user chose reload/close, None to continue
+        """
         if (not origin.scenename) or origin.scenename.startswith("\\Untitled ") or origin.scenename == self.core.getCurrentFileName():
             return
 
@@ -1199,7 +1851,16 @@ class Prism_Cinema4D_Functions(object):
         origin.saveEnabled = True
 
     @err_catcher(name=__name__)
-    def findUserDataByName(self, obj, name):
+    def findUserDataByName(self, obj: Any, name: str) -> Tuple[Optional[Any], Optional[Any], Optional[Any]]:
+        """Find Cinema4D user data field by name.
+        
+        Args:
+            obj: Cinema4D object or document to search
+            name: User data field name to find
+            
+        Returns:
+            Tuple of (container_id, value, base_container) or (None, None, None)
+        """
         for id, bc in obj.GetUserDataContainer():
             if bc[c4d.DESC_NAME] == name:
                 return id, obj[id], bc
@@ -1207,7 +1868,15 @@ class Prism_Cinema4D_Functions(object):
         return None, None, None
 
     @err_catcher(name=__name__)
-    def sm_readStates(self, origin):
+    def sm_readStates(self, origin: Any) -> Optional[str]:
+        """Read state manager states from document user data.
+        
+        Args:
+            origin: State manager instance
+            
+        Returns:
+            Serialized states string, or None if not found
+        """
         doc = c4d.documents.GetActiveDocument()
         if not doc:
             return
@@ -1216,7 +1885,14 @@ class Prism_Cinema4D_Functions(object):
         return value
 
     @err_catcher(name=__name__)
-    def sm_deleteStates(self, origin):
+    def sm_deleteStates(self, origin: Any) -> None:
+        """Delete state manager states from document user data.
+        
+        Removes PrismStates user data field from document.
+        
+        Args:
+            origin: State manager instance
+        """
         doc = c4d.documents.GetActiveDocument()
         cid, value, bc = self.findUserDataByName(doc, "PrismStates")
         if cid:
@@ -1225,6 +1901,16 @@ class Prism_Cinema4D_Functions(object):
         c4d.EventAdd()
 
     @err_catcher(name=__name__)
-    def sm_getExternalFiles(self, origin):
+    def sm_getExternalFiles(self, origin: Any) -> List[List[Any]]:
+        """Get external file dependencies for state.
+        
+        Returns list of external files referenced by state.
+        
+        Args:
+            origin: State instance
+            
+        Returns:
+            List of [external_files_list, empty_list]
+        """
         extFiles = []
         return [extFiles, []]

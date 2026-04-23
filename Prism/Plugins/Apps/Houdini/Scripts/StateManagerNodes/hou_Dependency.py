@@ -31,10 +31,17 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
+"""Houdini Dependency state for Prism State Manager.
+
+Manages renderfarm job dependencies in Houdini, allowing states to wait
+for other jobs to complete before execution. Supports different dependency
+types and frame offset handling for sequential rendering workflows.
+"""
 
 import sys
 import time
 import traceback
+from typing import Any, Optional, Dict, List
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -46,11 +53,37 @@ from PrismUtils.Decorators import err_catcher as err_catcher
 
 
 class DependencyClass(object):
+    """Renderfarm dependency state for sequential job execution.
+    
+    Manages dependencies between renderfarm jobs, allowing jobs to wait
+    for completion of other jobs before starting. Supports frame offsets
+    and dependency type selection.
+    
+    Attributes:
+        className (str): State class identifier.
+        listType (str): State list category.
+        state: State Manager tree item.
+        core: PrismCore instance.
+        stateManager: State Manager instance.
+        dependencies (Dict): Render farm manager to dependency mapping.
+    """
+    
     className = "Dependency"
     listType = "Export"
 
     @err_catcher(name=__name__)
-    def setup(self, state, core, stateManager, stateData=None):
+    def setup(self, state: Any, core: Any, stateManager: Any, stateData: Optional[Dict] = None) -> None:
+        """Initialize dependency state.
+        
+        Sets up UI, connects events, populates renderfarm managers,
+        and loads saved state data.
+        
+        Args:
+            state: State Manager tree item for this state.
+            core: PrismCore instance.
+            stateManager: State Manager instance.
+            stateData: Optional saved state data to load.
+        """
         self.state = state
         self.core = core
         self.stateManager = stateManager
@@ -73,7 +106,15 @@ class DependencyClass(object):
             self.loadData(stateData)
 
     @err_catcher(name=__name__)
-    def loadData(self, data):
+    def loadData(self, data: Dict) -> None:
+        """Load state data from dictionary.
+        
+        Restores state settings including manager, dependencies, dependency type,
+        frame offset, and enabled state.
+        
+        Args:
+            data: Dictionary containing saved state data.
+        """
         if "stateName" in data:
             self.e_name.setText(data["stateName"])
         elif "statename" in data:
@@ -106,7 +147,12 @@ class DependencyClass(object):
         self.updateUi()
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect UI widget signals to handlers.
+        
+        Links text edits, checkboxes, combobboxes, and spinboxes to their
+        respective change handlers and state save operations.
+        """
         self.e_name.textChanged.connect(self.nameChanged)
         self.e_name.editingFinished.connect(self.stateManager.saveStatesToScene)
         self.chb_clear.toggled.connect(self.stateManager.saveStatesToScene)
@@ -115,7 +161,14 @@ class DependencyClass(object):
         self.sp_offset.editingFinished.connect(self.stateManager.saveStatesToScene)
 
     @err_catcher(name=__name__)
-    def managerChanged(self, text=None):
+    def managerChanged(self, text: Optional[str] = None) -> None:
+        """Handle renderfarm manager selection change.
+        
+        Updates UI and saves state when user changes the renderfarm plugin.
+        
+        Args:
+            text: unused parameter from signal.
+        """
         rfm = self.cb_manager.currentText()
         plugin = self.core.plugins.getRenderfarmPlugin(rfm)
         if plugin:
@@ -125,16 +178,33 @@ class DependencyClass(object):
         self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def depTypeChanged(self, text=None):
+    def depTypeChanged(self, text: Optional[str] = None) -> None:
+        """Handle dependency type change.
+        
+        Updates UI and saves state when dependency type is changed.
+        
+        Args:
+            text: Unused parameter from signal.
+        """
         self.updateUi()
         self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def getDependencyType(self):
+    def getDependencyType(self) -> str:
+        """Get selected dependency type.
+        
+        Returns:
+            Current dependency type text from combobox.
+        """
         return self.cb_depType.currentText()
 
     @err_catcher(name=__name__)
-    def setDependencyType(self, depType):
+    def setDependencyType(self, depType: str) -> None:
+        """Set dependency type from string.
+        
+        Args:
+            depType: Dependency type to set.
+        """
         idx = self.cb_depType.findText(depType)
         if idx != -1:
             self.cb_depType.setCurrentIndex(idx)
@@ -142,12 +212,28 @@ class DependencyClass(object):
         self.depTypeChanged()
 
     @err_catcher(name=__name__)
-    def setDependencies(self, deps):
+    def setDependencies(self, deps: Any) -> None:
+        """Set job dependencies for current manager.
+        
+        Stores dependency data for the currently selected renderfarm manager.
+        
+        Args:
+            deps: Dependency data specific to the renderfarm plugin.
+        """
         self.dependencies[self.cb_manager.currentText()] = deps
         self.updateUi()
 
     @err_catcher(name=__name__)
-    def nameChanged(self, text):
+    def nameChanged(self, text: str) -> None:
+        """Handle state name change.
+        
+        Updates state name with dependency count substitution and ensures
+        unique names by appending numbers if needed. Supports {count} and {#}
+        placeholders.
+        
+        Args:
+            text: New name text.
+        """
         if self.cb_manager.currentText() in self.dependencies:
             numDeps = len(self.dependencies[self.cb_manager.currentText()])
         else:
@@ -185,7 +271,12 @@ class DependencyClass(object):
         self.state.setText(0, name)
 
     @err_catcher(name=__name__)
-    def updateUi(self):
+    def updateUi(self) -> None:
+        """Update UI visibility and content.
+        
+        Updates UI based on current manager plugin and refreshes state name
+        with dependency count.
+        """
         plugin = self.core.plugins.getRenderfarmPlugin(self.cb_manager.currentText())
         if plugin:
             plugin.sm_dep_updateUI(self)
@@ -196,11 +287,24 @@ class DependencyClass(object):
         self.nameChanged(self.e_name.text())
 
     @err_catcher(name=__name__)
-    def preDelete(self, item, silent=False):
+    def preDelete(self, item: Any, silent: bool = False) -> None:
+        """Handle pre-delete event.
+        
+        Args:
+            item: Tree item being deleted.
+            silent: Whether to skip confirmation dialogs.
+        """
         self.core.appPlugin.sm_preDelete(self, item, silent)
 
     @err_catcher(name=__name__)
-    def preExecuteState(self):
+    def preExecuteState(self) -> List[Any]:
+        """Check for warnings before state execution.
+        
+        Validates dependency configuration and returns any warnings.
+        
+        Returns:
+            List containing state name and list of warning messages.
+        """
         warnings = []
 
         plugin = self.core.plugins.getRenderfarmPlugin(self.cb_manager.currentText())
@@ -210,7 +314,17 @@ class DependencyClass(object):
         return [self.state.text(0), warnings]
 
     @err_catcher(name=__name__)
-    def executeState(self, parent):
+    def executeState(self, parent: Any) -> List[str]:
+        """Execute dependency state.
+        
+        Delegates to renderfarm plugin to set up job dependencies.
+        
+        Args:
+            parent: Parent state or submission object.
+            
+        Returns:
+            List with status message.
+        """
         try:
             plugin = self.core.plugins.getRenderfarmPlugin(self.cb_manager.currentText())
             if plugin:
@@ -234,7 +348,12 @@ class DependencyClass(object):
             ]
 
     @err_catcher(name=__name__)
-    def getStateProps(self):
+    def getStateProps(self) -> Dict[str, Any]:
+        """Get state properties for saving.
+        
+        Returns:
+            Dictionary of state data for serialization.
+        """
         return {
             "stateName": self.e_name.text(),
             "rjmanager": str(self.cb_manager.currentText()),

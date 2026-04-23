@@ -34,6 +34,7 @@
 
 import os
 import platform
+from typing import Any, List, Tuple
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -43,7 +44,15 @@ from PrismUtils.Decorators import err_catcher_plugin as err_catcher
 
 
 class Prism_Cinema4D_externalAccess_Functions(object):
-    def __init__(self, core, plugin):
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize external access functions for Cinema4D.
+        
+        Registers stylesheet and preset scene callback for Cinema4D plugin.
+        
+        Args:
+            core: Prism core instance
+            plugin: Plugin instance
+        """
         self.core = core
         self.plugin = plugin
         ssheetPath = os.path.join(
@@ -55,7 +64,17 @@ class Prism_Cinema4D_externalAccess_Functions(object):
         self.core.registerCallback("getPresetScenes", self.getPresetScenes, plugin=self.plugin)
 
     @err_catcher(name=__name__)
-    def getAutobackPath(self, origin):
+    def getAutobackPath(self, origin: Any) -> Tuple[str, str]:
+        """Get autobackup directory path for Cinema4D.
+        
+        Returns Windows Documents/Cinema4D path and scene file filter string.
+        
+        Args:
+            origin: Callback origin object
+            
+        Returns:
+            Tuple of (autobackup_path, file_filter_string)
+        """
         autobackpath = ""
         if platform.system() == "Windows":
             autobackpath = os.path.join(
@@ -71,11 +90,28 @@ class Prism_Cinema4D_externalAccess_Functions(object):
         return autobackpath, fileStr
 
     @err_catcher(name=__name__)
-    def copySceneFile(self, origin, origFile, targetPath, mode="copy"):
+    def copySceneFile(self, origin: Any, origFile: str, targetPath: str, mode: str = "copy") -> None:
+        """Copy Cinema4D scene file.
+        
+        Not implemented for Cinema4D.
+        
+        Args:
+            origin: Callback origin object
+            origFile: Source file path
+            targetPath: Destination file path
+            mode: Copy mode (default "copy")
+        """
         pass
 
     @err_catcher(name=__name__)
-    def getPresetScenes(self, presetScenes):
+    def getPresetScenes(self, presetScenes: List[dict]) -> None:
+        """Load preset Cinema4D scene files.
+        
+        Adds .c4d preset files from plugin Presets directory to list if enabled.
+        
+        Args:
+            presetScenes: List to append preset scene dictionaries to
+        """
         if os.getenv("PRISM_SHOW_DEFAULT_SCENEFILE_PRESETS", "1") != "1":
             return
         

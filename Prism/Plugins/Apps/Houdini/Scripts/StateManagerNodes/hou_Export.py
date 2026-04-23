@@ -47,17 +47,56 @@ import hou
 
 from PrismUtils.Decorators import err_catcher as err_catcher
 
+from typing import Any, Optional, Dict, List, Tuple
+
+"""
+Houdini Export state for Prism State Manager.
+
+Manages geometry/cache export (Alembic, FBX, USD, etc.) from Houdini with automatic 
+version control, frame range management, wedge support, and optional renderfarm 
+submission. Supports SOP and ROP-based export workflows.
+"""
+
 
 logger = logging.getLogger(__name__)
 
 
 class ExportClass(object):
     className = "Export"
+    """State for exporting geometry and caches from Houdini.
+    
+    Manages complete export workflows for various file formats (Alembic, FBX, USD, etc.)
+    with automatic version management, frame range control, wedge iteration support, output
+    path management, and optional renderfarm submission. Supports both SOP-based and ROP-based
+    export methods.
+    
+    Attributes:
+        className: Class identifier string.
+        listType: State list category ("Export").
+        stateCategories: Category definitions for state browser.
+        state: QTreeWidgetItem representing this state.
+        core: PrismCore instance.
+        stateManager: StateManager instance.
+        node: Houdini export node (FilecacheNode, ROP, etc.).
+        curCam: Currently selected camera for shot camera exports.
+        canSetVersion: Whether version can be manually specified.
+        export_paths: Available export output locations.
+    """
+
     listType = "Export"
     stateCategories = {"Export": [{"label": className, "stateType": className}]}
 
     @err_catcher(name=__name__)
-    def setup(self, state, core, stateManager, node=None, stateData=None):
+    def setup(self, state, core, stateManager, node=None, stateData=None) -> None:
+        """Initialize the Export state with UI and settings.
+        
+        Args:
+            state: QTreeWidgetItem representing this state.
+            core: PrismCore instance.
+            stateManager: StateManager instance.
+            node: Optional existing export node to connect.
+            stateData: Optional saved state data to load.
+        """
         self.state = state
         self.core = core
         self.stateManager = stateManager
@@ -187,6 +226,10 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def loadData(self, data):
+        """Load saved state data into the UI.
+        
+        Args:
+            data: Dictionary containing saved state settings."""
         if "stateName" in data:
             self.e_name.setText(data["stateName"])
         elif "statename" in data:
@@ -276,6 +319,13 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def findNode(self, path):
+        """Find existing export node for given path.
+        
+        Args:
+            path: Node path to search for.
+            
+        Returns:
+            Houdini node if found, None otherwise."""
         for node in hou.node("/").allSubChildren():
             if (
                 node.userData("PrismPath") is not None
@@ -288,6 +338,10 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def isNodeValid(self):
+        """Check if the export node is still valid.
+        
+        Returns:
+            True if node is valid."""
         try:
             validTST = self.node.name()
         except:
@@ -297,6 +351,10 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def createNode(self, nodePath=None):
+        """Create a new export ROP node.
+        
+        Args:
+            nodePath: Optional path for node creation."""
         if self.stateManager.standalone:
             return False
 
@@ -341,19 +399,28 @@ class ExportClass(object):
         elif curContext == "Dop":
             ropType = "rop_dop"
         elif curContext == "Sop":
-            ropType = "rop_geometry"
+            ropType = "prism::Filecache"
         elif curContext == "Driver":
             ropType = "geometry"
 
         if self.getOutputType() == ".abc":
             if curContext == "Sop":
-                ropType = "rop_alembic"
+                ropType = "prism::Filecache"
             else:
                 ropType = "alembic"
+
         elif self.getOutputType() == ".fbx":
-            ropType = "rop_fbx"
+            if curContext == "Sop":
+                ropType = "prism::Filecache"
+            else:
+                ropType = "rop_fbx"
+
         elif self.getOutputType() in [".usd", ".usda", ".usdc"]:
-            ropType = "usd"
+            if curContext == "Sop":
+                ropType = "prism::Filecache"
+            else:
+                ropType = "usd"
+
         elif self.getOutputType() == ".rs":
             ropType = "Redshift_Proxy_Output"
 
@@ -391,6 +458,7 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def connectEvents(self):
+        """Connect UI widget signals to their handler methods."""
         self.e_name.textChanged.connect(self.nameChanged)
         self.e_name.editingFinished.connect(self.stateManager.saveStatesToScene)
         self.b_changeTask.clicked.connect(self.changeTask)
@@ -429,6 +497,10 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def getLastPathOptions(self):
+        """Get context menu options for the last export path.
+        
+        Returns:
+            List of menu option dictionaries."""
         path = self.l_pathLast.text()
         if path == "None":
             return
@@ -458,6 +530,10 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def openInProductBrowser(self, path):
+        """Open exported files in Product Browser.
+        
+        Args:
+            path: File path to exported product."""
         self.core.projectBrowser()
         self.core.pb.showTab("Products")
         data = self.core.paths.getCachePathData(path)
@@ -465,6 +541,7 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def rangeTypeChanged(self, state):
+        """Handle frame range type selection change."""
         if self.isPrismFilecacheNode(self.node):
             if self.getRangeType() != "Node":
                 self.core.appPlugin.filecache.setRangeOnNode(self.node, "From State Manager")
@@ -474,6 +551,7 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def nameChanged(self, text):
+        """Handle state name text change."""
         text = self.e_name.text()
         context = {}
         if self.getOutputType() == "ShotCam":
@@ -516,16 +594,24 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def isPrismFilecacheNode(self, node):
+        """Check if node is a Prism-managed filecache.
+        
+        Args:
+            node: Houdini node to check.
+            
+        Returns:
+            True if Prism filecache node."""
         if not self.core.appPlugin.isNodeValid(self, node):
             return False
 
-        if node.type().name().startswith("prism::Filecache"):
+        if isinstance(node, hou.Node) and node.type().name().startswith("prism::Filecache"):
             return True
 
         return False
 
     @err_catcher(name=__name__)
     def changeTask(self):
+        """Show dialog to change product name."""
         from PrismUtils import PrismWidgets
         self.nameWin = PrismWidgets.CreateItem(
             startText=self.getProductname(),
@@ -547,6 +633,10 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def setProductname(self, productname):
+        """Set the product name.
+        
+        Args:
+            productname: Product name string."""
         self.l_taskName.setText(productname)
         self.nameChanged(self.e_name.text())
         if productname:
@@ -563,10 +653,15 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def setTaskname(self, taskname):
+        """Set task name (alias for setProductname)."""
         self.setProductname(taskname)
 
     @err_catcher(name=__name__)
     def getProductname(self, expanded=False):
+        """Get the product name.
+        
+        Returns:
+            Product name string."""
         if self.isPrismFilecacheNode(self.node) and self.node.parm("showUsdSettings").eval():
             usdPlug = self.core.getPlugin("USD")
             if not usdPlug:
@@ -589,18 +684,31 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def getTaskname(self, expanded=False):
+        """Get task name (alias for getProductname)."""
         return self.getProductname(expanded=expanded)
 
     @err_catcher(name=__name__)
     def getSortKey(self):
+        """Get sort key for state list ordering.
+        
+        Returns:
+            Sort key string."""
         return self.getProductname(expanded=True)
 
     @err_catcher(name=__name__)
     def getOutputType(self):
+        """Get output file format type.
+        
+        Returns:
+            Output type string."""
         return self.cb_outType.currentText()
 
     @err_catcher(name=__name__)
     def setOutputType(self, outputtype):
+        """Set output file format type.
+        
+        Args:
+            outputtype: Output type to set."""
         idx = self.cb_outType.findText(outputtype)
         if idx == self.cb_outType.currentIndex():
             return True
@@ -614,10 +722,18 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def getRangeType(self):
+        """Get currently selected frame range type.
+        
+        Returns:
+            Range type string."""
         return self.cb_rangeType.currentText()
 
     @err_catcher(name=__name__)
     def setRangeType(self, rangeType):
+        """Set frame range type.
+        
+        Args:
+            rangeType: Range type to set."""
         idx = self.cb_rangeType.findText(rangeType)
         if idx != -1:
             self.cb_rangeType.setCurrentIndex(idx)
@@ -628,6 +744,7 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def onUpdateMasterChanged(self, master):
+        """Handle update master version checkbox change."""
         if self.isPrismFilecacheNode(self.node):
             self.core.appPlugin.filecache.setUpdateMasterVersionOnNode(self.node, master)
 
@@ -635,14 +752,20 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def getUpdateMasterVersion(self):
+        """Get update master version mode.
+        
+        Returns:
+            Master version mode string."""
         return self.chb_master.isChecked()
 
     @err_catcher(name=__name__)
     def setUpdateMasterVersion(self, master):
+        """Set update master version mode."""
         self.chb_master.setChecked(master)
 
     @err_catcher(name=__name__)
     def onLocationChanged(self, idx):
+        """Handle export location combobox change."""
         location = self.cb_outPath.currentText()
         if self.isPrismFilecacheNode(self.node):
             self.core.appPlugin.filecache.setLocationOnNode(self.node, location)
@@ -651,10 +774,15 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def getLocation(self):
+        """Get export output location.
+        
+        Returns:
+            Location name string."""
         return self.cb_outPath.currentText()
 
     @err_catcher(name=__name__)
     def setLocation(self, location):
+        """Set export output location."""
         idx = self.cb_outPath.findText(location)
         if idx != -1:
             self.cb_outPath.setCurrentIndex(idx)
@@ -665,6 +793,10 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def setCam(self, index):
+        """Set the camera for shot camera export.
+        
+        Args:
+            index: Camera combobox index."""
         self.curCam = self.camlist[index]
         self.nameChanged(self.e_name.text())
 
@@ -672,6 +804,7 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def refreshShotCameras(self):
+        """Refresh available shot cameras list."""
         self.camlist = []
         for node in hou.node("/").allSubChildren():
             if node.type().name() == "cam" and node.name() != "ipr_camera":
@@ -697,6 +830,7 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def updateUi(self):
+        """Update all UI elements with current state."""
         if self.isNodeValid():
             self.l_status.setText(self.node.name())
             self.l_status.setToolTip(self.node.path())
@@ -740,6 +874,7 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def refreshShotCamShots(self):
+        """Refresh available shots for shotcam export."""
         curShot = self.cb_sCamShot.currentText()
         self.cb_sCamShot.clear()
         shots = self.core.entities.getShots()
@@ -773,6 +908,7 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def updateRange(self):
+        """Update frame range display."""
         rangeType = self.cb_rangeType.currentText()
         isCustom = rangeType == "Custom"
         self.l_rangeStart.setVisible(not isCustom)
@@ -789,6 +925,13 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def getFrameRange(self, rangeType):
+        """Calculate frame range based on range type.
+        
+        Args:
+            rangeType: Range type string.
+            
+        Returns:
+            Tuple of (startFrame, endFrame)."""
         startFrame = None
         endFrame = None
         if rangeType == "Scene":
@@ -828,6 +971,7 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def typeChanged(self, idx=None, createMissing=True):
+        """Handle export type/format change."""
         self.isNodeValid()
         if idx is None:
             idx = self.cb_outType.currentText()
@@ -991,6 +1135,7 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def goToNode(self):
+        """Navigate to and select export node in network view."""
         if not self.isNodeValid():
             self.createNode()
 
@@ -1005,7 +1150,18 @@ class ExportClass(object):
             paneTab.homeToSelection()
 
     @staticmethod
-    def isConnectableNode(node):
+    def isConnectableNode(node: Any) -> bool:
+        """Check if a node can be connected to this Export state.
+        
+        Validates that the node is a supported export node type (geometry ROP,
+        Alembic ROP, FBX ROP, filecache, USD ROP, Redshift Proxy, etc.).
+        
+        Args:
+            node: Houdini node to check.
+            
+        Returns:
+            True if node is a connectable export node type.
+        """
         typeName = node.type().name()
         cat = node.type().category().name()
         validType = typeName in [
@@ -1026,6 +1182,7 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def onConnectMenuTriggered(self, pos):
+        """Handle connect node context menu."""
         menu = QMenu(self)
         callback = lambda node: self.connectNode(node=node)
         self.core.appPlugin.sm_openStateFromNode(
@@ -1037,6 +1194,7 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def connectNode(self, node=None):
+        """Connect a node to this export state."""
         if node is None:
             if len(hou.selectedNodes()) == 0:
                 return False
@@ -1106,6 +1264,10 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def getWedgeROP(self, wedge):
+        """Get wedge ROP node if this is a wedge export.
+        
+        Returns:
+            Wedge ROP node or None."""
         if wedge.inputs():
             return wedge.inputs()[0]
         else:
@@ -1115,6 +1277,7 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def startChanged(self):
+        """Handle start frame spinbox change."""
         if self.isPrismFilecacheNode(self.node):
             if self.getRangeType() != "Node":
                 self.core.appPlugin.filecache.setRangeOnNode(self.node, "From State Manager")
@@ -1136,6 +1299,7 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def endChanged(self):
+        """Handle end frame spinbox change."""
         if self.isPrismFilecacheNode(self.node):
             if self.getRangeType() != "Node":
                 self.core.appPlugin.filecache.setRangeOnNode(self.node, "From State Manager")
@@ -1157,17 +1321,20 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def useTakeChanged(self, state):
+        """Handle use take checkbox change."""
         self.cb_take.setEnabled(state)
         self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
     def rjToggled(self, checked=None):
+        """Handle renderfarm job submission toggle."""
         if checked is None:
             checked = self.gb_submit.isChecked()
         self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
     def managerChanged(self, text=None):
+        """Handle renderfarm manager selection change."""
         if getattr(self.cb_manager, "prevManager", None):
             self.cb_manager.prevManager.unsetManager(self)
 
@@ -1180,6 +1347,7 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def openSlaves(self):
+        """Open renderfarm slaves configuration dialog."""
         if eval(os.getenv("PRISM_DEBUG", "False")):
             try:
                 del sys.modules["SlaveAssignment"]
@@ -1220,6 +1388,10 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def getRenderNode(self):
+        """Get the render node for this export.
+        
+        Returns:
+            Render node."""
         if self.isPrismFilecacheNode(self.node):
             node = self.core.appPlugin.filecache.getRenderNode(self.node)
         else:
@@ -1229,10 +1401,15 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def preDelete(self, item, silent=False):
+        """Perform cleanup before state deletion."""
         self.core.appPlugin.sm_preDelete(self, item, silent)
 
     @err_catcher(name=__name__)
     def preExecuteState(self):
+        """Validate state configuration before exporting.
+        
+        Returns:
+            List containing [state name, warnings list]."""
         warnings = []
 
         if self.getOutputType() == "ShotCam":
@@ -1268,6 +1445,10 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def getCurrentWedgeIndex(self):
+        """Get current wedge iteration index.
+        
+        Returns:
+            Wedge index or 0."""
         # wedge = hou.text.expandString("`@wedgeindex`") or None
         import pdg
         workItem = pdg.workItem()
@@ -1280,6 +1461,10 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def isContextSourceCooked(self):
+        """Check if context source geometry is cooked.
+        
+        Returns:
+            True if source is cooked."""
         contextSource = self.node.parm("contextSource").evalAsString()
         if contextSource not in ["From USD stage meta data"]:
             return True
@@ -1306,6 +1491,10 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def getOutputEntity(self, forceCook=False):
+        """Get output entity data for export.
+        
+        Returns:
+            Dictionary with entity data."""
         if self.isPrismFilecacheNode(self.node):
             contextSource = self.node.parm("contextSource").evalAsString()
             entityData = None
@@ -1382,6 +1571,10 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def getOutputName(self, useVersion="next"):
+        """Generate output file path and version.
+        
+        Returns:
+            Tuple of (outputPath, outputFolder, version, outputName)."""
         if self.isPrismFilecacheNode(self.node) and self.node.parm("showUsdSettings").eval():
             usdPlug = self.core.getPlugin("USD")
             if not usdPlug:
@@ -1415,14 +1608,19 @@ class ExportClass(object):
             framePadding = None
         else:
             rangeType = self.cb_rangeType.currentText()
-            if self.isPrismFilecacheNode(self.node):
+            isFilecache = self.isPrismFilecacheNode(self.node)
+            if isFilecache:
                 if self.core.appPlugin.filecache.isSingleFrame(self.node):
                     rangeType = "Single Frame"
 
             if rangeType == "Single Frame":
                 framePadding = ""
             else:
-                incr = self.node.parm("f3").eval() / self.node.parm("substeps").eval()
+                if isFilecache:
+                    incr = self.node.parm("f3").eval() / self.node.parm("substeps").eval()
+                else:
+                    incr = self.node.parm("f3").eval()
+
                 if incr < 1:
                     framePadding = f"`pythonexprs('\"%0{self.core.framePadding}d.%03d\" % (int(hou.timeToFrame(hou.time())), int(round(hou.timeToFrame(hou.time()), 3) * 1000) % 1000)')`"
                 else:
@@ -1453,6 +1651,10 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def getComment(self):
+        """Get publish comment for this export.
+        
+        Returns:
+            Comment string."""
         if self.stateManager.useStateComments():
             comment = self.e_comment.text() or self.stateManager.publishComment
         else:
@@ -1462,6 +1664,10 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def executeState(self, parent, useVersion="next"):
+        """Execute the export operation.
+        
+        Returns:
+            List of result messages."""
         rangeType = self.cb_rangeType.currentText()
         startFrame, endFrame = self.getFrameRange(rangeType)
         if startFrame is None:
@@ -1695,7 +1901,11 @@ class ExportClass(object):
                     singleFile = not self.node.parm("writeFileSequence").eval()
 
                 if singleFile:
-                    incr = self.node.parm("f3").eval() / self.node.parm("substeps").eval()
+                    if isFilecache:
+                        incr = self.node.parm("f3").eval() / self.node.parm("substeps").eval()
+                    else:
+                        incr = self.node.parm("f3").eval()
+
                     if incr < 1:
                         framePadding = f"`pythonexprs('\"%0{self.core.framePadding}d.%03d\" % (int(hou.timeToFrame(hou.time())), int(round(hou.timeToFrame(hou.time()), 3) * 1000) % 1000)')`"
                     else:
@@ -1799,6 +2009,10 @@ class ExportClass(object):
             details = (self.getOutputEntity() or {}).copy()
             if self.isPrismFilecacheNode(self.node):
                 self.core.appPlugin.filecache.refreshContextFromEntity(self.node, details)
+                try:
+                    details["source_asset_path"] = self.node.inputs()[0].geometry().attribValue("source_asset_path")
+                except:
+                    pass
 
             if "filename" in details:
                 del details["filename"]
@@ -1938,6 +2152,7 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def executeNode(self):
+        """Execute the export node rendering."""
         result = True
         if self.isPrismFilecacheNode(self.node):
             result = self.core.appPlugin.filecache.executeNode(self.node)
@@ -1961,6 +2176,10 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def isUsingMasterVersion(self):
+        """Check if using master version.
+        
+        Returns:
+            True if using master version."""
         useMaster = self.core.products.getUseMaster()
         if not useMaster:
             return False
@@ -1969,6 +2188,7 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def handleMasterVersion(self, outputName):
+        """Handle master version creation/update."""
         if not self.isUsingMasterVersion():
             return
 
@@ -1980,6 +2200,10 @@ class ExportClass(object):
 
     @err_catcher(name=__name__)
     def getStateProps(self):
+        """Get state properties for serialization.
+        
+        Returns:
+            Dictionary of state properties."""
         try:
             curNode = self.node.path()
             self.node.setUserData("PrismPath", curNode)

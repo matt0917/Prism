@@ -33,11 +33,40 @@
 
 
 import os
+from typing import Any, List
 
 
 class Prism_PureRef_Variables(object):
-    def __init__(self, core, plugin):
-        self.version = "v2.1.1"
+    """Variables and configuration for PureRef plugin.
+    
+    Defines plugin metadata, supported formats, and basic configuration
+    for PureRef integration with Prism.
+    
+    Attributes:
+        version (str): Plugin version
+        pluginName (str): Display name of the plugin
+        pluginType (str): Type of plugin (App)
+        appShortName (str): Short name for the application
+        appType (str): Application type (2d)
+        hasQtParent (bool): Whether app has Qt parent window
+        sceneFormats (List[str]): Supported scene file formats
+        appSpecificFormats (List[str]): App-specific file formats
+        appColor (List[int]): RGB color for UI elements
+        renderPasses (List): Available render passes
+        platforms (List[str]): Supported operating systems
+        pluginDirectory (str): Path to plugin directory
+        hasIntegration (bool): Whether app has DCC integration
+        appIcon (str): Path to application icon
+    """
+
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize PureRef plugin variables.
+        
+        Args:
+            core: PrismCore instance.
+            plugin: Plugin instance.
+        """
+        self.version = "v2.1.2"
         self.pluginName = "PureRef"
         self.pluginType = "App"
         self.appShortName = "PureRef"

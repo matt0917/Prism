@@ -36,6 +36,7 @@ import subprocess
 import sys
 import platform
 import logging
+from typing import Any, List, Optional, Union
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -51,7 +52,15 @@ logger = logging.getLogger(__name__)
 
 
 class Prism_Photoshop_Integration(object):
-    def __init__(self, core, plugin):
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize Photoshop integration module.
+        
+        Sets up integration paths for Windows or macOS.
+        
+        Args:
+            core: Prism core instance
+            plugin: Plugin instance (self)
+        """
         self.core = core
         self.plugin = plugin
 
@@ -63,7 +72,18 @@ class Prism_Photoshop_Integration(object):
             self.examplePath = installPath
 
     @err_catcher(name=__name__)
-    def getPhotoshopPath(self, single=True):
+    def getPhotoshopPath(self, single: bool = True) -> Optional[Union[str, List[str]]]:
+        """Get Photoshop installation path(s) from system registry or filesystem.
+        
+        On Windows, reads registry SOFTWARE\\\\Adobe\\\\Photoshop for installation paths.
+        On macOS, searches /Applications for Adobe Photoshop folders.
+        
+        Args:
+            single: If True, return only the first path found; if False, return all paths
+            
+        Returns:
+            Single path string if single=True, list of paths if single=False, or None if none found
+        """
         try:
             psPaths = []
             if platform.system() == "Windows":
@@ -105,24 +125,67 @@ class Prism_Photoshop_Integration(object):
         except:
             return None
 
-    def addIntegration(self, installPath):
+    def addIntegration(self, installPath: str) -> Union[str, bool]:
+        """Add Prism integration to Photoshop.
+        
+        Delegates to addUXP() for UXP plugin or addCEP() for CEP integration.
+        
+        Args:
+            installPath: Either "UXP" string or path to Photoshop installation
+            
+        Returns:
+            "UXP" string if UXP installed, True if CEP installed, False on failure
+        """
         if installPath == "UXP":
             return self.addUXP()
         else:
-            return self.appCEP(installPath)
+            return self.addCEP(installPath)
 
-    def addUXP(self):
+    def addUXP(self) -> Union[str, bool]:
+        """Install Prism UXP plugin to Photoshop.
+        
+        Uses Adobe's UPI installer agent to install the .ccx plugin package.
+        Starts the server after installation.
+        
+        Returns:
+            "UXP" string on success, False on failure
+        """
         exe = self.getUXPExe()
         if not os.path.exists(exe):
             msg = "Unable to find UPI installer agent at path: %s.\nPlease make sure that Adobe Creative Cloud is installed and up to date." % exe
             self.core.popup(msg, title="Prism Integration")
             return False
 
-        subprocess.run([exe, "/install", os.path.join(self.pluginDirectory, "Integration", "UXP", "com.prism.photoshop_PS.ccx")], check=True)
+        while True:
+            try:
+                subprocess.run([exe, "/install", os.path.join(self.pluginDirectory, "Integration", "UXP", "com.prism.photoshop_PS.ccx")], check=True)
+            except Exception as e:
+                result = self.core.popupQuestion(f"Failed to install UXP plugin for Photoshop.\n\nError: {str(e)}", buttons=["Retry", "Cancel"], escapeButton="Cancel", icon=QMessageBox.Warning, default="Cancel")
+                if result == "Retry":
+                    continue
+                elif result == "Cancel":
+                    return False
+            
+            break
+
         self.startServer()
         return "UXP"
 
-    def addCEP(self, installPath):
+    def addCEP(self, installPath: str) -> bool:
+        """Install Prism CEP scripts to Photoshop.
+        
+        Copies JSX script files to Photoshop's Scripts folder with paths customized
+        for the current Prism installation.
+        
+        Args:
+            installPath: Path to Photoshop installation directory
+            
+        Returns:
+            True on successful installation, False on failure
+            
+        Raises:
+            Exception: If file operations fail during installation
+        """
         try:
             if not os.path.exists(installPath):
                 msg = "Invalid Photoshop path: %s.\nThe path doesn't exist." % installPath
@@ -225,13 +288,30 @@ class Prism_Photoshop_Integration(object):
             self.core.popup(msgStr, title="Prism Integration")
             return False
 
-    def removeIntegration(self, installPath):
+    def removeIntegration(self, installPath: str) -> bool:
+        """Remove Prism integration from Photoshop.
+        
+        Delegates to removeUXPIntegration() or removeCEP() based on path.
+        
+        Args:
+            installPath: Either "UXP" string or path to Photoshop installation
+            
+        Returns:
+            True on successful removal, False on failure
+        """
         if installPath == "UXP":
             return self.removeUXPIntegration()
         else:
             return self.removeCEP(installPath)
         
-    def removeUXPIntegration(self):
+    def removeUXPIntegration(self) -> bool:
+        """Remove Prism UXP plugin from Photoshop.
+        
+        Uses Adobe's UPI installer agent to uninstall the plugin.
+        
+        Returns:
+            True on successful removal, False on failure
+        """
         try:
             exe = self.getUXPExe()
             if not os.path.exists(exe):
@@ -251,7 +331,17 @@ class Prism_Photoshop_Integration(object):
             self.core.popup(msgStr, title="Prism Integration")
             return False
     
-    def removeCEP(self, installPath):
+    def removeCEP(self, installPath: str) -> bool:
+        """Remove Prism CEP scripts from Photoshop.
+        
+        Deletes all Prism JSX script files from Photoshop's Scripts folder.
+        
+        Args:
+            installPath: Path to Photoshop installation directory
+            
+        Returns:
+            True on successful removal, False on failure
+        """
         try:
             for filename in [
                 "Prism - 1 Tools.jsx",
@@ -277,7 +367,15 @@ class Prism_Photoshop_Integration(object):
             self.core.popup(msgStr, title="Prism Integration")
             return False
 
-    def updateInstallerUI(self, userFolders, pItem):
+    def updateInstallerUI(self, userFolders: Any, pItem: Any) -> None:
+        """Update the Prism installer UI with Photoshop integration options.
+        
+        Creates tree widget items for detected Photoshop versions and UXP option.
+        
+        Args:
+            userFolders: User folders configuration (unused in Photoshop)
+            pItem: Parent tree widget item to add Photoshop integration options to
+        """
         try:
             psItem = QTreeWidgetItem(["Photoshop"])
             psItem.setCheckState(0, Qt.Checked)
@@ -322,7 +420,18 @@ class Prism_Photoshop_Integration(object):
             self.core.popup(msg, title="Prism Installation")
             return False
 
-    def installerExecute(self, photoshopItem, result):
+    def installerExecute(self, photoshopItem: Any, result: dict) -> Union[List[str], bool]:
+        """Execute Photoshop integration installation.
+        
+        Installs Prism to all checked Photoshop versions in the installer UI.
+        
+        Args:
+            photoshopItem: Tree widget item containing Photoshop version checkboxes
+            result: Dictionary to store installation results
+            
+        Returns:
+            List of successfully installed paths, or False on failure
+        """
         try:
             psPaths = []
             installLocs = []

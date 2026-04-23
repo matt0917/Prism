@@ -38,6 +38,7 @@ import platform
 import logging
 import subprocess
 import traceback
+from typing import Any, List, Dict, Tuple, Optional
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -50,7 +51,26 @@ logger = logging.getLogger(__name__)
 
 
 class Prism_Houdini_externalAccess_Functions(object):
-    def __init__(self, core, plugin):
+    """External access functions for Houdini plugin.
+    
+    Handles user settings, project settings, preset scenes, and external
+    file operations when Prism is accessed outside of Houdini.
+    
+    Attributes:
+        core: PrismCore instance.
+        plugin: Houdini plugin instance.
+        houdiniPath: Path to Houdini executable.
+    """
+    
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize external access functions.
+        
+        Registers callbacks for settings and project management.
+        
+        Args:
+            core: PrismCore instance.
+            plugin: Houdini plugin instance.
+        """
         self.core = core
         self.plugin = plugin
         self.houdiniPath = None
@@ -81,9 +101,20 @@ class Prism_Houdini_externalAccess_Functions(object):
         self.core.registerCallback(
             "projectSettings_loadUI", self.projectSettings_loadUI, plugin=self.plugin
         )
+        self.core.registerCallback(
+            "getAvailableSceneBuildingSteps", self.getAvailableSceneBuildingSteps, plugin=self.plugin
+        )
 
     @err_catcher(name=__name__)
-    def userSettings_loadUI(self, origin, tab):
+    def userSettings_loadUI(self, origin: Any, tab: Any) -> None:
+        """Load Houdini-specific UI elements into user settings.
+        
+        Adds checkboxes for external file drop handling and manual update mode.
+        
+        Args:
+            origin: User settings dialog.
+            tab: Tab widget to add controls to.
+        """
         lo_settings = QGridLayout()
         tab.layout().addLayout(lo_settings)
         spacer = QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -99,7 +130,13 @@ class Prism_Houdini_externalAccess_Functions(object):
         tab.layout().addWidget(origin.chb_houdiniManual)
 
     @err_catcher(name=__name__)
-    def userSettings_saveSettings(self, origin, settings):
+    def userSettings_saveSettings(self, origin: Any, settings: Dict) -> None:
+        """Save Houdini-specific user settings.
+        
+        Args:
+            origin: User settings dialog.
+            settings: Settings dictionary to update.
+        """
         if hasattr(origin, "chb_houdiniHandleDrop"):
             enabled = origin.chb_houdiniHandleDrop.isChecked()
             self.setDropHandlingEnabled(enabled)
@@ -111,7 +148,13 @@ class Prism_Houdini_externalAccess_Functions(object):
             settings["houdini"]["openInManual"] = origin.chb_houdiniManual.isChecked()
 
     @err_catcher(name=__name__)
-    def userSettings_loadSettings(self, origin, settings):
+    def userSettings_loadSettings(self, origin: Any, settings: Dict) -> None:
+        """Load Houdini-specific user settings into UI.
+        
+        Args:
+            origin: User settings dialog.
+            settings: Settings dictionary to read from.
+        """
         filepath = os.path.join(self.plugin.pluginDirectory, "Integration", "scripts", "externaldragdrop.py")
         handleDrops = os.path.exists(filepath)
         origin.chb_houdiniHandleDrop.setChecked(handleDrops)
@@ -121,7 +164,14 @@ class Prism_Houdini_externalAccess_Functions(object):
                 origin.chb_houdiniManual.setChecked(settings["houdini"]["openInManual"])
 
     @err_catcher(name=__name__)
-    def setDropHandlingEnabled(self, state):
+    def setDropHandlingEnabled(self, state: bool) -> None:
+        """Enable or disable external file drop handling in Houdini.
+        
+        Renames the externaldragdrop.py file to activate/deactivate it.
+        
+        Args:
+            state: True to enable, False to disable.
+        """
         filepath = os.path.join(self.plugin.pluginDirectory, "Integration", "scripts", "externaldragdrop.py")
         inactivePath = os.path.join(os.path.dirname(filepath), "_" + os.path.basename(filepath))
         if state:
@@ -146,7 +196,15 @@ class Prism_Houdini_externalAccess_Functions(object):
                     logger.debug("disabled filedrop handling in Houdini.")
 
     @err_catcher(name=__name__)
-    def getAutobackPath(self, origin):
+    def getAutobackPath(self, origin: Any) -> Tuple[str, str]:
+        """Get the autobackup path for Houdini scene files.
+        
+        Args:
+            origin: Calling object.
+        
+        Returns:
+            Tuple of (autobackup path, file filter string).
+        """
         autobackpath = ""
         if platform.system() == "Windows":
             autobackpath = os.path.join(
@@ -165,7 +223,12 @@ class Prism_Houdini_externalAccess_Functions(object):
         return autobackpath, fileStr
 
     @err_catcher(name=__name__)
-    def getPresetScenes(self, presetScenes):
+    def getPresetScenes(self, presetScenes: List) -> None:
+        """Add Houdini preset scenes to the preset scenes list.
+        
+        Args:
+            presetScenes: List to append preset scenes to.
+        """
         if os.getenv("PRISM_SHOW_DEFAULT_SCENEFILE_PRESETS", "1") != "1":
             return
 
@@ -174,25 +237,63 @@ class Prism_Houdini_externalAccess_Functions(object):
         presetScenes += scenes
 
     @err_catcher(name=__name__)
-    def preProjectSettingsLoad(self, origin, settings):
-        if settings and "houdini" in settings:
-            if "useRelativePaths" in settings["houdini"]:
-                origin.chb_houdiniRelative.setChecked(settings["houdini"]["useRelativePaths"])
+    def preProjectSettingsLoad(self, origin: Any, settings: Dict) -> None:
+        """Load Houdini project settings before UI is displayed.
+        
+        Args:
+            origin: Project settings dialog.
+            settings: Settings dictionary to load from.
+        """
+        if settings:
+            if "houdini" in settings:
+                if "useRelativePaths" in settings["houdini"]:
+                    origin.chb_houdiniRelative.setChecked(settings["houdini"]["useRelativePaths"])
+
+            if hasattr(origin, "sb_houdini"):
+                sbData = settings.get("sceneBuilding", {})
+                savedSteps = sbData.get("houdini_steps") or []
+                if savedSteps:
+                    origin.sb_houdini.tw_steps.clear()
+                    origin.sb_houdini.addSteps(savedSteps)
 
     @err_catcher(name=__name__)
-    def preProjectSettingsSave(self, origin, settings):
+    def preProjectSettingsSave(self, origin: Any, settings: Dict) -> None:
+        """Save Houdini project settings.
+        
+        Args:
+            origin: Project settings dialog.
+            settings: Settings dictionary to update.
+        """
         if "houdini" not in settings:
             settings["houdini"] = {}
 
         rel = origin.chb_houdiniRelative.isChecked()
         settings["houdini"]["useRelativePaths"] = rel
 
+        if hasattr(origin, "sb_houdini"):
+            if "sceneBuilding" not in settings:
+                settings["sceneBuilding"] = {}
+
+            settings["sceneBuilding"]["houdini_steps"] = origin.sb_houdini.getSteps()
+
     @err_catcher(name=__name__)
-    def projectSettings_loadUI(self, origin):
+    def projectSettings_loadUI(self, origin: Any) -> None:
+        """Load Houdini-specific UI elements into project settings.
+        
+        Args:
+            origin: Project settings dialog.
+        """
         self.addUiToProjectSettings(origin)
 
     @err_catcher(name=__name__)
-    def addUiToProjectSettings(self, projectSettings):
+    def addUiToProjectSettings(self, projectSettings: Any) -> None:
+        """Add Houdini UI controls to project settings dialog.
+        
+        Creates group boxes for relative paths and scene building options.
+        
+        Args:
+            projectSettings: Project settings dialog.
+        """
         projectSettings.w_houdini = QGroupBox("Houdini")
         lo_houdini = QGridLayout()
         projectSettings.w_houdini.setLayout(lo_houdini)
@@ -208,9 +309,25 @@ class Prism_Houdini_externalAccess_Functions(object):
         lo_houdini.addItem(sp_stretch, 0, 1)
         lo_houdini.addWidget(projectSettings.chb_houdiniRelative, 0, 2)
         projectSettings.w_prjSettings.layout().addWidget(projectSettings.w_houdini)
+        projectSettings.sb_houdini = projectSettings.addSceneBuildingApp("Houdini", iconPath=self.appIcon)
+        dftSteps = self.getAvailableSceneBuildingSteps()
+        dftSteps = [s for s in dftSteps["results"] if s["name"] not in ["runCode", "apply_abc_caches"]]
+        projectSettings.sb_houdini.addSteps(dftSteps)
 
     @err_catcher(name=__name__)
-    def customizeExecutable(self, origin, appPath, filepath):
+    def customizeExecutable(self, origin: Any, appPath: str, filepath: str) -> bool:
+        """Customize Houdini executable launch with manual update mode.
+        
+        Opens Houdini with -n flag for manual update mode if configured.
+        
+        Args:
+            origin: Calling object.
+            appPath: Path to application executable.
+            filepath: Path to scene file to open.
+        
+        Returns:
+            True if file was started, False otherwise.
+        """
         fileStarted = False
         if self.core.getConfig("houdini", "openInManual"):
             if not appPath:
@@ -246,3 +363,29 @@ class Prism_Houdini_externalAccess_Functions(object):
                     fileStarted = True
 
         return fileStarted
+
+    @err_catcher(name=__name__)
+    def getAvailableSceneBuildingSteps(self, app: str = "") -> dict:
+        """Get available scene building steps.
+        
+        Args:
+            app: Application name
+            
+        Returns:
+            List of step names
+        """
+        if app and app != "Houdini":
+            return {"combine": True, "results": []}
+        
+        steps = self.core.entities.getDefaultSceneBuildingSteps()
+
+        houdiniSteps = [
+            {
+                "name": "apply_abc_caches",
+                "label": "Apply Alembic Caches",
+                "function": "self.core.appPlugin.buildSceneApplyAbcCaches",
+            }
+        ]
+        steps += houdiniSteps
+        result = {"combine": True, "results": steps}
+        return result

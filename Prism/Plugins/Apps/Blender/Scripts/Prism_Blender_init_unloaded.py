@@ -32,6 +32,8 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from typing import Any
+
 from Prism_Blender_Variables import Prism_Blender_Variables
 from Prism_Blender_externalAccess_Functions import (
     Prism_Blender_externalAccess_Functions,
@@ -44,7 +46,18 @@ class Prism_Blender_unloaded(
     Prism_Blender_externalAccess_Functions,
     Prism_Blender_Integration,
 ):
-    def __init__(self, core):
+    """Unloaded state of Blender plugin.
+    
+    Provides limited functionality when Blender is not running but Prism
+    needs access to plugin settings and integration features.
+    """
+    
+    def __init__(self, core: Any) -> None:
+        """Initialize unloaded Blender plugin.
+        
+        Args:
+            core: PrismCore instance.
+        """
         Prism_Blender_Variables.__init__(self, core, self)
         Prism_Blender_externalAccess_Functions.__init__(self, core, self)
         Prism_Blender_Integration.__init__(self, core, self)

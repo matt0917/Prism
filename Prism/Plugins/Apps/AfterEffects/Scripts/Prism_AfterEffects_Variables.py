@@ -33,11 +33,21 @@
 
 
 import os
+from typing import Any, List
 
 
 class Prism_AfterEffects_Variables(object):
-    def __init__(self, core, plugin):
-        self.version = "v2.1.1"
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize AfterEffects plugin variables and configuration.
+        
+        Sets up plugin metadata, supported formats, appearance settings, and
+        platform compatibility for the After Effects integration.
+        
+        Args:
+            core: Prism core instance
+            plugin: Plugin instance (self reference)
+        """
+        self.version = "v2.1.2"
         self.pluginName = "AfterEffects"
         self.pluginType = "App"
         self.appShortName = "AfterEffects"

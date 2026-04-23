@@ -36,6 +36,7 @@ import os
 import sys
 import shutil
 import logging
+from typing import Any, Optional, List, Dict, Tuple
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -50,11 +51,43 @@ logger = logging.getLogger(__name__)
 
 
 class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
+    """Product browser dialog for managing and viewing product versions.
+    
+    Displays a hierarchical view of entities (assets/shots), their products, and version history.
+    Allows users to browse, import, and manage product versions with support for both local
+    and global storage locations.
+    
+    Attributes:
+        productPathSet (Signal): Emitted when a product path is selected, passes the file path.
+        versionsUpdated (Signal): Emitted when the versions list is refreshed.
+        closing (Signal): Emitted when the dialog is closing.
+        core: Reference to the Prism core instance.
+        projectBrowser: Reference to parent ProjectBrowser instance if embedded.
+        importState: Reference to import state for filtering/validation.
+        productPath (Optional[str]): Currently selected product file path.
+        customProduct (bool): Whether the selected product is a custom file.
+        autoClose (bool): Whether to auto-close after selecting a product.
+        handleImport (bool): Whether to automatically handle import after selection.
+        versionLabels (List[str]): Column headers for the version table.
+        initialized (bool): Whether the browser has been initialized.
+        prevDelIdx (Optional[int]): Previous delegate index for cleanup.
+        w_entities: Entity widget for browsing assets/shots.
+        tw_identifier: Tree widget displaying products.
+        tw_versions: Table widget displaying versions.
+    """
     productPathSet = Signal(object)
     versionsUpdated = Signal()
     closing = Signal()
 
-    def __init__(self, core, importState=None, refresh=True, projectBrowser=None):
+    def __init__(self, core: Any, importState: Optional[Any] = None, refresh: bool = True, projectBrowser: Optional[Any] = None) -> None:
+        """Initialize the Product Browser dialog.
+        
+        Args:
+            core: Prism core instance.
+            importState: Optional import state for filtering and validation.
+            refresh: Whether to refresh data on initialization.
+            projectBrowser: Optional parent ProjectBrowser instance.
+        """
         QDialog.__init__(self)
         self.setupUi(self)
         self.core = core
@@ -80,7 +113,16 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
             self.entered()
 
     @err_catcher(name=__name__)
-    def entered(self, prevTab=None, navData=None):
+    def entered(self, prevTab: Optional[Any] = None, navData: Optional[Dict[str, Any]] = None) -> None:
+        """Handle browser activation and navigation.
+        
+        Called when the tab becomes active or when navigating to specific data.
+        Initializes the entity tree and navigates to the specified product/version.
+        
+        Args:
+            prevTab: Previous tab widget for syncing navigation state.
+            navData: Optional navigation data containing entity, product, and version info.
+        """
         if prevTab:
             if hasattr(prevTab, "w_entities"):
                 navData = prevTab.w_entities.getCurrentData()
@@ -122,14 +164,26 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
                 self.w_entities.navigate(navData)
 
     @err_catcher(name=__name__)
-    def closeEvent(self, event=None):
+    def closeEvent(self, event: Optional[Any] = None) -> None:
+        """Handle dialog close event.
+        
+        Closes any open detail windows and emits the closing signal.
+        
+        Args:
+            event: Close event object.
+        """
         if hasattr(self, "detailWin") and self.detailWin.isVisible():
             self.detailWin.close()
 
         self.closing.emit()
 
     @err_catcher(name=__name__)
-    def loadLayout(self):
+    def loadLayout(self) -> None:
+        """Load and configure the UI layout.
+        
+        Sets up entity widget, custom import button, loading saved settings,
+        configuring drag-drop functionality, and initializing table columns.
+        """
         import EntityWidget
 
         self.w_entities = EntityWidget.EntityWidget(core=self.core, refresh=False, mode="products")
@@ -185,7 +239,18 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         self.tw_versions.sortByColumn(0, Qt.DescendingOrder)
 
     # add this method to your class (e.g. QMainWindow or QWidget where self.tw_test lives)
-    def eventFilter(self, source, event):
+    def eventFilter(self, source: Any, event: Any) -> bool:
+        """Filter events for version table viewport.
+        
+        Handles mouse move, leave, and focus out events for hover previews.
+        
+        Args:
+            source: Event source object.
+            event: Event to filter.
+            
+        Returns:
+            True if event was handled, False otherwise.
+        """
         if event.type() == QEvent.MouseMove:
             self.tableMoveEvent(event)   # call your existing handler
         elif event.type() == QEvent.Leave:
@@ -196,7 +261,12 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         return super().eventFilter(source, event)
 
     @err_catcher(name=__name__)
-    def refreshLocations(self):
+    def refreshLocations(self) -> None:
+        """Refresh the Location column visibility based on available locations.
+        
+        Adds or removes the Location column header depending on whether
+        multiple storage locations (local/global) are available.
+        """
         if len(self.w_entities.getLocations()) > 1 or (self.projectBrowser and len(self.projectBrowser.locations) > 1):
             if "Location" not in self.versionLabels:
                 self.versionLabels.insert(3, "Location")
@@ -208,11 +278,21 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
                 self.versionHeaderChanged()
 
     @err_catcher(name=__name__)
-    def saveSettings(self, data):
+    def saveSettings(self, data: Dict[str, Any]) -> None:
+        """Save browser settings to configuration.
+        
+        Args:
+            data: Configuration dictionary to update with browser settings.
+        """
         data["browser"]["productsSplitter1"] = self.splitter1.sizes()
 
     @err_catcher(name=__name__)
-    def versionHeaderChanged(self):
+    def versionHeaderChanged(self) -> None:
+        """Update version table headers and column properties.
+        
+        Configures column visibility, resize modes, and delegates based on
+        current version label configuration.
+        """
         twSorting = [
             self.tw_versions.horizontalHeader().sortIndicatorSection(),
             self.tw_versions.horizontalHeader().sortIndicatorOrder(),
@@ -267,7 +347,14 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         self.tw_versions.sortByColumn(twSorting[0], twSorting[1])
 
     @err_catcher(name=__name__)
-    def productDragEnterEvent(self, e):
+    def productDragEnterEvent(self, e: Any) -> None:
+        """Handle drag enter event for product version ingestion.
+        
+        Validates dragged files and accepts or rejects the drag operation.
+        
+        Args:
+            e: Drag enter event.
+        """
         if e.mimeData().hasUrls() and e.mimeData().urls():
             dragPath = os.path.normpath(e.mimeData().urls()[0].toLocalFile())
             items = self.tw_versions.selectedItems()
@@ -286,7 +373,12 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
             e.ignore()
 
     @err_catcher(name=__name__)
-    def productDragMoveEvent(self, e):
+    def productDragMoveEvent(self, e: Any) -> None:
+        """Handle drag move event and update visual feedback.
+        
+        Args:
+            e: Drag move event.
+        """
         if e.mimeData().hasUrls():
             e.accept()
             self.tw_versions.setStyleSheet(
@@ -296,11 +388,23 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
             e.ignore()
 
     @err_catcher(name=__name__)
-    def productDragLeaveEvent(self, e):
+    def productDragLeaveEvent(self, e: Any) -> None:
+        """Handle drag leave event and reset visual feedback.
+        
+        Args:
+            e: Drag leave event.
+        """
         self.tw_versions.setStyleSheet("")
 
     @err_catcher(name=__name__)
-    def productDropEvent(self, e):
+    def productDropEvent(self, e: Any) -> None:
+        """Handle drop event for product version ingestion.
+        
+        Extracts file paths from drop data and initiates product ingestion.
+        
+        Args:
+            e: Drop event.
+        """
         if e.mimeData().hasUrls():
             self.tw_versions.setStyleSheet("")
             e.setDropAction(Qt.LinkAction)
@@ -315,7 +419,13 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
             e.ignore()
 
     @err_catcher(name=__name__)
-    def ingestProductVersion(self, entity, files):
+    def ingestProductVersion(self, entity: Dict[str, Any], files: List[str]) -> None:
+        """Ingest files as a new product version.
+        
+        Args:
+            entity: Entity context dictionary.
+            files: List of file paths to ingest.
+        """
         if self.core.products.getLinkedToTasks():
             product = self.getCurrentProduct() or {}
             productName = product.get("product")
@@ -332,7 +442,12 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         self.updateVersions()
 
     @err_catcher(name=__name__)
-    def showEvent(self, event):
+    def showEvent(self, event: Any) -> None:
+        """Handle show event to align header heights.
+        
+        Args:
+            event: Show event.
+        """
         if not getattr(self, "headerHeightSet", False):
             spacing = self.w_tasks.layout().spacing()
             if self.w_entities.isHidden():
@@ -343,7 +458,12 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
             self.setHeaderHeight(h)
 
     @err_catcher(name=__name__)
-    def setHeaderHeight(self, height):
+    def setHeaderHeight(self, height: int) -> None:
+        """Set consistent height for all headers.
+        
+        Args:
+            height: Header height in pixels.
+        """
         spacing = self.w_tasks.layout().spacing()
         self.w_entities.w_header.setMinimumHeight(height + spacing)
         self.l_identifier.setMinimumHeight(height)
@@ -351,7 +471,12 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         self.headerHeightSet = True
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect UI signals to their handler methods.
+        
+        Sets up event connections for entity changes, mouse clicks, context menus,
+        and version loading.
+        """
         self.w_entities.getPage("Assets").itemChanged.connect(lambda: self.entityChanged("asset"))
         self.w_entities.getPage("Shots").itemChanged.connect(lambda: self.entityChanged("shot"))
         self.w_entities.tabChanged.connect(self.entityTabChanged)
@@ -377,7 +502,15 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         self.tw_versions.mouseMoveEvent = self.mouseDrag
 
     @err_catcher(name=__name__)
-    def mouseClickEvent(self, event, widget):
+    def mouseClickEvent(self, event: Any, widget: Any) -> None:
+        """Handle mouse click events on widgets.
+        
+        Manages selection, deselection, and expand/collapse of tree items.
+        
+        Args:
+            event: Mouse event.
+            widget: Widget that received the click.
+        """
         if QEvent is not None:
             if event.type() == QEvent.MouseButtonRelease:
                 if event.button() == Qt.LeftButton:
@@ -397,12 +530,24 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
                         item.setExpanded(not item.isExpanded())
 
     @err_catcher(name=__name__)
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, event: Any) -> None:
+        """Handle keyboard events.
+        
+        Args:
+            event: Key press event.
+        """
         if self.autoClose or (event.key() != Qt.Key_Escape):
             super(ProductBrowser, self).keyPressEvent(event)
 
     @err_catcher(name=__name__)
-    def mouseDrag(self, event):
+    def mouseDrag(self, event: Any) -> None:
+        """Handle mouse drag to initiate drag-drop operation.
+        
+        Creates a drag operation with selected version file paths.
+        
+        Args:
+            event: Mouse move event.
+        """
         if event.buttons() != Qt.LeftButton:
             return
 
@@ -431,7 +576,11 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         drag.exec_(Qt.CopyAction | Qt.MoveAction)
 
     @err_catcher(name=__name__)
-    def openCustom(self):
+    def openCustom(self) -> None:
+        """Open file dialog to select a custom file for import.
+        
+        Allows importing files outside the standard product structure.
+        """
         startPath = os.path.dirname(self.getCurSelection())
         customFile = QFileDialog.getOpenFileName(
             self, "Select File to import", startPath, "All files (*.*)"
@@ -455,7 +604,15 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
                     sm.importFile(self.productPath)
 
     @err_catcher(name=__name__)
-    def loadVersion(self, index, currentVersion=False):
+    def loadVersion(self, index: Any, currentVersion: bool = False) -> None:
+        """Load a product version for import.
+        
+        Validates file compatibility and sets the product path for import.
+        
+        Args:
+            index: Table index of version to load, or None for current version.
+            currentVersion: Whether to load the current/latest version.
+        """
         if currentVersion:
             self.tw_versions.sortByColumn(0, Qt.DescendingOrder)
             pathC = self.tw_versions.model().columnCount() - 1
@@ -495,7 +652,18 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
                         sm.importFile(self.productPath)
 
     @err_catcher(name=__name__)
-    def setProductPath(self, path, custom=False):
+    def setProductPath(self, path: str, custom: bool = False) -> bool:
+        """Set the selected product path.
+        
+        Validates the path and emits the productPathSet signal.
+        
+        Args:
+            path: File path to set as product path.
+            custom: Whether this is a custom file outside product structure.
+            
+        Returns:
+            True if path was successfully set, False otherwise.
+        """
         if self.importState:
             result = getattr(self.importState, "validateFilepath", lambda x: True)(path)
             if result is not True:
@@ -508,15 +676,34 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         return True
 
     @err_catcher(name=__name__)
-    def getCurrentEntity(self):
+    def getCurrentEntity(self) -> Optional[Dict[str, Any]]:
+        """Get the currently selected entity.
+        
+        Returns:
+            Entity data dictionary, or None if no selection.
+        """
         return self.w_entities.getCurrentPage().getCurrentData()
 
     @err_catcher(name=__name__)
-    def getCurrentEntities(self):
+    def getCurrentEntities(self) -> List[Dict[str, Any]]:
+        """Get all currently selected entities.
+        
+        Returns:
+            List of entity data dictionaries.
+        """
         return self.w_entities.getCurrentPage().getCurrentData(returnOne=False)
 
     @err_catcher(name=__name__)
-    def getCurrentProduct(self, allowMultiple=False):
+    def getCurrentProduct(self, allowMultiple: bool = False) -> Optional[Any]:
+        """Get the currently selected product(s).
+        
+        Args:
+            allowMultiple: Whether to return multiple products if selected.
+            
+        Returns:
+            Product data dictionary, list of dictionaries if allowMultiple=True,
+            or None if no selection.
+        """
         items = self.tw_identifier.selectedItems()
         items = [item for item in items if not (item.data(0, Qt.UserRole) or {}).get("isGroup")]
         if not items:
@@ -541,13 +728,27 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
                 return data
 
     @err_catcher(name=__name__)
-    def getCurrentVersion(self):
+    def getCurrentVersion(self) -> Optional[Dict[str, Any]]:
+        """Get the currently selected version.
+        
+        Returns:
+            Version data dictionary, or None if no selection.
+        """
         row = self.tw_versions.currentIndex().row()
         version = self.tw_versions.model().index(row, 0).data(Qt.UserRole)
         return version
 
     @err_catcher(name=__name__)
-    def rclicked(self, pos, listType):
+    def rclicked(self, pos: Any, listType: str) -> None:
+        """Handle right-click context menu for products or versions.
+        
+        Creates and displays a context menu with actions appropriate for the
+        clicked list type (identifier or versions).
+        
+        Args:
+            pos: Click position.
+            listType: Either "identifier" for products or "versions" for version list.
+        """
         if listType == "identifier":
             viewUi = self.tw_identifier
             refresh = self.updateIdentifiers
@@ -748,7 +949,12 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         rcmenu.exec_((viewUi.viewport()).mapToGlobal(pos))
 
     @err_catcher(name=__name__)
-    def captureProductPreview(self, path):
+    def captureProductPreview(self, path: str) -> None:
+        """Capture a screen area as product preview image.
+        
+        Args:
+            path: Product directory path to save preview to.
+        """
         from PrismUtils import ScreenShot
         self.window().setWindowOpacity(0)
         previewImg = ScreenShot.grabScreenArea(self.core)
@@ -763,12 +969,21 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
             self.core.products.setProductPreview(path, previewImg)
 
     @err_catcher(name=__name__)
-    def editTags(self, data):
+    def editTags(self, data: Dict[str, Any]) -> None:
+        """Open dialog to edit product tags.
+        
+        Args:
+            data: Product data dictionary.
+        """
         self.dlg_editTags = EditTagsDlg(self, data)
         self.dlg_editTags.show()
 
     @err_catcher(name=__name__)
-    def groupProductsDlg(self):
+    def groupProductsDlg(self) -> None:
+        """Open dialog to group selected products.
+        
+        Allows organizing products into named groups for better organization.
+        """
         products = self.getCurrentProduct(allowMultiple=True)
         groups = [self.core.products.getGroupFromProduct(product) for product in products]
         if len(list(set(groups))) == 1:
@@ -792,14 +1007,25 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         self.newItem.show()
 
     @err_catcher(name=__name__)
-    def groupProducts(self, dlg, products):
+    def groupProducts(self, dlg: Any, products: List[Dict[str, Any]]) -> None:
+        """Apply grouping to products.
+        
+        Args:
+            dlg: Dialog containing group name input.
+            products: List of product data dictionaries to group.
+        """
         group = dlg.e_item.text()
         projectWide = dlg.chb_projectWide.isChecked()
         self.core.products.setProductsGroup(products, group=group, projectWide=projectWide)
         self.updateIdentifiers(restoreSelection=True)
 
     @err_catcher(name=__name__)
-    def ungroupProducts(self, group):
+    def ungroupProducts(self, group: str) -> None:
+        """Remove products from a group.
+        
+        Args:
+            group: Name of the group to ungroup.
+        """
         products = []
         identifiers = self.getIdentifiers()
         for identifierName in identifiers:
@@ -812,7 +1038,11 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
             self.updateIdentifiers(restoreSelection=True)
 
     @err_catcher(name=__name__)
-    def prepareNewVersion(self):
+    def prepareNewVersion(self) -> None:
+        """Prepare and copy path for next version to clipboard.
+        
+        Generates the next version path and saves version info.
+        """
         curEntity = self.getCurrentEntity()
         curProduct = self.getCurrentProductName()
         if not curProduct:
@@ -840,7 +1070,13 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         self.updateVersions(restoreSelection=True)
 
     @err_catcher(name=__name__)
-    def copyToLocation(self, path, location):
+    def copyToLocation(self, path: str, location: str) -> None:
+        """Copy version to a different storage location.
+        
+        Args:
+            path: Source version path.
+            location: Target location name (e.g., "local", "global").
+        """
         newPath = self.core.convertPath(path, target=location)
         if newPath:
             if os.path.exists(newPath):
@@ -862,7 +1098,9 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
             self.core.copyWithProgress(path, newPath, finishCallback=lambda: self.updateVersions(restoreSelection=True))
 
     @err_catcher(name=__name__)
-    def createProductDlg(self):
+    def createProductDlg(self) -> None:
+        """Open dialog to create a new product.
+        """
         curEntity = self.getCurrentEntity()
         self.newItem = ProjectWidgets.CreateProductDlg(self, entity=curEntity)
         self.newItem.e_product.setFocus()
@@ -871,7 +1109,11 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         self.newItem.show()
 
     @err_catcher(name=__name__)
-    def createProduct(self):
+    def createProduct(self) -> None:
+        """Create a new product from dialog input.
+        
+        Creates product directory structure and optionally adds to group.
+        """
         self.activateWindow()
         itemName = self.newItem.e_product.text()
         curEntity = self.getCurrentEntity()
@@ -899,7 +1141,9 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
             self.tw_identifier.setCurrentItem(items[0])
 
     @err_catcher(name=__name__)
-    def createVersionDlg(self):
+    def createVersionDlg(self) -> None:
+        """Open dialog to create a new product version.
+        """
         context = self.getCurrentProduct()
         version = self.core.products.getNextAvailableVersion(context, context["product"])
         intVersion = self.core.products.getIntVersionFromVersionName(version)
@@ -917,7 +1161,11 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         self.newItem.show()
 
     @err_catcher(name=__name__)
-    def createVersion(self):
+    def createVersion(self) -> None:
+        """Create a new product version from dialog input.
+        
+        Ingests selected files as a new version.
+        """
         self.activateWindow()
         versionName = self.core.versionFormat % self.newItem.sp_version.value()
         curEntity = self.getCurrentEntity()
@@ -940,7 +1188,12 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
             self.navigateToVersion(versionName)
 
     @err_catcher(name=__name__)
-    def moveToGlobal(self, localPath):
+    def moveToGlobal(self, localPath: str) -> None:
+        """Move product version from local to global storage.
+        
+        Args:
+            localPath: Local version directory path.
+        """
         dstPath = self.core.convertPath(localPath, "global")
 
         if os.path.exists(dstPath):
@@ -963,7 +1216,12 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         self.updateVersions()
 
     @err_catcher(name=__name__)
-    def editComment(self, filepath):
+    def editComment(self, filepath: str) -> None:
+        """Edit the comment for a product version.
+        
+        Args:
+            filepath: Path to version file.
+        """
         if not filepath:
             msg = "Invalid filepath. Make sure the version contains valid files."
             self.core.popup(msg)
@@ -994,12 +1252,22 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         self.updateVersions(restoreSelection=True)
 
     @err_catcher(name=__name__)
-    def setPreferredFile(self, row):
+    def setPreferredFile(self, row: int) -> None:
+        """Set the preferred file for a version.
+        
+        Args:
+            row: Table row number of the version.
+        """
         version = self.tw_versions.item(row, 0).data(Qt.UserRole)
-        self.core.products.setPreferredFileForVersionDlg(version, callback=lambda: self.updateVersions(restoreSelection=True))
+        self.core.products.setPreferredFileForVersionDlg(version, callback=lambda: self.updateVersions(restoreSelection=True), parent=self)
 
     @err_catcher(name=__name__)
-    def goToSource(self, source):
+    def goToSource(self, source: Optional[str]) -> None:
+        """Navigate to the source scenefile of a product version.
+        
+        Args:
+            source: Path to source scenefile.
+        """
         if not source:
             msg = "This version doesn't have a source scene."
             self.core.popup(msg)
@@ -1010,7 +1278,12 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         self.core.pb.sceneBrowser.navigate(data=fileNameData)
 
     @err_catcher(name=__name__)
-    def showVersionInfo(self, path):
+    def showVersionInfo(self, path: str) -> None:
+        """Display version information in a dialog.
+        
+        Args:
+            path: Path to version file.
+        """
         vInfo = "No information is saved with this version."
 
         infoFolder = self.core.products.getVersionInfoPathFromProductFilepath(
@@ -1074,7 +1347,12 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         infoDlg.exec_()
 
     @err_catcher(name=__name__)
-    def getSelectedContext(self):
+    def getSelectedContext(self) -> Dict[str, Any]:
+        """Get the current selection context.
+        
+        Returns:
+            Dictionary containing entity, product, version, and path info.
+        """
         navData = self.getCurrentEntity() or {}
         product = self.getCurrentProductName()
         navData["product"] = product
@@ -1086,7 +1364,11 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         return navData
 
     @err_catcher(name=__name__)
-    def refreshUI(self):
+    def refreshUI(self) -> None:
+        """Refresh the entire UI.
+        
+        Reloads entity tree and navigates back to current selection.
+        """
         identifier = version = None
         row = self.tw_versions.currentIndex().row()
         pathC = self.tw_versions.model().columnCount() - 1
@@ -1105,8 +1387,10 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
 
         self.updateSizeColumn()
         self.w_entities.getCurrentPage().tw_tree.blockSignals(True)
+        self.w_entities.getCurrentPage().tw_tree.selectionModel().blockSignals(True)
         self.w_entities.refreshEntities(restoreSelection=True)
         self.w_entities.getCurrentPage().tw_tree.blockSignals(False)
+        self.w_entities.getCurrentPage().tw_tree.selectionModel().blockSignals(False)
         self.entityChanged()
         if (not path and not data) or not self.navigateToFile(
             path, identifier=identifier, version=version, data=data
@@ -1116,7 +1400,9 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         self.refreshStatus = "valid"
 
     @err_catcher(name=__name__)
-    def updateSizeColumn(self):
+    def updateSizeColumn(self) -> None:
+        """Update the Size column visibility based on user settings.
+        """
         if self.core.getConfig("globals", "showFileSizes", config="user"):
             if "Size" not in self.versionLabels:
                 self.versionLabels.insert(-2, "Size")
@@ -1126,24 +1412,40 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
             self.versionHeaderChanged()
 
     @err_catcher(name=__name__)
-    def entityTabChanged(self):
+    def entityTabChanged(self) -> None:
+        """Handle entity tab (Assets/Shots) change.
+        """
         self.entityChanged()
 
     @err_catcher(name=__name__)
-    def entityChanged(self, entityType=None):
+    def entityChanged(self, entityType: Optional[str] = None) -> None:
+        """Handle entity selection change.
+        
+        Args:
+            entityType: Optional entity type filter ("asset" or "shot").
+        """
         if entityType and entityType != self.w_entities.getCurrentPage().entityType:
             return
 
         self.updateIdentifiers(restoreSelection=True)
 
     @err_catcher(name=__name__)
-    def identifierClicked(self):
+    def identifierClicked(self) -> None:
+        """Handle product identifier selection change.
+        
+        Updates versions list and tag editor if visible.
+        """
         self.updateVersions()
         if hasattr(self, "dlg_editTags") and self.dlg_editTags.isVisible():
             self.dlg_editTags.setProductData(self.getCurrentProduct())
 
     @err_catcher(name=__name__)
-    def getIdentifiers(self):
+    def getIdentifiers(self) -> Dict[str, Dict[str, Any]]:
+        """Get all product identifiers for the current entity.
+        
+        Returns:
+            Dictionary mapping product names to product data.
+        """
         curEntities = self.getCurrentEntities()
         if len(curEntities) != 1 or curEntities[0]["type"] not in ["asset", "shot"]:
             return {}
@@ -1153,7 +1455,13 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         return identifiers
 
     @err_catcher(name=__name__)
-    def updateIdentifiers(self, item=None, restoreSelection=False):
+    def updateIdentifiers(self, item: Optional[Any] = None, restoreSelection: bool = False) -> None:
+        """Update the product identifier tree.
+        
+        Args:
+            item: Optional tree item to update.
+            restoreSelection: Whether to restore previous selection.
+        """
         if restoreSelection:
             curId = self.getCurrentProductName() or ""
 
@@ -1231,7 +1539,15 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
             self.updateVersions(restoreSelection=True)
 
     @err_catcher(name=__name__)
-    def createGroupItems(self, identifiers):
+    def createGroupItems(self, identifiers: Dict[str, Dict[str, Any]]) -> Tuple[Dict[str, str], Dict[str, Any]]:
+        """Create tree items for product groups.
+        
+        Args:
+            identifiers: Dictionary of product identifiers.
+            
+        Returns:
+            Tuple of (groups dict mapping product to group name, groupItems dict mapping group path to tree item).
+        """
         groups = {}
         for identifierName in identifiers:
             group = self.core.products.getGroupFromProduct(identifiers[identifierName])
@@ -1276,7 +1592,12 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         return groups, groupItems
 
     @err_catcher(name=__name__)
-    def updateVersions(self, restoreSelection=False):
+    def updateVersions(self, restoreSelection: bool = False) -> None:
+        """Update the versions table for the selected product.
+        
+        Args:
+            restoreSelection: Whether to restore previous version selection.
+        """
         curVersion = None
         indexes = self.tw_versions.selectionModel().selectedIndexes()
         if indexes:
@@ -1367,7 +1688,16 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
                 self.versionsUpdated.emit()
 
     @err_catcher(name=__name__)
-    def addVersionToTable(self, filepath, versionName, comment, user, data=None):
+    def addVersionToTable(self, filepath: str, versionName: str, comment: str, user: str, data: Optional[Dict[str, Any]] = None) -> None:
+        """Add a version row to the versions table.
+        
+        Args:
+            filepath: Path to version file.
+            versionName: Version string (e.g., "v0001").
+            comment: Version comment.
+            user: Username who created the version.
+            data: Optional additional version data.
+        """
         dateStamp = data.get("date", "") if data else ""
         if filepath:
             _, depExt = self.core.paths.splitext(filepath)
@@ -1494,13 +1824,27 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         self.core.callback(name="productVersionAdded", args=[self, row, filepath, versionName, comment, user, data.get("locations", {})])
 
     @err_catcher(name=__name__)
-    def tableMoveEvent(self, event):
+    def tableMoveEvent(self, event: Any) -> None:
+        """Handle mouse move over versions table.
+        
+        Shows detail window if previews are enabled.
+        
+        Args:
+            event: Mouse move event.
+        """
         self.showDetailWin(event)
         if hasattr(self, "detailWin") and self.detailWin.isVisible():
             self.detailWin.move(QCursor.pos().x() + 20, QCursor.pos().y())
 
     @err_catcher(name=__name__)
-    def showDetailWin(self, event):
+    def showDetailWin(self, event: Any) -> None:
+        """Show hover detail window for a version.
+        
+        Displays preview image and version info in a floating window.
+        
+        Args:
+            event: Mouse event with position.
+        """
         index = self.tw_versions.indexAt(event.pos())
         if index.data() is None:
             if hasattr(self, "detailWin") and self.detailWin.isVisible():
@@ -1611,17 +1955,36 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
             self.detailWin.show()
 
     @err_catcher(name=__name__)
-    def tableLeaveEvent(self, event):
+    def tableLeaveEvent(self, event: Any) -> None:
+        """Handle mouse leaving versions table.
+        
+        Closes detail window if visible.
+        
+        Args:
+            event: Leave event.
+        """
         if hasattr(self, "detailWin") and self.detailWin.isVisible():
             self.detailWin.close()
 
     @err_catcher(name=__name__)
-    def tableFocusOutEvent(self, event):
+    def tableFocusOutEvent(self, event: Any) -> None:
+        """Handle focus loss on versions table.
+        
+        Closes detail window if visible.
+        
+        Args:
+            event: Focus out event.
+        """
         if hasattr(self, "detailWin") and self.detailWin.isVisible():
             self.detailWin.close()
 
     @err_catcher(name=__name__)
-    def getCurSelection(self):
+    def getCurSelection(self) -> str:
+        """Get the currently selected file path.
+        
+        Returns:
+            Full path to selected version file, or entity/product directory.
+        """
         curPath = self.core.projectPath
 
         entity = self.getCurrentEntity()
@@ -1646,7 +2009,12 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         return self.tw_versions.model().index(row, pathC).data()
 
     @err_catcher(name=__name__)
-    def getCurrentProductName(self):
+    def getCurrentProductName(self) -> Optional[str]:
+        """Get the currently selected product name.
+        
+        Returns:
+            Product name string, or None if no selection.
+        """
         product = self.getCurrentProduct()
         if not product:
             return
@@ -1655,11 +2023,25 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         return productName
 
     @err_catcher(name=__name__)
-    def navigate(self, data):
+    def navigate(self, data: Dict[str, Any]) -> None:
+        """Navigate to specific entity/product/version.
+        
+        Args:
+            data: Navigation data dictionary.
+        """
         self.navigateToFile(data=data, identifier=data.get("product"), version=data.get("version"))
 
     @err_catcher(name=__name__)
-    def getDataFromPath(self, path, scenefile=False):
+    def getDataFromPath(self, path: str, scenefile: bool = False) -> Optional[Dict[str, Any]]:
+        """Extract entity/product/version data from a file path.
+        
+        Args:
+            path: File or directory path.
+            scenefile: Whether the path is a scenefile or product.
+            
+        Returns:
+            Data dictionary, or False if path doesn't exist.
+        """
         if os.path.exists(path):
             fileName = path
         else:
@@ -1676,7 +2058,19 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         return data
 
     @err_catcher(name=__name__)
-    def navigateToFile(self, fileName=None, identifier=None, version=None, scenefile=False, data=None):
+    def navigateToFile(self, fileName: Optional[str] = None, identifier: Optional[str] = None, version: Optional[str] = None, scenefile: bool = False, data: Optional[Dict[str, Any]] = None) -> bool:
+        """Navigate to a specific file by path or identifier/version.
+        
+        Args:
+            fileName: Optional file path.
+            identifier: Optional product identifier.
+            version: Optional version string.
+            scenefile: Whether the file is a scenefile.
+            data: Optional navigation data dictionary.
+            
+        Returns:
+            True if navigation was successful, False otherwise.
+        """
         if not data:
             if not fileName and not (identifier and (version or scenefile)):
                 return False
@@ -1700,11 +2094,25 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         return self.navigateToVersion(versionName, entity=data, product=identifier)
 
     @err_catcher(name=__name__)
-    def navigateToEntity(self, entity):
+    def navigateToEntity(self, entity: Dict[str, Any]) -> None:
+        """Navigate to a specific entity.
+        
+        Args:
+            entity: Entity data dictionary.
+        """
         self.w_entities.navigate(entity)
 
     @err_catcher(name=__name__)
-    def navigateToProduct(self, product, entity=None):
+    def navigateToProduct(self, product: str, entity: Optional[Dict[str, Any]] = None) -> bool:
+        """Navigate to a specific product.
+        
+        Args:
+            product: Product name.
+            entity: Optional entity to navigate to first.
+            
+        Returns:
+            True if product was found and selected.
+        """
         prevProduct = self.getCurrentProduct()
         self.tw_identifier.blockSignals(True)
         if entity:
@@ -1726,7 +2134,17 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
         return result
 
     @err_catcher(name=__name__)
-    def navigateToVersion(self, version, entity=None, product=None):
+    def navigateToVersion(self, version: Optional[str], entity: Optional[Dict[str, Any]] = None, product: Optional[str] = None) -> bool:
+        """Navigate to a specific version.
+        
+        Args:
+            version: Version string (e.g., "v0001", "master").
+            entity: Optional entity to navigate to first.
+            product: Optional product to navigate to first.
+            
+        Returns:
+            True if version was found and selected.
+        """
         prevVersion = self.getCurrentVersion()
         self.tw_versions.blockSignals(True)
 
@@ -1758,17 +2176,48 @@ class ProductBrowser(QDialog, ProductBrowser_ui.Ui_dlg_ProductBrowser):
 
 
 class MasterItem(QTableWidgetItem):
-    def __lt__(self, other):
+    """Table item that sorts master versions to the top.
+    """
+    def __lt__(self, other: Any) -> bool:
+        """Compare items for sorting.
+        
+        Args:
+            other: Other table item to compare against.
+            
+        Returns:
+            False if other is not master (to stay at top), otherwise normal comparison.
+        """
         return False if not other.text().startswith("master") else self.text() < other.text()
 
 
 class VersionItem(QTableWidgetItem):
-    def __lt__(self, other):
+    """Table item that sorts regular versions below master.
+    """
+    def __lt__(self, other: Any) -> bool:
+        """Compare items for sorting.
+        
+        Args:
+            other: Other table item to compare against.
+            
+        Returns:
+            True if other is master (to stay below), otherwise normal comparison.
+        """
         return True if other.text().startswith("master") else self.text() < other.text()
 
 
 class DateDelegate(QStyledItemDelegate):
-    def displayText(self, value, locale):
+    """Delegate for formatting date columns.
+    """
+    def displayText(self, value: Any, locale: Any) -> str:
+        """Format date value for display.
+        
+        Args:
+            value: Date value (timestamp or string).
+            locale: Locale for formatting.
+            
+        Returns:
+            Formatted date string.
+        """
         if self.core.isStr(value):
             return value
 
@@ -1776,7 +2225,22 @@ class DateDelegate(QStyledItemDelegate):
 
 
 class EditTagsDlg(QDialog):
-    def __init__(self, origin, data):
+    """Dialog for editing product tags.
+    
+    Allows adding/removing tags for products with quick access to recommended tags.
+    
+    Attributes:
+        origin: Parent ProductBrowser widget.
+        core: Prism core instance.
+        productData: Product data dictionary.
+    """
+    def __init__(self, origin: Any, data: Dict[str, Any]) -> None:
+        """Initialize the edit tags dialog.
+        
+        Args:
+            origin: Parent ProductBrowser widget.
+            data: Product data dictionary.
+        """
         super(EditTagsDlg, self).__init__()
         self.origin = origin
         self.core = self.origin.core
@@ -1784,7 +2248,9 @@ class EditTagsDlg(QDialog):
         self.setProductData(data)
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Set up the dialog UI.
+        """
         title = "Edit Tags"
         self.setWindowTitle(title)
         self.core.parentWindow(self, parent=self.origin)
@@ -1819,22 +2285,36 @@ class EditTagsDlg(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> Any:
+        """Get the preferred dialog size.
+        
+        Returns:
+            QSize with preferred dimensions.
+        """
         return QSize(400, 100)
 
     @err_catcher(name=__name__)
-    def setProductData(self, data):
+    def setProductData(self, data: Dict[str, Any]) -> None:
+        """Set the product to edit tags for.
+        
+        Args:
+            data: Product data dictionary.
+        """
         self.productData = data
         self.setWindowTitle("Edit Tags - %s- %s" % (self.core.entities.getEntityName(self.productData), self.productData.get("product")))
         self.refreshTags()
 
     @err_catcher(name=__name__)
-    def refreshTags(self):
+    def refreshTags(self) -> None:
+        """Refresh the tag list from product data.
+        """
         tags = self.core.products.getTagsFromProduct(self.productData)
         self.e_tags.setText(", ".join(tags))
 
     @err_catcher(name=__name__)
-    def showRecommendedTags(self):
+    def showRecommendedTags(self) -> None:
+        """Show menu with recommended tags.
+        """
         tmenu = QMenu(self)
 
         tags = self.core.products.getRecommendedTags(self.productData)
@@ -1846,7 +2326,12 @@ class EditTagsDlg(QDialog):
         tmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def toggleTag(self, tag):
+    def toggleTag(self, tag: str) -> None:
+        """Toggle a tag on/off in the tag list.
+        
+        Args:
+            tag: Tag name to toggle.
+        """
         tags = [t.strip() for t in self.e_tags.text().split(",")]
         if tag in tags:
             tags = [t for t in tags if t != tag]
@@ -1857,7 +2342,12 @@ class EditTagsDlg(QDialog):
         self.e_tags.setText(", ".join(tags))
 
     @err_catcher(name=__name__)
-    def onButtonClicked(self, button):
+    def onButtonClicked(self, button: Any) -> None:
+        """Handle button clicks.
+        
+        Args:
+            button: Clicked button widget.
+        """
         if button.text() == "Save":
             self.saveTags()
             self.accept()
@@ -1867,6 +2357,8 @@ class EditTagsDlg(QDialog):
             self.close()
 
     @err_catcher(name=__name__)
-    def saveTags(self):
+    def saveTags(self) -> None:
+        """Save tags to product configuration.
+        """
         tags = [t.strip() for t in self.e_tags.text().split(",")]
         self.core.products.setProductTags(self.productData, tags)

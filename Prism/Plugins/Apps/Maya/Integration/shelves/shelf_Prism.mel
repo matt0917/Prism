@@ -110,6 +110,8 @@ global proc shelf_Prism () {
         -mip 0
         -mi "Import Connected Assets (quiet)" ( "pcore.getPlugin(\"Maya\").onShelfClickedImportConnectedAssets(quiet=True)" )
         -mip 1
+        -mi "Create Model Hierarchy" ( "pcore.getPlugin(\"Maya\").onCreateModelHierarchyClicked()" )
+        -mip 2
     ;
     shelfButton
         -enableCommandRepeat 1

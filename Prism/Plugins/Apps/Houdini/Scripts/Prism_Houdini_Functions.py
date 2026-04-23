@@ -31,6 +31,21 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
+"""Houdini plugin core functions for Prism Pipeline.
+
+This module provides the main integration between Prism Pipeline and SideFX Houdini.
+Handles scene management, state manager integration, HDA operations, render node management,
+environment variable handling, and UI callbacks throughout the Houdini application.
+
+Main responsibilities:
+- Scene event callbacks and lifecycle management
+- HDA (Houdini Digital Asset) installation and management
+- State Manager node integration (ImportFile, Filecache)
+- Render node operations and ROP management
+- Environment variable synchronization
+- UI customization and thumbnail capture
+- External file detection and path resolution
+"""
 
 import os
 import sys
@@ -40,6 +55,7 @@ import logging
 import tempfile
 import time
 import re
+from typing import Any, Optional, List, Dict, Tuple, Union
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -68,7 +84,36 @@ logger = logging.getLogger(__name__)
 
 
 class Prism_Houdini_Functions(object):
-    def __init__(self, core, plugin):
+    """Houdini DCC integration functions for Prism Pipeline.
+    
+    Provides comprehensive integration between Prism and Houdini including scene management,
+    node operations, HDA handling, environment setup, and UI customization.
+    
+    Attributes:
+        core: Prism core instance
+        plugin: Houdini plugin instance
+        eventLoopIterations (int): Counter for GUI initialization
+        eventLoopCallbackAdded (bool): Whether event loop callback is registered
+        guiReady (bool): Whether GUI is fully initialized
+        savingScenePath (Optional[str]): Path currently being saved
+        skipPreDeletePopup (bool): Whether to skip deletion confirmation
+        assetFormats (List[str]): Supported HDA file extensions
+        whiteListedExternalFiles (List[Dict]): External file parameters to ignore
+        importHandlerTypes (Dict[str, str]): File extension to import handler mapping
+        ropLocation (str): Default ROP node location path
+        filecache: Filecache node type API
+        importFile: ImportFile node type API
+        nodeTypeAPIs (List): All custom node type APIs
+        opmenuActions (List[Dict]): Custom operator menu actions
+    """
+    
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize Houdini integration functions.
+        
+        Args:
+            core: Prism core instance
+            plugin: Houdini plugin instance
+        """
         self.core = core
         self.plugin = plugin
         self.eventLoopIterations = 0
@@ -125,7 +170,12 @@ class Prism_Houdini_Functions(object):
         logging.getLogger("whoosh").setLevel(logging.WARNING)
 
     @err_catcher(name=__name__)
-    def registerCallbacks(self):
+    def registerCallbacks(self) -> None:
+        """Register all Prism callback handlers for Houdini events.
+        
+        Registers callbacks for scene events, project changes, UI dialogs,
+        environment updates, and other integration points.
+        """
         self.core.registerCallback(
             "sceneSaved", self.updateEnvironment, plugin=self.plugin
         )
@@ -162,16 +212,33 @@ class Prism_Houdini_Functions(object):
         self.core.registerCallback(
             "updatedEnvironmentVars", self.updatedEnvironmentVars, plugin=self.plugin
         )
+        self.core.registerCallback("postBuildScene", self.postBuildScene, plugin=self.plugin)
 
     @err_catcher(name=__name__)
-    def onEventLoopCallback(self):
+    def onEventLoopCallback(self) -> None:
+        """Handle Qt event loop iterations for GUI initialization.
+        
+        Called repeatedly until GUI is fully ready. After 5 iterations,
+        marks GUI as ready and removes itself from event loop.
+        """
         self.eventLoopIterations += 1
         if self.eventLoopIterations == 5:
             self.guiReady = True
             hou.ui.removeEventLoopCallback(self.onEventLoopCallback)
 
     @err_catcher(name=__name__)
-    def startup(self, origin):
+    def startup(self, origin: Any) -> Optional[bool]:
+        """Initialize Prism integration when Houdini starts.
+        
+        Sets up parent widgets, message dialogs, Qt application, event callbacks,
+        and ensures GUI is ready before completing startup.
+        
+        Args:
+            origin: Prism startup manager instance
+            
+        Returns:
+            False if GUI not ready or unavailable, otherwise None
+        """
         if self.core.uiAvailable:
             if not hou.isUIAvailable():
                 return False
@@ -210,7 +277,14 @@ class Prism_Houdini_Functions(object):
         hou.hipFile.addEventCallback(self.sceneEventCallback)
 
     @err_catcher(name=__name__)
-    def sceneEventCallback(self, eventType):
+    def sceneEventCallback(self, eventType: Any) -> None:
+        """Handle Houdini scene file events.
+        
+        Responds to scene clear, load, and save events with appropriate Prism callbacks.
+        
+        Args:
+            eventType: hou.hipFileEventType enum value
+        """
         if eventType == hou.hipFileEventType.AfterClear:
             self.core.sceneUnload()
         elif eventType == hou.hipFileEventType.AfterLoad:
@@ -220,29 +294,81 @@ class Prism_Houdini_Functions(object):
             self.core.scenefileSaved()
 
     @err_catcher(name=__name__)
-    def autosaveEnabled(self, origin):
+    def autosaveEnabled(self, origin: Any) -> bool:
+        """Check if Houdini autosave is enabled.
+        
+        Args:
+            origin: Prism manager instance
+            
+        Returns:
+            True if autosave is enabled, False otherwise
+        """
         return hou.hscript("autosave")[0] == "autosave on\n"
 
     @err_catcher(name=__name__)
-    def onProjectChanged(self, origin):
+    def onProjectChanged(self, origin: Any) -> None:
+        """Handle Prism project change event.
+        
+        Reloads project HDAs and updates environment variables.
+        
+        Args:
+            origin: Prism core instance
+        """
         self.loadPrjHDAs(origin)
         self.updateProjectEnvironment()
 
     @err_catcher(name=__name__)
-    def sceneOpen(self, origin):
+    def sceneOpen(self, origin: Any) -> None:
+        """Handle scene open event.
+        
+        Updates environment variables when a scene is opened.
+        
+        Args:
+            origin: Prism core instance
+        """
         self.updateEnvironment()
 
     @err_catcher(name=__name__)
-    def onPreSaveScene(self, origin, filepath, versionUp, comment, publish, details):
+    def onPreSaveScene(self, origin: Any, filepath: str, versionUp: bool, comment: str, publish: bool, details: Dict) -> None:
+        """Handle pre-save scene event.
+        
+        Stores the saving path to track save operations.
+        
+        Args:
+            origin: Prism save manager
+            filepath: Target save path
+            versionUp: Whether version is being incremented
+            comment: Save comment
+            publish: Whether this is a publish operation
+            details: Additional save details
+        """
         self.savingScenePath = filepath
 
     @err_catcher(name=__name__)
-    def onPostSaveScene(self, origin, filepath, versionUp, comment, publish, details):
+    def onPostSaveScene(self, origin: Any, filepath: str, versionUp: bool, comment: str, publish: bool, details: Dict) -> None:
+        """Handle post-save scene event.
+        
+        Clears saving path and updates environment variables.
+        
+        Args:
+            origin: Prism save manager
+            filepath: Saved file path
+            versionUp: Whether version was incremented
+            comment: Save comment
+            publish: Whether this was a publish operation
+            details: Additional save details
+        """
         self.savingScenePath = None
         self.updateEnvironment()
 
     @err_catcher(name=__name__)
-    def updateEnvironment(self):
+    def updateEnvironment(self) -> None:
+        """Update Houdini environment variables from current scene context.
+        
+        Sets environment variables for current scene, shot, asset, department,
+        task, version, framerange, and project paths. Skips updates during
+        active save operations.
+        """
         fn = self.core.getCurrentFileName()
         if self.savingScenePath and os.path.normpath(fn) == os.path.normpath(self.savingScenePath):
             return
@@ -322,7 +448,12 @@ class Prism_Houdini_Functions(object):
         self.updateProjectEnvironment()
 
     @err_catcher(name=__name__)
-    def updateProjectEnvironment(self):
+    def updateProjectEnvironment(self) -> None:
+        """Update Houdini project-level environment variables.
+        
+        Sets PRISM_JOB and PRISM_JOB_LOCAL variables (and deprecated equivalents)
+        pointing to current project paths.
+        """
         job = getattr(self.core, "projectPath", "").replace("\\", "/")
         if job.endswith("/"):
             job = job[:-1]
@@ -344,7 +475,17 @@ class Prism_Houdini_Functions(object):
         hou.hscript("varchange PRISM_JOB_LOCAL")
 
     @err_catcher(name=__name__)
-    def expandEnvVar(self, var):
+    def expandEnvVar(self, var: str) -> str:
+        """Expand environment variables and Houdini expressions in a string.
+        
+        Handles backslash escaping and uses Houdini's expandString for variable expansion.
+        
+        Args:
+            var: String containing variables to expand
+            
+        Returns:
+            Expanded string with resolved variables
+        """
         if "`" not in var:
             var = var.replace("\\", "\\\\")
             var = hou.text.expandString(var)
@@ -352,7 +493,16 @@ class Prism_Houdini_Functions(object):
         return var
 
     @err_catcher(name=__name__)
-    def updatedEnvironmentVars(self, reason, envVars, beforeRefresh=False):
+    def updatedEnvironmentVars(self, reason: str, envVars: List[Dict], beforeRefresh: bool = False) -> None:
+        """Handle environment variable updates from Prism.
+        
+        Monitors OCIO variable changes and refreshes Houdini's color management system.
+        
+        Args:
+            reason: Reason for update ("refreshProject", "unloadProject", etc.)
+            envVars: List of changed environment variable dicts with "key", "value", "orig"
+            beforeRefresh: Whether this is called before refresh operation
+        """
         doReload = False
 
         if reason == "refreshProject" and getattr(self, "unloadedOCIO", False):
@@ -371,7 +521,12 @@ class Prism_Houdini_Functions(object):
             self.refreshOcio()
 
     @err_catcher(name=__name__)
-    def refreshOcio(self):
+    def refreshOcio(self) -> None:
+        """Reload OCIO color management and update viewport settings.
+        
+        Reloads OCIO configuration from environment and applies default display/view
+        to all scene viewer panes.
+        """
         hou.Color.reloadOCIO()
         if hou.isUIAvailable():
             try:
@@ -381,13 +536,27 @@ class Prism_Houdini_Functions(object):
 
             for pane in panes:
                 if pane.type() == hou.paneTabType.SceneViewer:
+                    display = hou.Color.ocio_defaultDisplay()
+                    view = hou.Color.ocio_defaultView()
+                    otherViews = [v for v in hou.Color.ocio_activeViews() if v != view]
+                    otherView = otherViews[0] if otherViews else view
+                    logger.debug("setting OCIO to: display: %s, view: %s" % (display, view))
                     try:
-                        pane.setOCIODisplayView(display=hou.Color.ocio_defaultDisplay(), view=hou.Color.ocio_defaultView())
+                        pane.setOCIODisplayView(display=display, view=otherView)  # required to force the viewport refresh to show the correct colors
+                        pane.setOCIODisplayView(display=display, view=view)
                     except Exception as e:
-                        logger.warning("failed to set OCIO DisplayView: %s - %s - %s" % (str(e), hou.Color.ocio_defaultDisplay(), hou.Color.ocio_defaultView()))
+                        logger.warning("failed to set OCIO DisplayView: %s - %s - %s" % (str(e), display, view))
 
     @err_catcher(name=__name__)
-    def loadPrjHDAs(self, origin):
+    def loadPrjHDAs(self, origin: Any) -> None:
+        """Load and install project HDAs from project HDA folders.
+        
+        Searches project HDA folders and user-specific HDA folders, uninstalls
+        old definitions, and installs found HDAs to the project oplib.
+        
+        Args:
+            origin: Prism core instance with projectPath and user attributes
+        """
         if not hasattr(origin, "projectPath") or not os.path.exists(origin.projectPath):
             return
 
@@ -409,7 +578,12 @@ class Prism_Houdini_Functions(object):
         self.installHDAs(origin.prjHDAs, oplib)
 
     @err_catcher(name=__name__)
-    def uninstallHDAs(self, hdaPaths):
+    def uninstallHDAs(self, hdaPaths: List[str]) -> None:
+        """Uninstall HDA definitions from Houdini session.
+        
+        Args:
+            hdaPaths: List of HDA file paths to uninstall
+        """
         for path in hdaPaths:
             if not os.path.exists(path):
                 continue
@@ -419,15 +593,31 @@ class Prism_Houdini_Functions(object):
                 hou.hda.uninstallFile(path)
 
     @err_catcher(name=__name__)
-    def installHDAs(self, hdaPaths, oplibPath):
+    def installHDAs(self, hdaPaths: List[str], oplibPath: str) -> None:
+        """Install HDA files to a specific operator library path.
+        
+        Args:
+            hdaPaths: List of HDA file paths to install
+            oplibPath: Target operator library path
+        """
         oplibPath = oplibPath.replace("\\", "/")
         for path in hdaPaths:
             hou.hda.installFile(path, oplibPath)
 
     @err_catcher(name=__name__)
-    def findHDAs(self, paths):
+    def findHDAs(self, paths: Union[str, List[str]]) -> List[str]:
+        """Search directories for HDA files.
+        
+        Recursively searches for files with HDA extensions, excluding backup folders.
+        
+        Args:
+            paths: Directory path or list of paths to search
+            
+        Returns:
+            List of found HDA file paths
+        """
         if self.core.isStr(paths):
-            paths = [paths]
+            paths = [paths]  # type: ignore[assignment]
 
         hdas = []
 
@@ -447,7 +637,17 @@ class Prism_Houdini_Functions(object):
         return hdas
 
     @err_catcher(name=__name__)
-    def getProjectHDAFolder(self, filename=None):
+    def getProjectHDAFolder(self, filename: Optional[str] = None) -> Optional[str]:
+        """Get the project's HDA folder path.
+        
+        Resolves project structure path for Houdini HDAs. Optionally appends filename.
+        
+        Args:
+            filename: Optional HDA filename to append to folder path
+            
+        Returns:
+            Full path to HDA folder or file, or None if no HDA folder configured
+        """
         folder = self.core.projects.getResolvedProjectStructurePath("houdini_HDAs")
         if not folder:
             logger.debug("project has no HDA folder")
@@ -465,28 +665,72 @@ class Prism_Houdini_Functions(object):
     @err_catcher(name=__name__)
     def createHDA(
         self,
-        node,
-        outputPath="",
-        typeName="prism_hda",
-        label=None,
-        saveToExistingHDA=False,
-        version=1,
-        blackBox=False,
-        allowExternalReferences=False,
-        projectHDA=False,
-        setDefinitionCurrent=True,
-        convertNode=False,
-    ):
+        nodes: Any,
+        outputPath: str = "",
+        typeName: str = "prism_hda",
+        label: Optional[str] = None,
+        saveToExistingHDA: bool = False,
+        version: Union[int, str, None] = 1,
+        blackBox: bool = False,
+        allowExternalReferences: bool = False,
+        projectHDA: bool = False,
+        setDefinitionCurrent: bool = True,
+        convertNode: bool = False,
+        recipe: bool = False,
+    ) -> Union[bool, Any]:
+        """Create a new HDA from a node or save to existing HDA definition.
+        
+        Handles HDA creation, versioning, namespace prefixing, black box conversion,
+        and installation into project or custom locations.
+        
+        Args:
+            nodes: Houdini node(s) to convert to HDA
+            outputPath: Target HDA file path (generated if empty for projectHDA)
+            typeName: HDA type name without namespace
+            label: HDA description label
+            saveToExistingHDA: Save new definition to existing HDA file
+            version: Version number, "increment" for auto-increment, or None for no version
+            blackBox: Convert definition to black box (locked)
+            allowExternalReferences: Allow external node references in HDA
+            projectHDA: Save to project HDA folder
+            setDefinitionCurrent: Make new definition current after installation
+            convertNode: Change source node type to new HDA type
+            recipe: Save a recipe HDA
+        Returns:
+            Created HDA node, converted node, True on success, or False on cancellation
+        """
         namespace = self.core.getConfig(
             "houdini", "assetNamespace", dft="prism", configPath=self.core.prismIni
         )
         if namespace:
             typeName = namespace + "::" + typeName
 
+        if recipe:
+            if projectHDA and not outputPath:
+                filename = typeName.split("::", 1)[1]
+                tempPath = self.getProjectHDAFolder(filename)
+                if not tempPath:
+                    return False
+                outputPath = tempPath
+                if os.path.exists(outputPath):
+                    msg = (
+                        "The HDA file already exists:\n\n%s\n\nDo you want to save a new definition into this file and possibly overwrite an existing definition?"
+                        % outputPath
+                    )
+                    result = self.core.popupQuestion(msg, buttons=["Save", "Cancel"])
+                    if result == "Cancel":
+                        return False
+
+            return self.createToolRecipeHDA(nodes, outputPath, typeName, label)
+
+        node = nodes[0]
         if node.canCreateDigitalAsset():
             if projectHDA and not outputPath:
                 filename = typeName.split("::", 1)[1]
-                outputPath = self.getProjectHDAFolder(filename)
+                tempPath = self.getProjectHDAFolder(filename)
+                if not tempPath:
+                    return False
+                outputPath = tempPath
                 if os.path.exists(outputPath):
                     msg = (
                         "The HDA file already exists:\n\n%s\n\nDo you want to save a new definition into this file and possibly overwrite an existing definition?"
@@ -550,7 +794,10 @@ class Prism_Houdini_Functions(object):
             else:
                 if projectHDA and not outputPath:
                     filename = typeName.split("::", 1)[1]
-                    outputPath = self.getProjectHDAFolder(filename)
+                    tempPath = self.getProjectHDAFolder(filename)
+                    if not tempPath:
+                        return False
+                    outputPath = tempPath
                     libFile = node.type().definition().libraryFilePath()
                     if version == "increment":
                         highestVersion = self.getHighestHDAVersion(libFile, typeName)
@@ -582,15 +829,116 @@ class Prism_Houdini_Functions(object):
                     node.changeNodeType(typeName)
 
         return True
+    
+    @err_catcher(name=__name__)
+    def createToolRecipeHDA(
+        self,
+        items: Any,
+        outputPath: str = "",
+        typeName: str = "prism_tool_recipe",
+        label: Optional[str] = None,
+    ) -> Union[bool, Any]:
+        """Create a tool recipe HDA from a list of items.
+        
+        Similar to createHDA but with specific handling for tool recipes, including
+        custom metadata and installation behavior.
+        
+        Args:
+            items: List of items to include in the tool recipe
+            outputPath: Target HDA file path (generated if empty for projectHDA)
+            typeName: HDA type name without namespace
+            label: HDA description label
+            
+        Returns:
+            True on success, or False on cancellation
+        """
+        nodes = [item for item in items if isinstance(item, hou.Node)]
+        if not nodes:
+            self.core.popup("No valid nodes found to create tool recipe HDA.")
+            return False
+
+        anchor = nodes[0] if len(nodes) > 0 else None
+        hou.data.saveToolRecipe(
+            name=typeName,
+            label=label,
+            location=outputPath,
+            anchor_node=anchor,
+            items=items,
+        )
+        return True
+    
+    @err_catcher(name=__name__)
+    def saveToolRecipeToPath(self, path: str) -> Union[bool, str]:
+        """Save the selected nodes as a tool recipe to the specified path.
+        
+        Args:
+            path: File path to save the tool recipe to
+            
+        Returns:
+            The path to the saved tool recipe HDA if saved successfully, False otherwise
+        """
+        items = hou.selectedItems()
+        if not items:
+            self.core.popup("No nodes selected to save as a tool recipe.")
+            return False
+        
+        from PrismUtils import PrismWidgets
+        self.nameWin = PrismWidgets.CreateItem(
+            startText=items[0].name(),
+            showTasks=False,
+            core=self.core,
+        )
+        self.core.parentWindow(self.nameWin)
+        self.nameWin.setWindowTitle("Save Tool Recipe")
+        self.nameWin.l_item.setText("Label:                   ")
+        self.nameWin.buttonBox.buttons()[0].setText("Save")
+        self.nameWin.w_type = QWidget()
+        self.nameWin.lo_type = QHBoxLayout(self.nameWin.w_type)
+        self.nameWin.lo_type.setContentsMargins(9, 0, 9, 0)
+        self.nameWin.l_typeLabel = QLabel("Type Name:       ")
+        self.nameWin.e_typeName = QLineEdit()
+        self.nameWin.e_typeName.setText(items[0].name().replace(" ", "_").lower() + "_recipe")
+        self.nameWin.lo_type.addWidget(self.nameWin.l_typeLabel)
+        self.nameWin.lo_type.addWidget(self.nameWin.e_typeName)
+        self.nameWin.layout().insertWidget(2, self.nameWin.w_type)
+        self.nameWin.e_item.selectAll()
+        result = self.nameWin.exec_()
+
+        if result != 1:
+            return False
+
+        label = self.nameWin.e_item.text()
+        typeName = self.nameWin.e_typeName.text()
+
+        if os.path.isdir(path):
+            path = os.path.join(path, label + ".hda")
+
+        try:
+            self.createToolRecipeHDA(items, path, typeName=typeName, label=label)
+            return path
+        except Exception as e:
+            self.core.popup("Failed to save tool recipe:\n\n%s" % e)
+            return False
 
     @err_catcher(name=__name__)
-    def getHighestHDAVersion(self, libraryFilePath, typeName):
+    def getHighestHDAVersion(self, libraryFilePath: str, typeName: str) -> int:
+        """Find the highest version number of an HDA type in a library file.
+        
+        Searches all definitions in the library for matching typename and returns
+        the highest numeric version found.
+        
+        Args:
+            libraryFilePath: Path to HDA library file
+            typeName: Base type name to search for (without version suffix)
+            
+        Returns:
+            Highest version number found, or 0 if none
+        """
         definitions = hou.hda.definitionsInFile(libraryFilePath)
         highestVersion = 0
         for definition in definitions:
             name = definition.nodeTypeName()
             basename = name.rsplit("::", 1)[0]
-            basename
             if basename != typeName:
                 continue
 
@@ -608,8 +956,20 @@ class Prism_Houdini_Functions(object):
 
     @err_catcher(name=__name__)
     def saveNodeDefinitionToFile(
-        self, node, filepath, typeName=None, label=None, blackBox=False
-    ):
+        self, node: Any, filepath: str, typeName: Optional[str] = None, label: Optional[str] = None, blackBox: bool = False
+    ) -> None:
+        """Save a node's HDA definition to a file.
+        
+        Creates temporary HDA file, saves definition, then copies to target with optional
+        type name and label changes. Handles version-specific save parameters.
+        
+        Args:
+            node: Node with HDA definition to save
+            filepath: Target file path
+            typeName: Optional new type name for definition
+            label: Optional new label
+            blackBox: Whether to compile as black box
+        """
         tmpPath = filepath + "tmp"
         kwargs = {
             "file_name": tmpPath,
@@ -637,7 +997,14 @@ class Prism_Houdini_Functions(object):
         os.remove(tmpPath)
 
     @err_catcher(name=__name__)
-    def convertDefinitionToBlackBox(self, definition):
+    def convertDefinitionToBlackBox(self, definition: Any) -> None:
+        """Convert an HDA definition to black box (compiled/locked).
+        
+        Saves definition with black box compilation. Handles version-specific parameters.
+        
+        Args:
+            definition: HDA definition to convert
+        """
         filepath = definition.libraryFilePath()
         kwargs = {
             "file_name": filepath,
@@ -662,19 +1029,37 @@ class Prism_Houdini_Functions(object):
     @err_catcher(name=__name__)
     def getHDAOutputpath(
         self,
-        node=None,
-        task="",
-        comment="",
-        user=None,
-        version="next",
-        location="global",
-        saveToExistingHDA=False,
-        projectHDA=False,
-    ):
+        node: Optional[Any] = None,
+        task: str = "",
+        comment: str = "",
+        user: Optional[str] = None,
+        version: str = "next",
+        location: str = "global",
+        saveToExistingHDA: bool = False,
+        projectHDA: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """Generate output path for HDA publication.
+        
+        Determines output path based on save mode (existing HDA, project HDA, or new product).
+        Generates versioned paths using Prism's product path structure.
+        
+        Args:
+            node: Source node (required for existing HDA mode)
+            task: Task name for HDA
+            comment: Version comment
+            user: User name for version
+            version: Version string or "next" for auto-increment
+            location: "global" or "local" for path generation
+            saveToExistingHDA: Save to node's existing HDA file
+            projectHDA: Save to project HDA folder
+            
+        Returns:
+            Dict with "outputPath", "outputFolder", "version" keys, or None if invalid
+        """
         fileName = self.core.getCurrentFileName()
         fnameData = self.core.getScenefileData(fileName)
 
-        if node and node.type().definition() and saveToExistingHDA:
+        if node and isinstance(node, hou.Node) and node.type().definition() and saveToExistingHDA:
             outputPath = node.type().definition().libraryFilePath()
             outputFolder = os.path.dirname(outputPath)
         elif node and projectHDA:
@@ -685,9 +1070,9 @@ class Prism_Houdini_Functions(object):
                 return
 
             outputFolder = os.path.dirname(outputPath)
-            version = None
+            version = None  # type: ignore[assignment]
         else:
-            version = version if version != "next" else None
+            version = version if version != "next" else None  # type: ignore[assignment]
 
             if "type" not in fnameData:
                 return
@@ -720,22 +1105,47 @@ class Prism_Houdini_Functions(object):
         return result
 
     @err_catcher(name=__name__)
-    def getCurrentFileName(self, origin, path=True):
+    def getCurrentFileName(self, origin: Any, path: bool = True) -> str:
+        """Get the current Houdini scene file name.
+        
+        Args:
+            origin: Prism core instance
+            path: Return full path if True, basename if False
+            
+        Returns:
+            Scene file path/name, or empty string if untitled
+        """
         if path:
-            path = hou.hipFile.path()
-            if os.path.splitext(os.path.basename(path))[0] == "untitled":
+            filepath = hou.hipFile.path()
+            if os.path.splitext(os.path.basename(filepath))[0] == "untitled":
                 return ""
-        else:
-            path = hou.hipFile.basename()
 
-        return path
+            return filepath
+        else:
+            return hou.hipFile.basename()
 
     @err_catcher(name=__name__)
-    def getCurrentSceneFiles(self, origin):
+    def getCurrentSceneFiles(self, origin: Any) -> List[str]:
+        """Get list of all current scene files.
+        
+        Args:
+            origin: Prism core instance
+            
+        Returns:
+            List containing current scene file path
+        """
         return [self.core.getCurrentFileName()]
 
     @err_catcher(name=__name__)
-    def getSceneExtension(self, origin):
+    def getSceneExtension(self, origin: Any) -> str:
+        """Get the default scene file extension for Houdini.
+        
+        Args:
+            origin: Prism core instance
+            
+        Returns:
+            ".hip" extension string
+        """
         if str(hou.licenseCategory()) == "licenseCategoryType.Commercial":
             return ".hip"
         elif str(hou.licenseCategory()) == "licenseCategoryType.Indie":
@@ -744,7 +1154,19 @@ class Prism_Houdini_Functions(object):
             return ".hipnc"
 
     @err_catcher(name=__name__)
-    def saveScene(self, origin, filepath, details=None):
+    def saveScene(self, origin: Any, filepath: str, details: Optional[Dict] = None) -> bool:
+        """Save current Houdini scene to a file.
+        
+        Handles .hip and .hipnc extensions, ensures directory exists.
+        
+        Args:
+            origin: Prism core instance
+            filepath: Target save path
+            details: Optional save details dict
+            
+        Returns:
+            True if the scene was saved successfully, False otherwise
+        """
         filepath = filepath.replace("\\", "/")
         saved = False
         while True:
@@ -760,49 +1182,107 @@ class Prism_Houdini_Functions(object):
         return saved
 
     @err_catcher(name=__name__)
-    def getImportPaths(self, origin):
+    def getImportPaths(self, origin: Any) -> Dict[str, str]:
+        """Get import path mapping from State Manager.
+        
+        Args:
+            origin: Prism core instance
+            
+        Returns:
+            Dict mapping import names to file paths
+        """
         val = hou.node("/obj").userData("PrismImports")
 
         if val is None:
-            return False
+            return {}
 
         return val
 
     @err_catcher(name=__name__)
-    def getFrameRange(self, origin):
+    def getFrameRange(self, origin: Any) -> List[int]:
+        """Get the current scene frame range.
+        
+        Args:
+            origin: Prism core instance
+            
+        Returns:
+            List [startFrame, endFrame] from scene timeline
+        """
         startframe = hou.playbar.playbackRange()[0]
         endframe = hou.playbar.playbackRange()[1]
 
         return [startframe, endframe]
 
     @err_catcher(name=__name__)
-    def getCurrentFrame(self):
+    def getCurrentFrame(self) -> int:
+        """Get the current timeline frame.
+        
+        Returns:
+            Current frame number as integer
+        """
         currentFrame = hou.frame()
         return currentFrame
 
     @err_catcher(name=__name__)
-    def setFrameRange(self, origin, startFrame, endFrame, currentFrame=None):
+    def setFrameRange(self, origin: Any, startFrame: int, endFrame: int, currentFrame: Optional[int] = None) -> None:
+        """Set the scene frame range.
+        
+        Args:
+            origin: Prism core instance
+            startFrame: Timeline start frame
+            endFrame: Timeline end frame
+            currentFrame: Optional frame to set as current
+        """
         hou.playbar.setFrameRange(int(startFrame), int(endFrame))
         hou.playbar.setPlaybackRange(int(startFrame), int(endFrame))
         currentFrame = currentFrame or int(startFrame)
         hou.setFrame(currentFrame)
 
     @err_catcher(name=__name__)
-    def getFPS(self, origin):
+    def getFPS(self, origin: Any) -> float:
+        """Get the current scene FPS.
+        
+        Args:
+            origin: Prism core instance
+            
+        Returns:
+            Frames per second as float
+        """
         return hou.fps()
 
     @err_catcher(name=__name__)
-    def setFPS(self, origin, fps):
+    def setFPS(self, origin: Any, fps: Union[int, float]) -> None:
+        """Set the scene FPS.
+        
+        Args:
+            origin: Prism core instance
+            fps: Target frames per second
+        """
         frange = self.getFrameRange(origin)
         hou.setFps(fps)
         self.setFrameRange(origin, frange[0], frange[1])
 
     @err_catcher(name=__name__)
-    def getAppVersion(self, origin):
+    def getAppVersion(self, origin: Any) -> str:
+        """Get the Houdini application version.
+        
+        Args:
+            origin: Prism core instance
+            
+        Returns:
+            Version string
+        """
         return hou.applicationVersion()[1:-1]
 
     @err_catcher(name=__name__)
-    def onProjectBrowserStartup(self, origin):
+    def onProjectBrowserStartup(self, origin: Any) -> None:
+        """Handle Project Browser startup event.
+        
+        Loads project HDAs and opens network pane if no UI available.
+        
+        Args:
+            origin: Prism Project Browser instance
+        """
         if platform.system() == "Darwin":
             origin.menubar.setNativeMenuBar(False)
         origin.checkColor = "rgb(185, 134, 32)"
@@ -818,16 +1298,53 @@ class Prism_Houdini_Functions(object):
         origin.sceneBrowser.w_scenefileItems.setStyleSheet(ssheet)
 
     @err_catcher(name=__name__)
-    def preLoadPresetScene(self, origin, filepath):
+    def preLoadPresetScene(self, origin: Any, filepath: str) -> None:
+        """Handle pre-load preset scene event.
+        
+        Args:
+            origin: Prism manager
+            filepath: Preset scene path to load
+        """
         self.curDesktop = hou.ui.curDesktop()
 
     @err_catcher(name=__name__)
-    def postLoadPresetScene(self, origin, filepath):
+    def postLoadPresetScene(self, origin: Any, filepath: str) -> None:
+        """Handle post-load preset scene event.
+        
+        Removes /obj context from loaded preset.
+        
+        Args:
+            origin: Prism manager
+            filepath: Loaded preset scene path
+        """
         if hasattr(self, "curDesktop"):
             self.curDesktop.setAsCurrent()
 
     @err_catcher(name=__name__)
-    def openScene(self, origin, filepath, force=False):
+    def newScene(self, force: bool = False) -> bool:
+        """Create a new empty Houdini scene.
+        
+        Args:
+            force: Force new scene without save prompt
+            
+        Returns:
+            True on success
+        """
+        hou.hipFile.clear()
+        return True
+
+    @err_catcher(name=__name__)
+    def openScene(self, origin: Any, filepath: str, force: bool = False) -> bool:
+        """Open a Houdini scene file.
+        
+        Args:
+            origin: Prism core instance
+            filepath: Scene file path to open
+            force: Force open without save prompt
+            
+        Returns:
+            True on success
+        """
         if (
             not filepath.endswith(".hip")
             and not filepath.endswith(".hipnc")
@@ -847,7 +1364,16 @@ class Prism_Houdini_Functions(object):
         return True
 
     @err_catcher(name=__name__)
-    def correctExt(self, origin, lfilepath):
+    def correctExt(self, origin: Any, lfilepath: str) -> str:
+        """Correct scene file extension.
+        
+        Args:
+            origin: Prism core instance
+            lfilepath: File path to check
+            
+        Returns:
+            Path with corrected extension
+        """
         if str(hou.licenseCategory()) == "licenseCategoryType.Commercial":
             return os.path.splitext(lfilepath)[0] + ".hip"
         elif str(hou.licenseCategory()) == "licenseCategoryType.Indie":
@@ -856,35 +1382,65 @@ class Prism_Houdini_Functions(object):
             return os.path.splitext(lfilepath)[0] + ".hipnc"
 
     @err_catcher(name=__name__)
-    def onUserSettingsOpen(self, origin):
+    def onUserSettingsOpen(self, origin: Any) -> None:
+        """Handle User Settings dialog open event.
+        
+        Args:
+            origin: User Settings dialog instance
+        """
         if self.core.uiAvailable:
             origin.scrollArea.setStyleSheet(
                 hou.qt.styleSheet().replace("QLabel", "QScrollArea")
             )
 
     @err_catcher(name=__name__)
-    def onProjectSettingsOpen(self, origin):
+    def onProjectSettingsOpen(self, origin: Any) -> None:
+        """Handle Project Settings dialog open event.
+        
+        Args:
+            origin: Project Settings dialog instance
+        """
         if self.core.uiAvailable:
             origin.sp_curPfps.setStyleSheet(
                 hou.qt.styleSheet().replace("QSpinBox", "QDoubleSpinBox")
             )
 
     @err_catcher(name=__name__)
-    def createProject_startup(self, origin):
+    def createProject_startup(self, origin: Any) -> None:
+        """Handle Create Project dialog startup.
+        
+        Args:
+            origin: Create Project dialog instance
+        """
         if self.core.uiAvailable:
             origin.scrollArea.setStyleSheet(
                 hou.qt.styleSheet().replace("QLabel", "QScrollArea")
             )
 
     @err_catcher(name=__name__)
-    def shotgunPublish_startup(self, origin):
+    def shotgunPublish_startup(self, origin: Any) -> None:
+        """Handle ShotGrid Publish dialog startup.
+        
+        Args:
+            origin: ShotGrid Publish dialog instance
+        """
         if self.core.uiAvailable:
             origin.te_description.setStyleSheet(
                 hou.qt.styleSheet().replace("QTextEdit", "QPlainTextEdit")
             )
 
     @err_catcher(name=__name__)
-    def fixImportPath(self, path):
+    def fixImportPath(self, path: str) -> str:
+        """Fix import path format for Houdini.
+        
+        Replaces percent padding with dollar frame variable and normalizes slashes.
+        
+        Args:
+            path: File path to fix
+            
+        Returns:
+            Fixed path with Houdini frame variable
+        """
         if not path:
             return path
 
@@ -900,13 +1456,28 @@ class Prism_Houdini_Functions(object):
         return path
 
     @err_catcher(name=__name__)
-    def getUseRelativePath(self):
+    def getUseRelativePath(self) -> bool:
+        """Check if relative paths should be used.
+        
+        Returns:
+            True if relative paths are enabled in Houdini preferences
+        """
         return self.core.getConfig(
             "houdini", "useRelativePaths", dft=False, config="project"
         )
 
     @err_catcher(name=__name__)
-    def getPathRelativeToProject(self, path):
+    def getPathRelativeToProject(self, path: str) -> str:
+        """Convert absolute path to project-relative path.
+        
+        Uses $JOB variable if path is within project, otherwise returns absolute path.
+        
+        Args:
+            path: Absolute file path
+            
+        Returns:
+            Relative path with $JOB variable, or absolute path if outside project
+        """
         if not path:
             return path
 
@@ -924,14 +1495,33 @@ class Prism_Houdini_Functions(object):
         return path
 
     @err_catcher(name=__name__)
-    def splitExtension(self, path):
+    def splitExtension(self, path: str) -> List[str]:
+        """Split file path into base and extension.
+        
+        Handles multi-part extensions like .sc.hip.
+        
+        Args:
+            path: File path to split
+            
+        Returns:
+            List [base_path, extension]
+        """
         if path.endswith(".bgeo.sc"):
             return [path[: -len(".bgeo.sc")], ".bgeo.sc"]
         else:
-            return os.path.splitext(path)
+            return list(os.path.splitext(path))
 
     @err_catcher(name=__name__)
-    def importImages(self, filepath=None, mediaBrowser=None, parent=None):
+    def importImages(self, filepath: Optional[str] = None, mediaBrowser: Optional[Any] = None, parent: Optional[Any] = None) -> None:
+        """Import images as backplate or environment light.
+        
+        Prompts user to choose between backplate or dome light texture import.
+        
+        Args:
+            filepath: Optional path to import (prompts if not provided)
+            mediaBrowser: Media Browser instance if called from browser
+            parent: Parent widget for dialogs
+        """
         if mediaBrowser:
             sourceData = mediaBrowser.compGetImportSource()
             if not sourceData:
@@ -941,6 +1531,10 @@ class Prism_Houdini_Functions(object):
             firstFrame = sourceData[0][1]
             lastFrame = sourceData[0][2]
             parent = parent or mediaBrowser
+
+        if not filepath:
+            logger.warning("No filepath provided for importImages")
+            return
 
         fString = "Please select an import option:"
         buttons = ["Camera Backplate", "Dome Light", "Cancel"]
@@ -954,7 +1548,14 @@ class Prism_Houdini_Functions(object):
             return
 
     @err_catcher(name=__name__)
-    def importBackplate(self, mediaPath):
+    def importBackplate(self, mediaPath: str) -> None:
+        """Import image sequence as camera backplate.
+        
+        Creates or updates ropnet with background image settings for all cameras.
+        
+        Args:
+            mediaPath: Path to image sequence (may contain frame variables)
+        """
         camParms = {
             "cam": "vm_background",
             "vrcam": "vm_background",
@@ -985,7 +1586,14 @@ class Prism_Houdini_Functions(object):
         self.goToNode(cam)
 
     @err_catcher(name=__name__)
-    def importDomeLightTexture(self, mediaPath):
+    def importDomeLightTexture(self, mediaPath: str) -> None:
+        """Import HDR environment texture for dome light.
+        
+        Creates or updates Environment Light with texture map.
+        
+        Args:
+            mediaPath: Path to HDR/EXR texture file
+        """
         lightParms = {
             "domelight": "xn__inputstexturefile_r3ah",
             "envlight": "env_map",
@@ -1005,7 +1613,22 @@ class Prism_Houdini_Functions(object):
         self.goToNode(light)
 
     @err_catcher(name=__name__)
-    def setNodeParm(self, node, parm, val=None, clear=False, severity="warning"):
+    def setNodeParm(self, node: Any, parm: str, val: Optional[Any] = None, clear: bool = False, severity: str = "warning") -> bool:
+        """Set node parameter value with error handling.
+        
+        Attempts to set parameter, handling keyframes, expressions, locked parameters,
+        and multiparm indexing.
+        
+        Args:
+            node: Target node
+            parm: Parameter name to set
+            val: Value to set (None to skip)
+            clear: Clear existing keyframes and expressions
+            severity: Error message severity ("warning", "error", etc.)
+            
+        Returns:
+            True on success, False on failure
+        """
         try:
             if clear:
                 if node.parm(parm).isLocked():
@@ -1079,7 +1702,16 @@ class Prism_Houdini_Functions(object):
         return True
 
     @err_catcher(name=__name__)
-    def sm_preDelete(self, origin, item, silent=False):
+    def sm_preDelete(self, origin: Any, item: Any, silent: bool = False) -> None:
+        """Handle State Manager state pre-delete event.
+        
+        Prompts user for confirmation and optionally deletes associated node.
+        
+        Args:
+            origin: State Manager instance
+            item: State being deleted
+            silent: Skip confirmation dialog
+        """
         if not hasattr(item.ui, "node") or silent:
             return
 
@@ -1133,7 +1765,17 @@ class Prism_Houdini_Functions(object):
                 hou.hda.uninstallFile(fpath)
 
     @err_catcher(name=__name__)
-    def sm_preSaveToScene(self, origin):
+    def sm_preSaveToScene(self, origin: Any) -> Optional[bool]:
+        """Handle State Manager pre-save to scene event.
+        
+        Creates or updates Prism shelf in Houdini.
+        
+        Args:
+            origin: State Manager instance
+            
+        Returns:
+            False if save cancelled or scene needs reloading, None otherwise
+        """
         if origin.scenename == self.core.getCurrentFileName():
             return
 
@@ -1162,8 +1804,17 @@ class Prism_Houdini_Functions(object):
             return False
 
         origin.saveEnabled = True
+        return
 
-    def fixStyleSheet(self, widget):
+    def fixStyleSheet(self, widget: Any) -> None:
+        """Apply custom checkbox stylesheet to a widget.
+        
+        Sets custom checkbox indicator images for checked/unchecked states
+        using SVG icons from the plugin's UserInterfaces folder.
+        
+        Args:
+            widget: Qt widget to apply stylesheet to.
+        """
         root = os.path.dirname(self.pluginPath).replace("\\", "/")
         ssheet = ""
         ssheet += (
@@ -1178,14 +1829,29 @@ class Prism_Houdini_Functions(object):
         widget.setStyleSheet(ssheet)
 
     @err_catcher(name=__name__)
-    def getFrameStyleSheet(self, origin):
+    def getFrameStyleSheet(self, origin: Any) -> str:
+        """Get frame stylesheet for Prism UI elements.
+        
+        Args:
+            origin: UI widget requesting stylesheet
+            
+        Returns:
+            CSS stylesheet string
+        """
         if self.core.uiAvailable:
             return hou.qt.styleSheet().replace("QWidget", "QFrame")
         else:
             return ""
 
     @err_catcher(name=__name__)
-    def onOpmenuActionsTriggered(self, kwargs):
+    def onOpmenuActionsTriggered(self, kwargs: Dict) -> None:
+        """Handle custom operator menu action trigger.
+        
+        Executes Prism-registered node context menu actions.
+        
+        Args:
+            kwargs: Houdini callback kwargs with 'node' and 'action_id' keys
+        """
         menu = QMenu(self.core.messageParent)
         pos = QCursor.pos()
 
@@ -1207,7 +1873,12 @@ class Prism_Houdini_Functions(object):
             menu.exec_(pos)
 
     @err_catcher(name=__name__)
-    def removeImage(self, **kwargs):
+    def removeImage(self, **kwargs: Any) -> None:
+        """Remove background image from network editor pane.
+        
+        Args:
+            **kwargs: Houdini callback arguments with 'pane' key
+        """
         import nodegraphutils as utils
         nwPane = self.getNetworkPane(node=kwargs["node"].parent())
         curImgs = nwPane.backgroundImages()
@@ -1225,7 +1896,12 @@ class Prism_Houdini_Functions(object):
         utils.saveBackgroundImages(nwPane.pwd(), newImgs)
         
     @err_catcher(name=__name__)
-    def changeBrightness(self, **kwargs):
+    def changeBrightness(self, **kwargs: Any) -> None:
+        """Adjust network background image brightness.
+        
+        Args:
+            **kwargs: Houdini callback arguments with 'pane' and 'brightness' keys
+        """
         import nodegraphutils as utils
         brightness = 0.3 if kwargs["node"].isBypassed() else 1.0
         nwPane = self.getNetworkPane(node=kwargs["node"].parent())
@@ -1238,7 +1914,14 @@ class Prism_Houdini_Functions(object):
         utils.saveBackgroundImages(nwPane.pwd(), curImgs)
 
     @err_catcher(name=__name__)
-    def onCaptureThumbnailTriggered(self, kwargs):
+    def onCaptureThumbnailTriggered(self, kwargs: Dict) -> None:
+        """Capture thumbnail image for node in network editor.
+        
+        Allows user to select screen area for thumbnail, saves to network_previews folder.
+        
+        Args:
+            kwargs: Houdini callback with 'node' key
+        """
         from PrismUtils import ScreenShot
         import hou
         import nodegraphutils as utils
@@ -1284,7 +1967,14 @@ class Prism_Houdini_Functions(object):
             node.addEventCallback((hou.nodeEventType.FlagChanged,), self.changeBrightness)
 
     @err_catcher(name=__name__)
-    def onNodePublishTriggered(self, kwargs):
+    def onNodePublishTriggered(self, kwargs: Dict) -> None:
+        """Open publish dialog for node.
+        
+        Creates temporary publish dialog for selected node.
+        
+        Args:
+            kwargs: Houdini callback with 'node' key
+        """
         sm = self.core.getStateManager()
         if not sm:
             return
@@ -1321,7 +2011,12 @@ class Prism_Houdini_Functions(object):
         dlg.show()
 
     @err_catcher(name=__name__)
-    def onEditThumbnailsTriggered(self, kwargs):
+    def onEditThumbnailsTriggered(self, kwargs: Dict) -> None:
+        """Toggle background image editing mode.
+        
+        Args:
+            kwargs: Houdini callback with 'node' key
+        """
         nwPane = self.getNetworkPane(node=kwargs["node"].parent())
         isEditing = nwPane.getPref("backgroundimageediting") == "1"
         if isEditing:
@@ -1330,7 +2025,14 @@ class Prism_Houdini_Functions(object):
             nwPane.setPref("backgroundimageediting", "1")
 
     @err_catcher(name=__name__)
-    def onStateManagerOpen(self, origin):
+    def onStateManagerOpen(self, origin: Any) -> None:
+        """Handle State Manager dialog open event.
+        
+        Sets up Prism shelf and initializes node APIs.
+        
+        Args:
+            origin: State Manager instance
+        """
         if platform.system() == "Darwin":
             origin.menubar.setNativeMenuBar(False)
 
@@ -1394,30 +2096,73 @@ class Prism_Houdini_Functions(object):
             self.plugin.outputFormats.pop(self.plugin.outputFormats.index(".rs"))
 
     @err_catcher(name=__name__)
-    def sm_saveStates(self, origin, buf):
+    def sm_saveStates(self, origin: Any, buf: str) -> None:
+        """Save State Manager states to scene.
+        
+        Args:
+            origin: State Manager instance
+            buf: Serialized state data
+        """
         hou.node("/obj").setUserData("PrismStates", buf)
 
     @err_catcher(name=__name__)
-    def sm_saveImports(self, origin, importPaths):
+    def sm_saveImports(self, origin: Any, importPaths: Dict) -> None:
+        """Save import paths to scene user data.
+        
+        Args:
+            origin: State Manager instance
+            importPaths: Dict mapping import names to file paths
+        """
         hou.node("/obj").setUserData("PrismImports", importPaths)
 
     @err_catcher(name=__name__)
-    def sm_readStates(self, origin):
+    def sm_readStates(self, origin: Any) -> Optional[str]:
+        """Read State Manager states from scene.
+        
+        Args:
+            origin: State Manager instance
+            
+        Returns:
+            Serialized state data string, or None if not found
+        """
         stateData = hou.node("/obj").userData("PrismStates")
         if stateData is not None:
             return stateData
 
     @err_catcher(name=__name__)
-    def sm_deleteStates(self, origin):
+    def sm_deleteStates(self, origin: Any) -> None:
+        """Delete State Manager states from scene.
+        
+        Args:
+            origin: State Manager instance
+        """
         if hou.node("/obj").userData("PrismStates") is not None:
             hou.node("/obj").destroyUserData("PrismStates")
 
     @err_catcher(name=__name__)
-    def sm_getImportHandlerType(self, extension):
+    def sm_getImportHandlerType(self, extension: str) -> Optional[str]:
+        """Get import handler type for file extension.
+        
+        Args:
+            extension: File extension
+            
+        Returns:
+            Handler type string or None
+        """
         return self.importHandlerTypes.get(extension, "ImportFile")
 
     @err_catcher(name=__name__)
-    def sm_getExternalFiles(self, origin):
+    def sm_getExternalFiles(self, origin: Any) -> List[List[Any]]:
+        """Get list of external files referenced in scene.
+        
+        Scans all nodes for file parameters, filtering out ignored types and paths.
+        
+        Args:
+            origin: State Manager instance
+            
+        Returns:
+            Two-element list: [file_paths_list, source_parameters_list]
+        """
         # 	hou.setFrame(hou.playbar.playbackRange()[0])
         if not os.getenv("PRISM_USE_HOUDINI_FILEREFERENCES"):
             return [[], []]
@@ -1507,9 +2252,148 @@ class Prism_Houdini_Functions(object):
             extFilesSource.append(x[0])
 
         return [extFiles, extFilesSource]
+    
+    @err_catcher(name=__name__)
+    def postBuildScene(self, **kwargs: Any) -> None:
+        """Handle post-build scene event.
+        
+        Applies ABC caches if entity in kwargs.
+        
+        Args:
+            **kwargs: Build scene arguments with optional 'entity' and 'department' keys
+        """
+        sbData = self.core.getConfig("sceneBuilding", config="project") or {}
+        details = kwargs["entity"].copy()
+        details["department"] = kwargs["department"]
+        details["task"] = kwargs["task"]
+        if "houdini_apply_abc_caches" in sbData:
+            if self.core.entities.doesContextMatchTaskFilters(sbData["houdini_apply_abc_caches"], details):
+                self.applyAbcCaches(kwargs["entity"], kwargs["department"], quiet=True)
 
     @err_catcher(name=__name__)
-    def captureViewportThumbnail(self):
+    def buildSceneApplyAbcCaches(self, step: Dict[str, Any], context: Dict[str, Any]) -> None:
+        """
+        Scene building step function to apply Alembic caches for an entity.
+        
+        Args:
+            step: Step settings dict.
+            context: Current scene building context dict with entity, department, task info.
+        """
+        self.applyAbcCaches(context, context["department"], quiet=True)
+
+    @err_catcher(name=__name__)
+    def applyAbcCaches(self, entity: Dict, department: str, quiet: bool = False) -> None:
+        """Apply ABC cache files to scene.
+        
+        Searches for ABC cache products and creates import nodes.
+        
+        Args:
+            entity: Entity dict with path and name
+            department: Department name for cache search
+            quiet: Suppress status messages
+        """
+        logger.debug("applying abc caches...")
+        tags = [x.strip() for x in os.getenv("PRISM_HOUDINI_ANIM_IMPORT_TAGS", "animated").split(",") if x]
+        products = self.core.products.getProductsByTags(entity, tags)
+        productsToImport = products
+        if not productsToImport:
+            msg = "No products to import.\n(checking for tags: \"%s\")" % "\", \"".join(tags)
+            logger.debug(msg)
+            if not quiet:
+                self.core.popup(msg)
+
+            return
+        
+        paneTab = hou.ui.paneTabOfType(hou.paneTabType.NetworkEditor)
+        if paneTab is None:
+            return
+
+        curNode = paneTab.pwd()
+        curContext = curNode.childTypeCategory().name()
+        if curContext == "Sop":
+            geo = curNode
+        else:
+            obj = hou.node("/obj")
+            geo = obj.createNode("geo")
+            geo.moveToGoodPosition()
+            self.goToNode(geo)
+
+        itemsToLayout = []
+        filecache = geo.createNode("prism::Filecache::1.0")
+        itemsToLayout.append(filecache)
+        importedProducts = []
+        sm = self.core.getStateManager()
+        for product in productsToImport:
+            productPath = self.core.products.getLatestVersionpathFromProduct(product["product"], entity=product)
+            if not productPath:
+                logger.debug("can't get file of abc product: %s" % product)
+                continue
+
+            if not productPath.endswith(".abc"):
+                logger.debug("abc product is not in .abc format: %s" % productPath)
+                continue
+
+            productData = self.core.paths.getCachePathData(productPath)
+            assetName = productData.get("source_asset_path")
+            if not assetName:
+                logger.debug("can't get source asset from product: %s" % productData)
+                continue
+
+            asset = {"type": "asset", "asset_path": assetName}
+            surfTags = [x.strip() for x in os.getenv("PRISM_HOUDINI_STATIC_ASSET_TAGS", "static").split(",") if x]
+            assetProducts = self.core.products.getProductsByTags(asset, surfTags)
+            if not assetProducts:
+                logger.debug("can't get product of source asset: %s, tags: %s" % (asset, surfTags))
+                continue
+
+            assetProduct = assetProducts[0]
+            assetProductPath = self.core.products.getLatestVersionpathFromProduct(assetProduct["product"], entity=assetProduct)
+            if not assetProductPath:
+                logger.debug("can't get file of source asset product: %s" % assetProduct)
+                continue
+
+            if not assetProductPath.endswith(".hda"):
+                logger.debug("source asset product is not in .hda format: %s" % assetProductPath)
+                continue
+
+            state = sm.importFile(assetProductPath, settings={"createNodeAfterImport": False})
+            static = state.ui.createNode(geo)
+            if not static:
+                logger.debug("can't create node from asset hda: %s" % assetProductPath)
+                continue
+
+            logger.debug("found product: %s" % productPath)
+            animCache = geo.createNode("prism::ImportFile::1.0")
+            state = self.getStateFromNode({"node": animCache})
+            state.ui.setImportPath(productPath)
+            state.ui.importObject(objMerge=False)
+            attrcopy = static.createOutputNode("attribcopy")
+            attrcopy.setInput(1, animCache)
+            attrcopy.parm("attribname").set("P")
+            attrcopy.setDisplayFlag(True)
+            if hasattr(attrcopy, "setRenderFlag"):
+                attrcopy.setRenderFlag(True)
+
+            filecache.setInput(0, attrcopy)
+            itemsToLayout.append(static)
+            itemsToLayout.append(animCache)
+            itemsToLayout.append(attrcopy)
+            importedProducts.append(productPath)
+
+        geo.layoutChildren(items=itemsToLayout)
+
+        if not importedProducts:
+            logger.debug("no products imported: %s" % productsToImport)
+
+    @err_catcher(name=__name__)
+    def captureViewportThumbnail(self) -> Optional[QPixmap]:
+        """Capture thumbnail from current viewport.
+        
+        Renders the active scene viewer to a pixmap.
+        
+        Returns:
+            QPixmap image of viewport, or None on failure
+        """
         if not hou.isUIAvailable():
             return False
 
@@ -1539,7 +2423,15 @@ class Prism_Houdini_Functions(object):
         return pm
 
     @err_catcher(name=__name__)
-    def getPreferredStateType(self, category):
+    def getPreferredStateType(self, category: str) -> Optional[str]:
+        """Get preferred state type for category.
+        
+        Args:
+            category: State category
+            
+        Returns:
+            Preferred state type name or None
+        """
         if category == "Export":
             if self.core.getStateManager().stateTypes["Save HDA"].canConnectNode():
                 msg = 'The selected node can be connected to a "Save HDA" state.\nDo you want to create a "Save HDA" state?'
@@ -1553,7 +2445,16 @@ class Prism_Houdini_Functions(object):
             return category
 
     @err_catcher(name=__name__)
-    def isNodeValid(self, origin, node):
+    def isNodeValid(self, origin: Any, node: Any) -> bool:
+        """Check if node reference is valid.
+        
+        Args:
+            origin: Prism manager
+            node: Node to validate
+            
+        Returns:
+            True if node exists and isn't destroyed
+        """
         try:
             node.name()
             return True
@@ -1561,14 +2462,27 @@ class Prism_Houdini_Functions(object):
             return False
 
     @err_catcher(name=__name__)
-    def isNodeValidFromState(self, state):
+    def isNodeValidFromState(self, state: Any) -> bool:
+        """Check if state's node is valid.
+        
+        Args:
+            state: State to check
+            
+        Returns:
+            True if state has valid node
+        """
         try:
             return self.isNodeValid(None, state.node)
         except:
             return False
 
     @err_catcher(name=__name__)
-    def goToNode(self, node):
+    def goToNode(self, node: Any) -> None:
+        """Navigate network editor to node and select it.
+        
+        Args:
+            node: Target node to navigate to
+        """
         if not self.isNodeValid(self, node):
             return False
 
@@ -1579,7 +2493,17 @@ class Prism_Houdini_Functions(object):
             paneTab.homeToSelection()
 
     @err_catcher(name=__name__)
-    def getNetworkPane(self, cursor=True, node=None, multiple=False):
+    def getNetworkPane(self, cursor: bool = True, node: Optional[Any] = None, multiple: bool = False) -> Any:
+        """Get network editor pane.
+        
+        Args:
+            cursor: Use pane under cursor if True
+            node: Get pane showing this node
+            multiple: Return list of all network panes
+            
+        Returns:
+            Network pane, list of panes if multiple=True, or None
+        """
         ptype = hou.paneTabType.NetworkEditor
         underCursor = hou.ui.paneTabUnderCursor()
         if underCursor and underCursor.type() == ptype and not multiple:
@@ -1608,7 +2532,16 @@ class Prism_Houdini_Functions(object):
             return paneTab
 
     @err_catcher(name=__name__)
-    def getCamNodes(self, origin, cur=False):
+    def getCamNodes(self, origin: Any, cur: bool = False) -> List[str]:
+        """Get list of camera node paths.
+        
+        Args:
+            origin: Prism manager
+            cur: Return only current viewport camera
+            
+        Returns:
+            List of camera node path strings
+        """
         sceneCams = []
         for node in hou.node("/").allSubChildren():
             if (
@@ -1625,7 +2558,16 @@ class Prism_Houdini_Functions(object):
         return sceneCams
 
     @err_catcher(name=__name__)
-    def getCamName(self, origin, handle):
+    def getCamName(self, origin: Any, handle: str) -> str:
+        """Get camera display name from handle.
+        
+        Args:
+            origin: Prism manager
+            handle: Camera node path
+            
+        Returns:
+            Camera name string
+        """
         if handle == "Current View":
             return handle
 
@@ -1641,14 +2583,30 @@ class Prism_Houdini_Functions(object):
         return name
 
     @err_catcher(name=__name__)
-    def getValidNodeName(self, name):
+    def getValidNodeName(self, name: str) -> str:
+        """Sanitize string for use as node name.
+        
+        Replaces invalid characters with underscores.
+        
+        Args:
+            name: Desired node name
+            
+        Returns:
+            Valid node name string
+        """
         # valid node name characters: https://www.sidefx.com/docs/houdini/hom/hou/Node.html#methods-from-hou-networkmovableitem
         pattern = r"[^a-zA-Z0-9._-]"
         validName = re.sub(pattern, '_', name)
         return validName
 
     @err_catcher(name=__name__)
-    def sm_createStatePressed(self, origin, stateType):
+    def sm_createStatePressed(self, origin: Any, stateType: str) -> None:
+        """Handle State Manager create state button press.
+        
+        Args:
+            origin: State Manager instance
+            stateType: Type of state to create
+        """
         stateCategories = []
         if stateType == "Render":
             renderers = self.getRendererPlugins()
@@ -1681,7 +2639,12 @@ class Prism_Houdini_Functions(object):
         return stateCategories
 
     @err_catcher(name=__name__)
-    def getRendererPlugins(self):
+    def getRendererPlugins(self) -> Dict[str, Any]:
+        """Get available renderer plugins.
+        
+        Returns:
+            Dict mapping renderer names to plugin modules
+        """
         gpath = os.path.dirname(os.path.abspath(__file__)) + "/Prism_Houdini_Renderer_*"
         files = glob.glob(gpath)
 
@@ -1705,14 +2668,34 @@ class Prism_Houdini_Functions(object):
         return rplugs
 
     @err_catcher(name=__name__)
-    def sm_existExternalAsset(self, origin, asset):
+    def sm_existExternalAsset(self, origin: Any, asset: Dict) -> bool:
+        """Check if external asset file exists.
+        
+        Args:
+            origin: State Manager
+            asset: Asset dict with file path
+            
+        Returns:
+            True if asset file exists
+        """
         if asset.startswith("op:") and hou.node(asset.replace("\\", "/")) is not None:
             return True
 
         return False
 
     @err_catcher(name=__name__)
-    def sm_fixWarning(self, origin, asset, extFiles, extFilesSource):
+    def sm_fixWarning(self, origin: Any, asset: Dict, extFiles: List, extFilesSource: List) -> bool:
+        """Attempt to fix external file warnings.
+        
+        Args:
+            origin: State Manager
+            asset: Asset dict
+            extFiles: List of external file paths
+            extFilesSource: Source paths for external files
+            
+        Returns:
+            True on success, False if no changes made
+        """
         parm = extFilesSource[extFiles.index(asset.replace("\\", "/"))]
         if parm is None:
             parmStr = ""
@@ -1722,7 +2705,12 @@ class Prism_Houdini_Functions(object):
         return parmStr
 
     @err_catcher(name=__name__)
-    def getRenderRopTypes(self):
+    def getRenderRopTypes(self) -> List[str]:
+        """Get list of valid render ROP node types.
+        
+        Returns:
+            List of ROP type name strings
+        """
         types = []
         renderers = self.getRendererPlugins()
         for renderer in renderers:
@@ -1731,7 +2719,17 @@ class Prism_Houdini_Functions(object):
         return types
 
     @err_catcher(name=__name__)
-    def sm_openStateFromNode(self, origin, menu, stateType=None, callback=None):
+    def sm_openStateFromNode(self, origin: Any, menu: Any, stateType: Optional[str] = None, callback: Optional[Any] = None) -> None:
+        """Open State Manager from node context menu.
+        
+        Prompts user to select nodes and creates/opens linked states.
+        
+        Args:
+            origin: State Manager instance
+            menu: Qt menu to populate
+            stateType: Optional state type filter
+            callback: Optional callback after state creation
+        """
         nodeMenu = QMenu("From node", origin)
 
         if not stateType or stateType == "Render":
@@ -1812,7 +2810,17 @@ class Prism_Houdini_Functions(object):
             menu.addMenu(nodeMenu)
 
     @err_catcher(name=__name__)
-    def sm_render_getDeadlineParams(self, origin, dlParams, homeDir):
+    def sm_render_getDeadlineParams(self, origin: Any, dlParams: Dict, homeDir: str) -> Dict:
+        """Get Deadline submission parameters for render.
+        
+        Args:
+            origin: Render state
+            dlParams: Base Deadline parameters
+            homeDir: Deadline home directory
+            
+        Returns:
+            Updated Deadline parameters dict
+        """
         dlParams["pluginInfoFile"] = os.path.join(
             homeDir, "temp", "houdini_plugin_info.job"
         )
@@ -1845,7 +2853,12 @@ class Prism_Houdini_Functions(object):
             dlParams["pluginInfos"]["Height"] = origin.sp_resHeight.value()
 
     @err_catcher(name=__name__)
-    def getDeadlineHoudiniVersion(self):
+    def getDeadlineHoudiniVersion(self) -> str:
+        """Get Houdini version string for Deadline.
+        
+        Returns:
+            Version string in format "major.minor"
+        """
         envKey = "PRISM_DEADLINE_HOUDINI_VERSION"
         if envKey in os.environ:
             version = os.environ[envKey]
@@ -1867,7 +2880,17 @@ class Prism_Houdini_Functions(object):
         return version
 
     @err_catcher(name=__name__)
-    def sm_renderSettings_getCurrentSettings(self, origin, node=None, asString=True):
+    def sm_renderSettings_getCurrentSettings(self, origin: Any, node: Optional[Any] = None, asString: bool = True) -> Union[str, Dict]:
+        """Get current render settings from node.
+        
+        Args:
+            origin: Render settings state
+            node: Source node (uses origin.nodeType if None)
+            asString: Return as JSON string if True
+            
+        Returns:
+            JSON string or dict of render settings
+        """
         settings = []
         if not node:
             node = hou.node(origin.e_node.text())
@@ -1893,8 +2916,19 @@ class Prism_Houdini_Functions(object):
 
     @err_catcher(name=__name__)
     def sm_renderSettings_setCurrentSettings(
-        self, origin, preset, state=None, node=None
-    ):
+        self, origin: Any, preset: List[Dict[str, Any]], state: Optional[Any] = None, node: Optional[Any] = None
+    ) -> None:
+        """Apply render settings preset to a render node.
+        
+        Sets parameter values from preset dictionary, handling both direct values
+        and Houdini expressions (marked with \" [expression]\" suffix).
+        
+        Args:
+            origin: Render settings state.
+            preset: List of parameter dictionaries with {parameter: value} pairs.
+            state: Optional state with node reference.
+            node: Optional direct node reference.
+        """
         if not node:
             if state:
                 node = hou.node(state.e_node.text())
@@ -1906,7 +2940,7 @@ class Prism_Houdini_Functions(object):
             if not parm:
                 continue
 
-            value = setting.values()[0]
+            value = list(setting.values())[0]
             if sys.version[0] == "2":
                 isStr = isinstance(value, basestring)
             else:
@@ -1923,7 +2957,12 @@ class Prism_Houdini_Functions(object):
                     pass
 
     @err_catcher(name=__name__)
-    def sm_renderSettings_applyDefaultSettings(self, origin):
+    def sm_renderSettings_applyDefaultSettings(self, origin: Any) -> None:
+        """Apply default render settings to node.
+        
+        Args:
+            origin: Render settings state
+        """
         node = hou.node(origin.e_node.text())
         if not node:
             return
@@ -1932,7 +2971,12 @@ class Prism_Houdini_Functions(object):
             parm.revertToDefaults()
 
     @err_catcher(name=__name__)
-    def sm_renderSettings_startup(self, origin):
+    def sm_renderSettings_startup(self, origin: Any) -> None:
+        """Initialize render settings state on startup.
+        
+        Args:
+            origin: Render settings state
+        """
         origin.w_node = QWidget()
         origin.lo_node = QHBoxLayout()
         origin.w_node.setLayout(origin.lo_node)
@@ -1958,25 +3002,49 @@ class Prism_Houdini_Functions(object):
         origin.gb_general.layout().insertWidget(0, origin.w_node)
 
     @err_catcher(name=__name__)
-    def sm_renderSettings_loadData(self, origin, data):
+    def sm_renderSettings_loadData(self, origin: Any, data: Dict) -> None:
+        """Load render settings from data dict.
+        
+        Args:
+            origin: Render settings state
+            data: Settings data dict
+        """
         if "node" in data:
             origin.e_node.setText(data["node"])
 
     @err_catcher(name=__name__)
-    def sm_renderSettings_getStateProps(self, origin):
+    def sm_renderSettings_getStateProps(self, origin: Any) -> Dict:
+        """Get state properties for render settings.
+        
+        Args:
+            origin: Render settings state
+            
+        Returns:
+            Dict of state properties
+        """
         stateProps = {"node": origin.e_node.text()}
 
         return stateProps
 
     @err_catcher(name=__name__)
-    def sm_renderSettings_addSelected(self, origin):
+    def sm_renderSettings_addSelected(self, origin: Any) -> None:
+        """Add selected node to render settings state.
+        
+        Args:
+            origin: Render settings state
+        """
         if len(hou.selectedNodes()) == 0:
             return False
 
         origin.e_node.setText(hou.selectedNodes()[0].path())
 
     @err_catcher(name=__name__)
-    def sm_renderSettings_preExecute(self, origin):
+    def sm_renderSettings_preExecute(self, origin: Any) -> None:
+        """Execute render settings before render.
+        
+        Args:
+            origin: Render settings state
+        """
         warnings = []
 
         if not hou.node(origin.e_node.text()):
@@ -1985,7 +3053,12 @@ class Prism_Houdini_Functions(object):
         return warnings
 
     @err_catcher(name=__name__)
-    def showNodeContext(self, origin):
+    def showNodeContext(self, origin: Any) -> None:
+        """Show node in network editor context.
+        
+        Args:
+            origin: State with node reference
+        """
         rcMenu = QMenu(origin.stateManager)
         mAct = QAction("Add selected", origin)
         mAct.triggered.connect(lambda: self.sm_renderSettings_addSelected(origin))
@@ -1994,13 +3067,32 @@ class Prism_Houdini_Functions(object):
         rcMenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def createRop(self, nodeType, parent=None):
+    def createRop(self, nodeType: str, parent: Optional[Any] = None) -> Any:
+        """Create ROP node in appropriate context.
+        
+        Args:
+            nodeType: ROP node type name
+            parent: Optional parent node (uses self.ropLocation if None)
+            
+        Returns:
+            Created ROP node
+        """
         parent = parent or hou.node(self.ropLocation)
         node = parent.createNode(nodeType)
         return node
 
     @err_catcher(name=__name__)
-    def getStateFromNode(self, kwargs, create=True, ignoreTypes=None):
+    def getStateFromNode(self, kwargs: Dict, create: bool = True, ignoreTypes: Optional[List] = None) -> Optional[Any]:
+        """Get or create Prism state for node.
+        
+        Args:
+            kwargs: Houdini callback with 'node' key
+            create: Create new state if none exists
+            ignoreTypes: State types to ignore
+            
+        Returns:
+            State instance or None
+        """
         sm = self.core.getStateManager()
         if not sm:
             return
@@ -2028,7 +3120,12 @@ class Prism_Houdini_Functions(object):
         return state
 
     @err_catcher(name=__name__)
-    def showInStateManagerFromNode(self, kwargs):
+    def showInStateManagerFromNode(self, kwargs: Dict) -> None:
+        """Show State Manager and navigate to node's state.
+        
+        Args:
+            kwargs: Houdini callback with 'node' key
+        """
         sm = self.core.getStateManager()
         if not sm:
             return
@@ -2054,7 +3151,15 @@ class Prism_Houdini_Functions(object):
         sm.selectState(state)
 
     @err_catcher(name=__name__)
-    def findNode(self, path):
+    def findNode(self, path: str) -> Optional[Any]:
+        """Find node by path string.
+        
+        Args:
+            path: Node path
+            
+        Returns:
+            Node object or None
+        """
         for node in hou.node("/").allSubChildren():
             if (
                 node.userData("PrismPath") is not None
@@ -2063,19 +3168,37 @@ class Prism_Houdini_Functions(object):
                 node.setUserData("PrismPath", node.path())
                 return node
 
-        return None
+        return
 
     @err_catcher(name=__name__)
-    def openInExplorerFromNode(self, kwargs):
+    def openInExplorerFromNode(self, kwargs: Dict) -> None:
+        """Open file explorer to node's output folder.
+        
+        Args:
+            kwargs: Houdini callback with 'node' key
+        """
         path = kwargs["node"].parm("filepath").eval()
         self.core.openFolder(path)
 
     @err_catcher(name=__name__)
-    def onNodeCreated(self, kwargs):
+    def onNodeCreated(self, kwargs: Dict) -> None:
+        """Handle node creation event.
+        
+        Args:
+            kwargs: Houdini callback with 'node' key
+        """
         pass
 
     @err_catcher(name=__name__)
-    def getApiFromNode(self, node):
+    def getApiFromNode(self, node: Any) -> Optional[Any]:
+        """Get Prism API instance for node type.
+        
+        Args:
+            node: Node to check
+            
+        Returns:
+            Node API instance or None
+        """
         for api in self.nodeTypeAPIs:
             validApi = self.isValidNodeApi(node, api)
 
@@ -2083,7 +3206,14 @@ class Prism_Houdini_Functions(object):
                 return api
 
     @err_catcher(name=__name__)
-    def onNodeDeleted(self, kwargs):
+    def onNodeDeleted(self, kwargs: Dict) -> None:
+        """Handle node deletion event.
+        
+        Removes associated Prism states.
+        
+        Args:
+            kwargs: Houdini callback with 'node' key
+        """
         if hou.hipFile.isLoadingHipFile() or hou.hipFile.isShuttingDown():
             return
 
@@ -2110,7 +3240,16 @@ class Prism_Houdini_Functions(object):
                 break
 
     @err_catcher(name=__name__)
-    def isValidNodeApi(self, node, api):
+    def isValidNodeApi(self, node: Any, api: Any) -> bool:
+        """Check if API instance is valid for node type.
+        
+        Args:
+            node: Node to validate
+            api: API instance to check
+            
+        Returns:
+            True if API matches node type
+        """
         validApi = False
         typeName = api.getTypeName()
         if isinstance(typeName, list):
@@ -2126,7 +3265,15 @@ class Prism_Houdini_Functions(object):
         return validApi
 
     @err_catcher(name=__name__)
-    def createStateForNode(self, kwargs):
+    def createStateForNode(self, kwargs: Dict) -> Optional[Any]:
+        """Create Prism state for node.
+        
+        Args:
+            kwargs: Houdini callback with 'node' key
+            
+        Returns:
+            Created state or None
+        """
         sm = self.core.getStateManager()
 
         parent = None
@@ -2156,7 +3303,18 @@ class Prism_Houdini_Functions(object):
         return state
 
     @err_catcher(name=__name__)
-    def detectCacheSequence(self, path, subframeStr=None):
+    def detectCacheSequence(self, path: str, subframeStr: Optional[str] = None) -> str:
+        """Detect frame sequence pattern in cache path.
+        
+        Converts numeric sequences to Houdini frame variable format.
+        
+        Args:
+            path: File path potentially containing frame numbers
+            subframeStr: Optional subframe string pattern
+            
+        Returns:
+            Path with $F frame variable, or original path if no sequence detected
+        """
         folder = os.path.dirname(path)
         fname = os.path.basename(path)
         base, ext = self.splitExtension(fname)
@@ -2188,12 +3346,35 @@ class Prism_Houdini_Functions(object):
         return convertedPath
 
     @err_catcher(name=__name__)
-    def handleNetworkDrop(self, fileList):
+    def handleNetworkDrop(self, fileList: List[str]) -> None:
+        """Handle files dropped into network editor.
+        
+        Args:
+            fileList: List of dropped file paths
+        """
         return False
 
 
 class PublishDialog(QDialog):
-    def __init__(self, plugin, state):
+    """Temporary publish dialog for individual nodes.
+    
+    Creates a standalone dialog for publishing a single state's output
+    without the full State Manager interface.
+    
+    Attributes:
+        plugin: Houdini plugin instance
+        state: State to publish
+        core: Prism core instance
+        showSm: Whether State Manager was visible before opening dialog
+    """
+    
+    def __init__(self, plugin: Any, state: Any) -> None:
+        """Initialize publish dialog.
+        
+        Args:
+            plugin: Houdini plugin instance
+            state: State to publish from
+        """
         super(PublishDialog, self).__init__()
         self.plugin = plugin
         self.state = state
@@ -2207,7 +3388,8 @@ class PublishDialog(QDialog):
         self.setupUi()
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Set up dialog UI with state widget and publish button."""
         self.setWindowTitle("Publish Node - %s" % self.state.ui.node.path())
         self.lo_main = QVBoxLayout()
         self.setLayout(self.lo_main)
@@ -2220,7 +3402,14 @@ class PublishDialog(QDialog):
         self.b_publish.clicked.connect(self.publish)
 
     @err_catcher(name=__name__)
-    def closeEvent(self, event):
+    def closeEvent(self, event: Any) -> None:
+        """Handle dialog close event.
+        
+        Restores State Manager visibility and selects current state.
+        
+        Args:
+            event: Qt close event
+        """
         if self.state == self.core.sm.getCurrentItem(self.core.sm.activeList):
             self.core.sm.showState()
 
@@ -2230,7 +3419,8 @@ class PublishDialog(QDialog):
         event.accept()
 
     @err_catcher(name=__name__)
-    def publish(self):
+    def publish(self) -> None:
+        """Execute publish operation and close dialog."""
         self.hide()
         sm = self.core.getStateManager()
         sm.publish(

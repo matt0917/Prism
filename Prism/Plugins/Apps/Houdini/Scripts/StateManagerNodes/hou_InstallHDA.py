@@ -31,8 +31,15 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
+"""Houdini Install HDA state for Prism State Manager.
+
+Provides functionality to install Houdini Digital Assets (HDAs) from the
+Prism product library. Tracks HDA versions, supports auto-update, and can
+automatically create node instances after installation.
+"""
 
 import os
+from typing import Any, Optional, Dict, Union
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -45,13 +52,50 @@ from PrismUtils.Decorators import err_catcher as err_catcher
 
 
 class InstallHDAClass(hou_ImportFile.ImportFileClass):
+    """State for installing HDAs into Houdini session.
+    
+    Extends ImportFileClass to provide HDA-specific installation,
+    version tracking, and node creation capabilities.
+    
+    Attributes:
+        className (str): State type identifier.
+        listType (str): State list category.
+        supportedFormats (List[str]): Supported HDA file extensions.
+    """
+    
     className = "Install HDA"
     listType = "Import"
 
     @err_catcher(name=__name__)
     def setup(
-        self, state, core, stateManager, node=None, importPath=None, stateData=None, openProductsBrowser=True
-    ):
+        self, 
+        state: Any,
+        core: Any, 
+        stateManager: Any,
+        node: Optional[Any] = None,
+        importPath: Optional[str] = None,
+        stateData: Optional[Dict] = None,
+        openProductsBrowser: bool = True,
+        settings: Optional[Dict] = None,
+    ) -> Optional[bool]:
+        """Initialize Install HDA state.
+        
+        Sets up UI, opens Product Browser if needed, installs HDA if path provided,
+        and loads saved state data.
+        
+        Args:
+            state: State Manager tree item.
+            core: PrismCore instance.
+            stateManager: State Manager instance.
+            node: Unused (compatibility with parent class).
+            importPath: Optional HDA file path to install.
+            stateData: Optional saved state data to load.
+            openProductsBrowser: Whether to open Product Browser (unused).
+            settings: Optional settings dict with 'createNodeAfterImport' key.
+            
+        Returns:
+            False if setup failed or was cancelled, None otherwise.
+        """
         self.state = state
         self.core = core
         self.stateManager = stateManager
@@ -93,7 +137,8 @@ class InstallHDAClass(hou_ImportFile.ImportFileClass):
 
         if importPath:
             self.setImportPath(importPath)
-            result = self.importObject()
+            settings = settings or {}
+            result = self.importObject(createNode=settings.get("createNodeAfterImport"))
 
             if not result:
                 return False
@@ -113,7 +158,14 @@ class InstallHDAClass(hou_ImportFile.ImportFileClass):
         self.updateUi()
 
     @err_catcher(name=__name__)
-    def loadData(self, data):
+    def loadData(self, data: Dict) -> None:
+        """Load state data from dictionary.
+        
+        Restores state name, file path, and auto-update setting.
+        
+        Args:
+            data: Dictionary containing saved state data.
+        """
         if "statename" in data:
             self.e_name.setText(data["statename"])
         if "filepath" in data:
@@ -124,7 +176,12 @@ class InstallHDAClass(hou_ImportFile.ImportFileClass):
         self.core.callback("onStateSettingsLoaded", self, data)
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect UI widget signals to handlers.
+        
+        Links buttons, text fields, and checkboxes to their respective
+        change handlers and state save operations.
+        """
         self.e_name.textChanged.connect(self.nameChanged)
         self.e_name.editingFinished.connect(self.stateManager.saveStatesToScene)
         self.b_browse.clicked.connect(self.browse)
@@ -136,7 +193,20 @@ class InstallHDAClass(hou_ImportFile.ImportFileClass):
             self.b_createNode.clicked.connect(self.createNode)
 
     @err_catcher(name=__name__)
-    def importObject(self, taskName=None):
+    def importObject(self, taskName: Optional[str] = None, createNode: Optional[bool] = None) -> bool:
+        """Install HDA file into Houdini session.
+        
+        Validates path, executes pre-import callbacks, installs HDA,
+        updates all instances to latest version, and optionally creates
+        a new node instance.
+        
+        Args:
+            taskName: Unused (compatibility with parent class).
+            createNode: Whether to create node after install (prompts if None).
+            
+        Returns:
+            True if installation succeeded, False otherwise.
+        """
         if self.stateManager.standalone:
             return False
 
@@ -173,14 +243,17 @@ class InstallHDAClass(hou_ImportFile.ImportFileClass):
         self.updateUi()
         self.stateManager.saveStatesToScene()
 
-        create = os.getenv("PRISM_HOUDINI_CREATE_NODE_AFTER_HDA_INSTALL")
-        if create == "1":
-            result = "Yes"
-        elif create == "0":
-            result = "No"
+        if createNode is not None:
+            result = "Yes" if createNode else "No"
         else:
-            msg = "The HDA was installed successfully.\n\nDo you want to create a new node from it?"
-            result = self.core.popupQuestion(msg)
+            create = os.getenv("PRISM_HOUDINI_CREATE_NODE_AFTER_HDA_INSTALL", "1")
+            if create == "1":
+                result = "Yes"
+            elif create == "0":
+                result = "No"
+            else:
+                msg = "The HDA was installed successfully.\n\nDo you want to create a new node from it?"
+                result = self.core.popupQuestion(msg)
 
         if result == "Yes":
             self.createNode()
@@ -193,7 +266,15 @@ class InstallHDAClass(hou_ImportFile.ImportFileClass):
         return True
 
     @err_catcher(name=__name__)
-    def changeAssetDefinitionVersions(self, definition):
+    def changeAssetDefinitionVersions(self, definition: Any) -> None:
+        """Update all node instances to use new HDA definition.
+        
+        Iterates through all instances of older versions in the namespace
+        and changes them to the newly installed definition.
+        
+        Args:
+            definition: HDA definition object from hou.hda.
+        """
         namespaceOrder = definition.nodeType().namespaceOrder()
         for namespace in namespaceOrder:
             if namespace == definition.nodeTypeName():
@@ -204,7 +285,17 @@ class InstallHDAClass(hou_ImportFile.ImportFileClass):
                 instance.changeNodeType(definition.nodeType().name())
 
     @err_catcher(name=__name__)
-    def validateFilepath(self, path):
+    def validateFilepath(self, path: str) -> Union[str, bool]:
+        """Validate HDA file path.
+        
+        Checks that path exists, is not empty, and has supported extension.
+        
+        Args:
+            path: File path to validate.
+            
+        Returns:
+            True if valid, error message string if invalid.
+        """
         if not path:
             return "Invalid importpath"
 
@@ -218,29 +309,68 @@ class InstallHDAClass(hou_ImportFile.ImportFileClass):
         return True
 
     @err_catcher(name=__name__)
-    def createNode(self):
+    def createNode(self, parentNode: Optional[Any] = None) -> Optional[Any]:
+        """Create node instance from installed HDA.
+        
+        Creates a node from the first definition in the HDA file,
+        positions it in the network editor, and sets display/render flags.
+        
+        Args:
+            parentNode: Parent context node (uses current network editor if None).
+            
+        Returns:
+            Created node or None if creation failed.
+        """
         if not self.core.uiAvailable:
             return
 
         paneTab = hou.ui.paneTabOfType(hou.paneTabType.NetworkEditor)
-        if paneTab is None:
-            return
+        if parentNode is None:
+            if paneTab is None:
+                return
 
-        nodePath = paneTab.pwd()
+            parentNode = paneTab.pwd()
 
-        if nodePath.isInsideLockedHDA():
+        if parentNode.isInsideLockedHDA():
             return
 
         mNode = None
         if os.path.exists(self.getImportPath()):
             defs = hou.hda.definitionsInFile(self.getImportPath())
             if len(defs) > 0:
+                if parentNode.childTypeCategory() == hou.objNodeTypeCategory() and defs[0].nodeType().category() == hou.sopNodeTypeCategory():
+                    typeNameData = defs[0].nodeTypeName().split("::")
+                    if len(typeNameData) > 2:
+                        name = typeNameData[-2] + "_container"
+                    else:
+                        name = typeNameData[-1] + "_container"
+
+                    parentNode = parentNode.createNode("geo", name)
+                elif parentNode.childTypeCategory() == hou.lopNodeTypeCategory() and defs[0].nodeType().category() == hou.sopNodeTypeCategory():
+                    typeNameData = defs[0].nodeTypeName().split("::")
+                    if len(typeNameData) > 2:
+                        name = typeNameData[-2] + "_sopcreate"
+                    else:
+                        name = typeNameData[-1] + "_sopcreate"
+
+                    sopcreate = parentNode.createNode("sopcreate", name)
+                    parentNode = sopcreate.node("sopnet/create")
+
                 tname = defs[0].nodeTypeName()
-                try:
-                    mNode = nodePath.createNode(tname)
-                    mNode.moveToGoodPosition()
-                except:
-                    return
+                isToolRecipe = self.isToolRecipe(tname)
+                if isToolRecipe:
+                    hou.data.applyTabToolRecipe(
+                        name=tname,
+                        parent=parentNode,
+                        click_to_place=True,
+                        skip_notes=False
+                    )
+                else:
+                    try:
+                        mNode = parentNode.createNode(tname)
+                        mNode.moveToGoodPosition()
+                    except:
+                        return
 
         if mNode is None:
             return
@@ -249,11 +379,40 @@ class InstallHDAClass(hou_ImportFile.ImportFileClass):
         if hasattr(mNode, "setRenderFlag"):
             mNode.setRenderFlag(True)
 
-        mNode.setPosition(paneTab.visibleBounds().center())
+        if paneTab:
+            mNode.setPosition(paneTab.visibleBounds().center())
+
         mNode.setCurrent(True, clear_all_selected=True)
+        return mNode
+    
+    @err_catcher(name=__name__)
+    def isToolRecipe(self, typeName: str) -> bool:
+        """Check if HDA type is a tool recipe.
+        
+        Determines if the given HDA type name corresponds to a tool recipe
+        by checking for the "prism_tool_recipe" substring.
+        
+        Args:
+            typeName: HDA type name to check.
+            
+        Returns:
+            True if it's a tool recipe, False otherwise.
+        """
+        try:
+            import recipeutils as ru
+        except Exception as e:
+            return False
+
+        isToolRecipe = bool(ru.recipeNames(ru.RecipeCategory.tool, name_pattern=typeName))
+        return isToolRecipe
 
     @err_catcher(name=__name__)
-    def updateUi(self):
+    def updateUi(self) -> None:
+        """Update UI to reflect current HDA installation status.
+        
+        Updates status label, version indicators, and import button styling.
+        Auto-imports latest version if auto-update is enabled and version differs.
+        """
         self.l_status.setText("not installed")
         self.l_status.setStyleSheet("QLabel { background-color : rgb(130,0,0); }")
         status = "error"
@@ -304,7 +463,12 @@ class InstallHDAClass(hou_ImportFile.ImportFileClass):
         self.setStateColor(status)
 
     @err_catcher(name=__name__)
-    def getStateProps(self):
+    def getStateProps(self) -> Dict[str, str]:
+        """Get state properties for saving.
+        
+        Returns:
+            Dictionary of state data for serialization.
+        """
         return {
             "statename": self.e_name.text(),
             "filepath": self.getImportPath(),

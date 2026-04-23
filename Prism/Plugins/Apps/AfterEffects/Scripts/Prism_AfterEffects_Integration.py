@@ -39,6 +39,7 @@ import shutil
 import importlib
 import zipfile
 import time
+from typing import Any, List, Optional, Union
 
 if platform.system() == "Windows":
     import winreg as _winreg
@@ -51,7 +52,16 @@ from PrismUtils.Decorators import err_catcher_plugin as err_catcher
 
 
 class Prism_AfterEffects_Integration(object):
-    def __init__(self, core, plugin):
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize AfterEffects CEP integration component.
+        
+        Sets up Adobe CEP extension directory path for After Effects integration.
+        Creates extension directory if it doesn't exist.
+        
+        Args:
+            core: Prism core instance
+            plugin: Plugin instance
+        """
         self.core = core
         self.plugin = plugin
 
@@ -67,7 +77,12 @@ class Prism_AfterEffects_Integration(object):
                 pass
 
     @err_catcher(name=__name__)
-    def getExecutable(self):
+    def getExecutable(self) -> str:
+        """Get After Effects executable path.
+        
+        Returns:
+            Path to AfterFX.exe on Windows, empty string if not found
+        """
         execPath = ""
         if platform.system() == "Windows":
             defaultpath = os.path.join(self.getAfterEffectsPath() or "", "AfterFX.exe")
@@ -77,7 +92,13 @@ class Prism_AfterEffects_Integration(object):
         return execPath
 
     @err_catcher(name=__name__)
-    def getAfterEffectsPath(self):
+    def getAfterEffectsPath(self) -> Optional[str]:
+        """Get After Effects installation directory.
+        
+        Returns:
+            Installation directory path for the latest After Effects version,
+            or None if not found
+        """
         paths = self.getAfterEffectsPaths()
         if not paths:
             return
@@ -85,7 +106,15 @@ class Prism_AfterEffects_Integration(object):
         return paths[0]
 
     @err_catcher(name=__name__)
-    def getAfterEffectsPaths(self):
+    def getAfterEffectsPaths(self) -> List[str]:
+        """Get all After Effects installation directories from registry.
+        
+        Queries Windows registry for all installed After Effects versions and
+        returns their installation paths in reverse version order.
+        
+        Returns:
+            List of installation directory paths (newest first), empty list if none found
+        """
         try:
             key = _winreg.OpenKey(
                 _winreg.HKEY_LOCAL_MACHINE,
@@ -131,7 +160,18 @@ class Prism_AfterEffects_Integration(object):
             return []
 
     @err_catcher(name=__name__)
-    def addIntegration(self, installPath):
+    def addIntegration(self, installPath: str) -> bool:
+        """Install Prism integration into Adobe CEP extensions directory.
+        
+        Extracts prism.aep.zip extension and creates prism.cmd script with
+        configured paths to enable After Effects integration.
+        
+        Args:
+            installPath: Target CEP extensions directory path
+            
+        Returns:
+            True if successful, False on error
+        """
         try:
             integrationBase = os.path.join(
                 os.path.dirname(os.path.dirname(__file__)), "Integration"
@@ -195,7 +235,16 @@ class Prism_AfterEffects_Integration(object):
             return False
 
     @err_catcher(name=__name__)
-    def extractZipWithDates(self, zipPath, extractTo):
+    def extractZipWithDates(self, zipPath: str, extractTo: str) -> Union[bool, str]:
+        """Extract zip file while preserving modification timestamps.
+        
+        Args:
+            zipPath: Path to zip file to extract
+            extractTo: Target directory for extraction
+            
+        Returns:
+            True if successful, error string if failed
+        """
         try:
             with zipfile.ZipFile(zipPath, "r") as zipRef:
                 for zipInfo in zipRef.infolist():
@@ -214,7 +263,18 @@ class Prism_AfterEffects_Integration(object):
         else:
             return True
 
-    def removeIntegration(self, installPath):
+    def removeIntegration(self, installPath: str) -> bool:
+        """Remove Prism integration from Adobe CEP extensions directory.
+        
+        Deletes prism.aep extension folder and prism.cmd script file from the
+        specified installation path.
+        
+        Args:
+            installPath: CEP extensions directory path
+            
+        Returns:
+            True if successful, False on error
+        """
         try:
             prAep = os.path.join(installPath, "prism.aep")
             prCmd = os.path.join(installPath, "prism.cmd")
@@ -236,7 +296,18 @@ class Prism_AfterEffects_Integration(object):
             self.core.popup(msgStr)
             return False
 
-    def updateInstallerUI(self, userFolders, pItem):
+    def updateInstallerUI(self, userFolders: Any, pItem: Any) -> Optional[bool]:
+        """Update installer UI with AfterEffects integration status.
+        
+        Adds tree widget item showing CEP extensions path and integration status.
+        
+        Args:
+            userFolders: User folders configuration
+            pItem: Parent tree widget item
+            
+        Returns:
+            False on error, None on success
+        """
         try:
             pluginItem = QTreeWidgetItem([self.plugin.pluginName])
             pItem.addChild(pluginItem)
@@ -256,7 +327,18 @@ class Prism_AfterEffects_Integration(object):
             self.core.popup(msg)
             return False
 
-    def installerExecute(self, pluginItem, result):
+    def installerExecute(self, pluginItem: Any, result: dict) -> Union[List[str], bool]:
+        """Execute integration installation during Prism installer.
+        
+        Installs integration to checked paths in installer UI.
+        
+        Args:
+            pluginItem: Plugin tree widget item from installer
+            result: Dictionary to store installation results
+            
+        Returns:
+            List of successfully installed paths, or False on error
+        """
         try:
             pluginPaths = []
             installLocs = []

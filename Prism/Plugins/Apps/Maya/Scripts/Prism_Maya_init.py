@@ -32,6 +32,8 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from typing import Any
+
 from Prism_Maya_Variables import Prism_Maya_Variables
 from Prism_Maya_externalAccess_Functions import Prism_Maya_externalAccess_Functions
 from Prism_Maya_Functions import Prism_Maya_Functions
@@ -44,7 +46,12 @@ class Prism_Plugin_Maya(
     Prism_Maya_Functions,
     Prism_Maya_Integration,
 ):
-    def __init__(self, core):
+    def __init__(self, core: Any) -> None:
+        """Initialize Maya plugin by inheriting from all component modules.
+        
+        Args:
+            core: Prism core instance
+        """
         Prism_Maya_Variables.__init__(self, core, self)
         Prism_Maya_externalAccess_Functions.__init__(self, core, self)
         Prism_Maya_Functions.__init__(self, core, self)

@@ -39,11 +39,19 @@ import threading
 import platform
 import ctypes
 from ctypes import wintypes
+from typing import Any, Optional
 
 socket_address = ('localhost', 65432)
 
 
-def handle_client_connection(client_socket):
+def handle_client_connection(client_socket: socket.socket) -> None:
+    """Handle incoming socket client connection.
+    
+    Receives command from client and invokes command handler in main thread.
+    
+    Args:
+        client_socket: Connected client socket
+    """
     with client_socket:
         data = client_socket.recv(1024)
         if data:
@@ -51,7 +59,12 @@ def handle_client_connection(client_socket):
             QMetaObject.invokeMethod(commandHandler, "handleCmd", Qt.QueuedConnection, Q_ARG(str, cmd))
 
 
-def start_socket_server():
+def start_socket_server() -> None:
+    """Start socket server for inter-process communication.
+    
+    Listens on localhost:65432 for incoming commands from After Effects CEP extension.
+    Runs on background thread, spawning new thread for each client connection.
+    """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
         server_socket.bind(socket_address)
         server_socket.listen()
@@ -88,11 +101,27 @@ from qtpy.QtWidgets import *
 
 
 class CommandHandler(QObject):
-    def __init__(self, parent=None):
+    def __init__(self, parent: Optional[Any] = None) -> None:
+        """Initialize command handler for Prism menu tools.
+        
+        Args:
+            parent: Optional parent QObject
+        """
         super().__init__(parent)
 
     @Slot(str)
-    def handleCmd(self, cmd):
+    def handleCmd(self, cmd: str) -> Optional[Any]:
+        """Handle command received from After Effects.
+        
+        Dispatches commands to appropriate Prism functions (tools, saveVersion,
+        projectBrowser, settings, render, etc).
+        
+        Args:
+            cmd: Command string from After Effects
+            
+        Returns:
+            Result from command execution, or None
+        """
         if "pcore" not in globals():
             print("Prism is still loading. Please wait a moment and try again.")
             return

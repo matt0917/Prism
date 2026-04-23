@@ -37,6 +37,7 @@ import sys
 import platform
 import logging
 from datetime import datetime
+from typing import Any, Optional, List, Dict, Tuple
 
 prismRoot = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
@@ -80,9 +81,35 @@ logger = logging.getLogger(__name__)
 
 
 class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
+    """Main Project Browser window for navigating project assets and outputs.
+    
+    Central hub for accessing scenefiles, products, and media across the project.
+    Integrates multiple browser tabs (Scene, Product, Media) with project-wide
+    settings and location management.
+    
+    Attributes:
+        showing (Signal): Emitted when browser window is shown, passes self.
+        core: Reference to Prism core instance.
+        tabs (List): List of browser tab widgets.
+        previousTab (Optional[int]): Index of previously active tab.
+        locations (List[Dict]): Available storage locations (global, local, etc.).
+        closeParm (str): Config key for close-after-load setting.
+        sceneBrowser: SceneBrowser tab widget.
+        productBrowser: ProductBrowser tab widget.
+        mediaBrowser: MediaBrowser tab widget.
+        act_filesizes: Action for showing file sizes.
+        act_rememberTab: Action for remembering active tab.
+        act_rememberWidgetSizes: Action for remembering widget sizes.
+        act_clearConfigCache: Action for clearing config cache on refresh.
+    """
     showing = Signal(object)
 
-    def __init__(self, core):
+    def __init__(self, core: Any) -> None:
+        """Initialize the Project Browser window.
+        
+        Args:
+            core: Prism core instance.
+        """
         startTime = datetime.now()
         QMainWindow.__init__(self)
         self.setupUi(self)
@@ -110,7 +137,11 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
         logger.debug("Project Browser startup duration: %s" % (endTime - startTime))
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect UI signals to handler methods.
+        
+        Sets up connections for menu actions, tab changes, and toolbar buttons.
+        """
         self.actionPrismSettings.triggered.connect(self.core.prismSettings)
         self.actionStateManager.triggered.connect(self.core.stateManager)
         self.actionOpenOnStart.toggled.connect(self.triggerOpen)
@@ -126,24 +157,50 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
         self.act_clearConfigCache.toggled.connect(self.triggerClearConfigCacheOnRefresh)
         self.tbw_project.currentChanged.connect(self.tabChanged)
 
-    def enterEvent(self, event):
+    def enterEvent(self, event: Any) -> None:
+        """Handle mouse enter event.
+        
+        Restores normal cursor state.
+        
+        Args:
+            event: Enter event.
+        """
         try:
             QApplication.restoreOverrideCursor()
         except:
             pass
 
-    def showEvent(self, event):
+    def showEvent(self, event: Any) -> None:
+        """Handle show event.
+        
+        Emits showing signal and calls onProjectBrowserShow callback.
+        
+        Args:
+            event: Show event.
+        """
         self.showing.emit(self)
         self.core.callback(name="onProjectBrowserShow", args=[self])
 
-    def resizeEvent(self, event):
+    def resizeEvent(self, event: Any) -> None:
+        """Handle resize event.
+        
+        Args:
+            event: Resize event.
+        """
         self.closeMenus()
 
-    def moveEvent(self, event):
+    def moveEvent(self, event: Any) -> None:
+        """Handle move event.
+        
+        Args:
+            event: Move event.
+        """
         self.closeMenus()
 
     @err_catcher(name=__name__)
-    def closeMenus(self):
+    def closeMenus(self) -> None:
+        """Close any open popup menus.
+        """
         if hasattr(self, "w_user") and self.w_user.isVisible():
             self.w_user.close()
 
@@ -151,12 +208,21 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
             self.w_projects.close()
 
     @err_catcher(name=__name__)
-    def keyPressEvent(self, e):
+    def keyPressEvent(self, e: Any) -> None:
+        """Handle keyboard events.
+        
+        Args:
+            e: Key press event.
+        """
         if e.key() == Qt.Key_F5:
             self.refreshUiTriggered()
 
     @err_catcher(name=__name__)
-    def loadLayout(self):
+    def loadLayout(self) -> None:
+        """Load and configure the window layout.
+        
+        Sets up menus, toolbars, browser tabs, and loads saved settings.
+        """
         self.setCentralWidget(self.scrollArea)
         self.helpMenu = QMenu(self.core.tr("Help"), self)
 
@@ -411,7 +477,11 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
     #         self.centralwidget.setStyleSheet(ssheet)
 
     @err_catcher(name=__name__)
-    def refreshRecentMenu(self):
+    def refreshRecentMenu(self) -> None:
+        """Refresh the recent scenefiles menu.
+        
+        Populates menu with recently accessed scenefiles.
+        """
         self.recentMenu.clear()
         recents = self.core.getRecentScenefiles()
         for recent in recents:
@@ -432,7 +502,12 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
         self.recentMenu.setEnabled(not self.recentMenu.isEmpty())
 
     @err_catcher(name=__name__)
-    def onRecentClicked(self, recent):
+    def onRecentClicked(self, recent: str) -> None:
+        """Handle recent scenefile menu item click.
+        
+        Args:
+            recent: Path to recent scenefile.
+        """
         mods = QApplication.keyboardModifiers()
         if mods == Qt.ControlModifier:
             self.showTab("Scenefiles")
@@ -442,19 +517,36 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
             self.sceneBrowser.exeFile(recent)
 
     @err_catcher(name=__name__)
-    def refreshUser(self):
+    def refreshUser(self) -> None:
+        """Refresh the username display in the menu bar.
+        """
         self.b_user.setText(self.core.username)
         self.menubar.adjustSize()
         self.b_projects.adjustSize()
 
     @err_catcher(name=__name__)
-    def addTab(self, name, widget, position=-1):
+    def addTab(self, name: str, widget: Any, position: int = -1) -> None:
+        """Add a browser tab.
+        
+        Args:
+            name: Tab display name.
+            widget: Widget to display in tab.
+            position: Tab position index, -1 for append.
+        """
         widget.setProperty("tabType", name)
+        widget.setAutoFillBackground(True)
         self.tbw_project.insertTab(position, widget, name)
         self.tabs.append(widget)
 
     @err_catcher(name=__name__)
-    def closeEvent(self, event):
+    def closeEvent(self, event: Any) -> None:
+        """Handle window close event.
+        
+        Saves settings and cleans up resources.
+        
+        Args:
+            event: Close event.
+        """
         visible = []
         for i in range(self.tbw_project.count()):
             visible.append(self.tbw_project.widget(i).property("tabType"))
@@ -503,7 +595,14 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
         event.accept()
 
     @err_catcher(name=__name__)
-    def onUserClicked(self, state=None):
+    def onUserClicked(self, state: Optional[bool] = None) -> None:
+        """Handle user button click.
+        
+        Shows/hides user selection widget.
+        
+        Args:
+            state: Button state (unused).
+        """
         if hasattr(self, "w_user") and self.w_user.isVisible():
             self.w_user.close()
             return
@@ -519,7 +618,14 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
         self.w_user.move(newPos)
 
     @err_catcher(name=__name__)
-    def onProjectsClicked(self, state=None):
+    def onProjectsClicked(self, state: Optional[bool] = None) -> None:
+        """Handle projects button click.
+        
+        Shows/hides project selection widget.
+        
+        Args:
+            state: Button state (unused).
+        """
         if hasattr(self, "w_projects") and self.w_projects.isVisible():
             self.w_projects.close()
             return
@@ -547,7 +653,13 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
         self.w_projects.move(newPos)
 
     @err_catcher(name=__name__)
-    def tabChanged(self, tab, navData=None):
+    def tabChanged(self, tab: int, navData: Optional[Dict[str, Any]] = None) -> None:
+        """Handle tab change event.
+        
+        Args:
+            tab: New tab index.
+            navData: Optional navigation data to pass to new tab.
+        """
         if self.previousTab is not None:
             prev = self.tbw_project.widget(self.previousTab)
         else:
@@ -561,7 +673,12 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
         self.previousTab = tab
 
     @err_catcher(name=__name__)
-    def updateTabSize(self, tab):
+    def updateTabSize(self, tab: int) -> None:
+        """Update tab widget size policies.
+        
+        Args:
+            tab: Tab index to make active.
+        """
         for idx in range(self.tbw_project.count()):
             if idx != tab:
                 self.tbw_project.widget(idx).setSizePolicy(
@@ -575,7 +692,12 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
         curWidget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
 
     @err_catcher(name=__name__)
-    def checkVisibleTabs(self):
+    def checkVisibleTabs(self) -> bool:
+        """Check if any tabs are visible.
+        
+        Returns:
+            True if tabs exist, False if browser failed to load.
+        """
         cw = self.tbw_project.currentWidget()
         if not cw:
             self.core.popup(
@@ -586,14 +708,28 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
         return True
 
     @err_catcher(name=__name__)
-    def changeEvent(self, event):
+    def changeEvent(self, event: Any) -> None:
+        """Handle window state change events.
+        
+        Refreshes UI when window is restored from minimized state.
+        
+        Args:
+            event: Change event.
+        """
         if event.type() == QEvent.WindowStateChange:
             if event.oldState() == Qt.WindowMinimized:
                 if getattr(self.tbw_project.currentWidget(), "refreshStatus", "valid") == "invalid":
                     self.tbw_project.currentWidget().refreshUI()
 
     @err_catcher(name=__name__)
-    def refreshUiTriggered(self, state=None):
+    def refreshUiTriggered(self, state: Optional[bool] = None) -> None:
+        """Handle refresh UI action trigger.
+        
+        Clears config cache if enabled and refreshes all tabs.
+        
+        Args:
+            state: Action state (unused).
+        """
         if self.act_clearConfigCache.isChecked():
             self.core.configs.clearCache()
 
@@ -601,7 +737,11 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
         self.refreshUI()
 
     @err_catcher(name=__name__)
-    def refreshUI(self):
+    def refreshUI(self) -> None:
+        """Refresh all browser tabs.
+        
+        Marks tabs as invalid and refreshes the current visible tab.
+        """
         if not self.checkVisibleTabs():
             return
 
@@ -619,7 +759,15 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
         self.setEnabled(True)
 
     @err_catcher(name=__name__)
-    def getLocationIcon(self, name):
+    def getLocationIcon(self, name: str) -> Optional[Any]:
+        """Get icon for a storage location.
+        
+        Args:
+            name: Location name ("global", "local", etc.).
+            
+        Returns:
+            QIcon for the location, or None.
+        """
         icon = None
         if name == "global":
             icon = QIcon(os.path.join(self.core.prismRoot, "Scripts", "UserInterfacesPrism", "global.png"))
@@ -634,7 +782,16 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
         return icon
 
     @err_catcher(name=__name__)
-    def getContextMenu(self, menuType, **kwargs):
+    def getContextMenu(self, menuType: str, **kwargs: Any) -> Optional[Any]:
+        """Get a context menu of specified type.
+        
+        Args:
+            menuType: Type of menu to create.
+            **kwargs: Additional menu parameters.
+            
+        Returns:
+            QMenu instance or None.
+        """
         menu = None
         if menuType == "refresh":
             menu = self.getRefreshMenu(**kwargs)
@@ -642,7 +799,13 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
         return menu
 
     @err_catcher(name=__name__)
-    def showContextMenu(self, menuType, **kwargs):
+    def showContextMenu(self, menuType: str, **kwargs: Any) -> None:
+        """Show a context menu of specified type.
+        
+        Args:
+            menuType: Type of menu to show.
+            **kwargs: Additional menu parameters.
+        """
         menu = self.getContextMenu(menuType, **kwargs)
         self.core.callback(
             name="projectBrowserContextMenuRequested",
@@ -654,47 +817,100 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
         menu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def getRefreshMenu(self):
+    def getRefreshMenu(self) -> Any:
+        """Get the refresh context menu.
+        
+        Returns:
+            QMenu with refresh options.
+        """
         menu = QMenu(self)
         menu.addAction("Clear configcache", self.core.configs.clearCache)
         menu.addActions(self.b_refreshTabs.actions())
         return menu
 
     @err_catcher(name=__name__)
-    def triggerOpen(self, checked=False):
+    def triggerOpen(self, checked: bool = False) -> None:
+        """Handle "Open on start" action toggle.
+        
+        Args:
+            checked: Whether action is checked.
+        """
         self.core.setConfig("globals", "showonstartup", checked)
 
     @err_catcher(name=__name__)
-    def triggerUpdates(self, checked=False):
+    def triggerUpdates(self, checked: bool = False) -> None:
+        """Handle "Check for updates" action toggle.
+        
+        Args:
+            checked: Whether action is checked.
+        """
         self.core.setConfig("globals", "check_import_versions", checked)
 
     @err_catcher(name=__name__)
-    def triggerFrameranges(self, checked=False):
+    def triggerFrameranges(self, checked: bool = False) -> None:
+        """Handle "Check frameranges" action toggle.
+        
+        Args:
+            checked: Whether action is checked.
+        """
         self.core.setConfig("globals", "checkframeranges", checked)
 
     @err_catcher(name=__name__)
-    def triggerShowFileSizes(self, checked=False):
+    def triggerShowFileSizes(self, checked: bool = False) -> None:
+        """Handle "Show file sizes" action toggle.
+        
+        Args:
+            checked: Whether action is checked.
+        """
         self.core.setConfig("globals", "showFileSizes", checked)
         self.refreshUI()
 
     @err_catcher(name=__name__)
-    def triggerRememberTab(self, checked=False):
+    def triggerRememberTab(self, checked: bool = False) -> None:
+        """Handle "Remember active tab" action toggle.
+        
+        Args:
+            checked: Whether action is checked.
+        """
         self.core.setConfig("globals", "rememberTab", checked)
 
     @err_catcher(name=__name__)
-    def triggerRememberWidgetSizes(self, checked=False):
+    def triggerRememberWidgetSizes(self, checked: bool = False) -> None:
+        """Handle "Remember widget sizes" action toggle.
+        
+        Args:
+            checked: Whether action is checked.
+        """
         self.core.setConfig("browser", "rememberWidgetSizes", checked)
 
     @err_catcher(name=__name__)
-    def triggerClearConfigCacheOnRefresh(self, checked=False):
+    def triggerClearConfigCacheOnRefresh(self, checked: bool = False) -> None:
+        """Handle "Clear config cache on refresh" action toggle.
+        
+        Args:
+            checked: Whether action is checked.
+        """
         self.core.setConfig("browser", "clearConfigCacheOnRefresh", checked)
 
     @err_catcher(name=__name__)
-    def triggerCloseLoad(self, checked=False):
+    def triggerCloseLoad(self, checked: bool = False) -> None:
+        """Handle "Close after load" action toggle.
+        
+        Args:
+            checked: Whether action is checked.
+        """
         self.core.setConfig("browser", self.closeParm, checked)
 
     @err_catcher(name=__name__)
-    def showTab(self, tab):
+    def showTab(self, tab: str) -> bool:
+        """Show a specific tab by name.
+        
+        Args:
+            tab: Tab type name to show.
+            
+        Returns:
+            True if tab was found and shown, False otherwise.
+        """
         if tab == self.tbw_project.currentWidget().property("tabType"):
             return True
         else:
@@ -710,10 +926,25 @@ class ProjectBrowser(QMainWindow, ProjectBrowser_ui.Ui_mw_ProjectBrowser):
 
 
 class UserWidget(QDialog):
+    """Widget for changing the current user.
+    
+    Floating widget that appears from the user button in the menu bar.
+    
+    Attributes:
+        signalShowing (Signal): Emitted when widget is shown.
+        origin: Parent ProjectBrowser instance.
+        core: Prism core instance.
+        allowClose (bool): Whether widget can be closed on focus loss.
+    """
 
     signalShowing = Signal()
 
-    def __init__(self, origin):
+    def __init__(self, origin: Any) -> None:
+        """Initialize the user widget.
+        
+        Args:
+            origin: Parent ProjectBrowser instance.
+        """
         super(UserWidget, self).__init__()
         self.origin = origin
         self.core = origin.core
@@ -722,16 +953,30 @@ class UserWidget(QDialog):
         self.setupUi()
 
     @err_catcher(name=__name__)
-    def focusInEvent(self, event):
+    def focusInEvent(self, event: Any) -> None:
+        """Handle focus in event.
+        
+        Args:
+            event: Focus event.
+        """
         self.activateWindow()
 
     @err_catcher(name=__name__)
-    def focusOutEvent(self, event):
+    def focusOutEvent(self, event: Any) -> None:
+        """Handle focus out event.
+        
+        Closes widget if focus is lost and close is allowed.
+        
+        Args:
+            event: Focus event.
+        """
         if self.allowClose and not self.e_user.hasFocus() and not self.e_abbreviation.hasFocus():
             self.close()
 
     @err_catcher(name=__name__)
-    def showWidget(self):
+    def showWidget(self) -> None:
+        """Show the user widget near the user button.
+        """
         self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         self.setStyleSheet("QDialog { border: 1px solid rgb(70, 90, 120); }")
@@ -748,7 +993,9 @@ class UserWidget(QDialog):
         self.resize(self.baseWidth + 100, self.height())
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Set up the user widget UI.
+        """
         self.setFocusPolicy(Qt.StrongFocus)
 
         self.lo_main = QGridLayout()
@@ -781,7 +1028,16 @@ class UserWidget(QDialog):
         self.b_apply.clicked.connect(self.onApply)
 
     @err_catcher(name=__name__)
-    def eventFilter(self, target, event):
+    def eventFilter(self, target: Any, event: Any) -> bool:
+        """Filter events for child widgets.
+        
+        Args:
+            target: Event target.
+            event: Event to filter.
+            
+        Returns:
+            False to allow event processing.
+        """
         try:
             if event.type() == QEvent.Type.FocusOut:
                 self.focusOutEvent(event)
@@ -791,21 +1047,39 @@ class UserWidget(QDialog):
         return False
 
     @err_catcher(name=__name__)
-    def refreshUi(self):
+    def refreshUi(self) -> None:
+        """Refresh the UI with current user info.
+        """
         self.e_user.setText(self.core.username)
         self.e_abbreviation.setText(self.core.user)
 
     @err_catcher(name=__name__)
-    def showEvent(self, event):
+    def showEvent(self, event: Any) -> None:
+        """Handle show event.
+        
+        Emits signalShowing.
+        
+        Args:
+            event: Show event.
+        """
         self.signalShowing.emit()
 
     @err_catcher(name=__name__)
-    def onUserChanged(self, text):
+    def onUserChanged(self, text: str) -> None:
+        """Handle username text change.
+        
+        Updates abbreviation field based on new username.
+        
+        Args:
+            text: New username text.
+        """
         abbr = self.core.users.getUserAbbreviation(userName=text, fromConfig=False)
         self.e_abbreviation.setText(abbr)
 
     @err_catcher(name=__name__)
-    def onApply(self):
+    def onApply(self) -> None:
+        """Apply user changes and close widget.
+        """
         user = self.e_user.text()
         abbr = self.e_abbreviation.text()
 

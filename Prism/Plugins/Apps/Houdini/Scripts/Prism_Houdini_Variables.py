@@ -33,11 +33,42 @@
 
 
 import os
+from typing import Any
 
 
 class Prism_Houdini_Variables(object):
-    def __init__(self, core, plugin):
-        self.version = "v2.1.1"
+    """Houdini plugin configuration and metadata.
+    
+    Defines plugin properties including version, supported file formats,
+    render passes for various renderers, and color scheme.
+    
+    Attributes:
+        version: Plugin version string.
+        pluginName: Name of the plugin.
+        pluginType: Type of plugin (App).
+        appShortName: Short name for the application.
+        appType: Type of application (3d).
+        hasQtParent: Whether the app has Qt parent.
+        sceneFormats: List of supported scene file extensions.
+        outputFormats: List of supported output file formats.
+        appSpecificFormats: Combined list of scene and specific formats.
+        canBuildScene: Whether the plugin can build scenes.
+        appColor: RGB color values for the plugin.
+        renderPasses: Dictionary of render passes per renderer.
+        colorButtonWithStyleSheet: Whether to use stylesheet for color buttons.
+        platforms: List of supported platforms.
+        pluginDirectory: Path to plugin directory.
+        appIcon: Path to application icon.
+    """
+    
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize Houdini plugin variables.
+        
+        Args:
+            core: PrismCore instance.
+            plugin: Plugin instance.
+        """
+        self.version = "v2.1.2"
         self.pluginName = "Houdini"
         self.pluginType = "App"
         self.appShortName = "Hou"

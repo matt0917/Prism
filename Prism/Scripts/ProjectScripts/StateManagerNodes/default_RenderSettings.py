@@ -31,6 +31,7 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing import Any, Optional, Dict, List
 
 import os
 import sys
@@ -43,15 +44,47 @@ from PrismUtils.Decorators import err_catcher
 
 
 class RenderSettingsClass(object):
+    """State Manager node for managing render settings.
+    
+    Provides functionality to save, load, and apply render settings as presets
+    or custom configurations. Supports application-specific render settings for
+    Houdini, Maya, and other DCCs.
+    
+    Attributes:
+        className (str): Node type identifier ("Render Settings")
+        listType (str): State list type ("Export")
+        core (Any): Reference to PrismCore instance
+        state (Any): Reference to QTreeWidgetItem representing this state
+        stateManager (Any): Reference to StateManager instance
+    """
     className = "Render Settings"
     listType = "Export"
 
     @classmethod
-    def isActive(cls, core):
+    def isActive(cls, core: Any) -> bool:
+        """Check if this state type is available in the current application.
+        
+        Args:
+            core (Any): PrismCore instance
+        
+        Returns:
+            bool: True if application is Houdini or Maya, False otherwise
+        """
         return core.appPlugin.pluginName in ["Houdini", "Maya"]
 
     @classmethod
-    def getPresets(cls, core):
+    def getPresets(cls, core: Any) -> Dict[str, str]:
+        """Get all available render settings presets for current application.
+        
+        Scans the presets directory for saved render settings files specific
+        to the current DCC application.
+        
+        Args:
+            core (Any): PrismCore instance
+        
+        Returns:
+            Dict[str, str]: Dictionary mapping preset names to file paths
+        """
         presets = {}
         appName = core.appPlugin.pluginName
         presetPath = os.path.join(
@@ -70,7 +103,17 @@ class RenderSettingsClass(object):
         return presets
 
     @classmethod
-    def applyPreset(cls, core, presetPath, **kwargs):
+    def applyPreset(cls, core: Any, presetPath: str, **kwargs: Any) -> None:
+        """Apply a render settings preset to the current scene.
+        
+        Loads render settings from a preset file and applies them to the
+        current scene using application-specific methods.
+        
+        Args:
+            core (Any): PrismCore instance
+            presetPath (str): Path to preset file
+            **kwargs (Any): Additional arguments passed to application plugin
+        """
         preset = core.readYaml(presetPath)
         if "renderSettings" not in preset:
             return
@@ -82,7 +125,27 @@ class RenderSettingsClass(object):
         )(core, preset, **kwargs)
 
     @err_catcher(name=__name__)
-    def setup(self, state, core, stateManager, node=None, stateData=None):
+    def setup(
+        self, 
+        state: Any, 
+        core: Any, 
+        stateManager: Any, 
+        node: Optional[Any] = None, 
+        stateData: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Initialize the render settings state.
+        
+        Sets up the render settings node with core references, UI components,
+        and loads saved state data if provided.
+        
+        Args:
+            state (Any): QTreeWidgetItem representing this state in the state tree
+            core (Any): PrismCore instance for accessing Prism functionality
+            stateManager (Any): StateManager instance managing this state
+            node (Any, optional): Scene node associated with this state. Defaults to None.
+            stateData (Dict[str, Any], optional): Saved state configuration to restore.
+                Defaults to None.
+        """
         self.state = state
         self.core = core
         self.stateManager = stateManager
@@ -103,7 +166,20 @@ class RenderSettingsClass(object):
             self.loadData(stateData)
 
     @err_catcher(name=__name__)
-    def loadData(self, data):
+    def loadData(self, data: Dict[str, Any]) -> None:
+        """Load saved state settings from data dictionary.
+        
+        Restores render settings including state name, preset option,
+        edit mode, and render settings configuration.
+        
+        Args:
+            data (Dict[str, Any]): Dictionary containing saved state settings with keys:
+                - statename (str, optional): Name of the state
+                - presetoption (str, optional): Selected preset name
+                - editsettings (bool, optional): Whether in custom edit mode
+                - rendersettings (Dict, optional): Render settings data
+                - stateenabled (int, optional): Check state value
+        """
         if "statename" in data:
             self.e_name.setText(data["statename"])
         if "presetoption" in data:
@@ -130,7 +206,12 @@ class RenderSettingsClass(object):
         self.core.callback("onStateSettingsLoaded", self, data)
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect UI widget signals to handler methods.
+        
+        Sets up all signal connections for UI controls including preset selection,
+        buttons, checkboxes, and text fields.
+        """
         self.cb_presetOption.activated.connect(self.stateManager.saveStatesToScene)
         self.b_loadCurrent.clicked.connect(self.loadCurrent)
         self.b_resetSettings.clicked.connect(self.resetSettings)
@@ -147,7 +228,15 @@ class RenderSettingsClass(object):
             self.b_applySettings.clicked.connect(self.applySettings)
 
     @err_catcher(name=__name__)
-    def nameChanged(self, text):
+    def nameChanged(self, text: str) -> None:
+        """Handle state name changes.
+        
+        Updates the tree widget item text when the state name is changed,
+        appending " - disabled" suffix if state is disabled.
+        
+        Args:
+            text (str): New state name
+        """
         sText = text
 
         if self.state.text(0).endswith(" - disabled"):
@@ -156,7 +245,15 @@ class RenderSettingsClass(object):
         self.state.setText(0, sText)
 
     @err_catcher(name=__name__)
-    def editChanged(self, state):
+    def editChanged(self, state: int) -> None:
+        """Handle edit settings checkbox state changes.
+        
+        Shows or hides UI elements based on whether custom edit mode
+        is enabled or preset selection mode is active.
+        
+        Args:
+            state (int): Checkbox state (Qt.Checked or Qt.Unchecked)
+        """
         self.w_presetOption.setVisible(not state)
         self.w_loadCurrent.setVisible(state)
         self.w_addSetting.setVisible(state)
@@ -165,7 +262,13 @@ class RenderSettingsClass(object):
         self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def updateUi(self):
+    def updateUi(self) -> None:
+        """Update the UI state and refresh preset list.
+        
+        Repopulates the preset dropdown with current presets, maintaining
+        the current selection if it still exists. Updates available settings
+        in the add setting dropdown if in edit mode.
+        """
         curPreset = self.cb_presetOption.currentText()
         self.cb_presetOption.clear()
         self.cb_presetOption.addItems(
@@ -191,12 +294,24 @@ class RenderSettingsClass(object):
             self.cb_addSetting.addItems(settingNames)
 
     @err_catcher(name=__name__)
-    def focusOut(self, event):
+    def focusOut(self, event: Any) -> None:
+        """Handle focus out event for settings text field.
+        
+        Saves state to scene when focus leaves the settings text field.
+        
+        Args:
+            event (Any): Focus out event
+        """
         self.stateManager.saveStatesToScene()
         self.te_settings.origFocusOutEvent(event)
 
     @err_catcher(name=__name__)
-    def loadCurrent(self):
+    def loadCurrent(self) -> None:
+        """Load current render settings from the scene.
+        
+        Queries the application plugin for current render settings and
+        displays them in the settings text field.
+        """
         settings = getattr(
             self.core.appPlugin, "sm_renderSettings_getCurrentSettings", lambda x: {}
         )(self)
@@ -204,18 +319,30 @@ class RenderSettingsClass(object):
         self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def resetSettings(self):
+    def resetSettings(self) -> None:
+        """Reset render settings to application defaults.
+        
+        Calls the application plugin to apply default render settings.
+        """
         getattr(
             self.core.appPlugin, "sm_renderSettings_applyDefaultSettings", lambda x: {}
         )(self)
 
     @err_catcher(name=__name__)
-    def settingActivated(self, text=None):
+    def settingActivated(self, text: Optional[str] = None) -> None:
+        """Handle adding a render setting to the settings text.
+        
+        When a setting is selected from the dropdown, appends its current
+        value to the settings text field in YAML format.
+        
+        Args:
+            text (str, optional): Setting name. Defaults to None (uses dropdown value).
+        """
         text = self.cb_addSetting.currentText()
         settings = getattr(
             self.core.appPlugin, "sm_renderSettings_getCurrentSettings", lambda x, y: {}
         )(self, asString=False)
-        setting = [x for x in settings if x.keys()[0] == text]
+        setting = [x for x in settings if list(x.keys())[0] == text]
         if setting:
             settingsStr = self.core.writeYaml(data=setting)
             curStr = self.te_settings.toPlainText()
@@ -223,7 +350,12 @@ class RenderSettingsClass(object):
             self.cb_addSetting.setCurrentIndex(0)
 
     @err_catcher(name=__name__)
-    def showPresets(self):
+    def showPresets(self) -> None:
+        """Display a context menu of available render settings presets.
+        
+        Shows a menu listing all saved presets for the current application,
+        allowing the user to select one to load.
+        """
         presets = self.getPresets(self.core)
         if not presets:
             self.core.popup("No presets found.")
@@ -239,7 +371,15 @@ class RenderSettingsClass(object):
         pmenu.exec_(QCursor().pos())
 
     @err_catcher(name=__name__)
-    def loadPreset(self, presetPath):
+    def loadPreset(self, presetPath: str) -> None:
+        """Load render settings from a preset file.
+        
+        Reads a preset file and displays its render settings in the
+        settings text field.
+        
+        Args:
+            presetPath (str): Path to preset file to load
+        """
         preset = self.core.readYaml(presetPath)
         if "renderSettings" not in preset:
             return
@@ -249,7 +389,12 @@ class RenderSettingsClass(object):
         self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def savePreset(self):
+    def savePreset(self) -> None:
+        """Save current render settings as a new preset.
+        
+        Prompts the user for a preset name and saves the current render
+        settings to a preset file in the project's preset folder.
+        """
         result = QInputDialog.getText(self, "Save preset", "Presetname:")
         if not result[1]:
             return
@@ -280,7 +425,16 @@ class RenderSettingsClass(object):
         self.updateUi()
 
     @err_catcher(name=__name__)
-    def applySettings(self, settings=None):
+    def applySettings(self, settings: Optional[str] = None) -> None:
+        """Apply render settings to the current scene.
+        
+        If in edit mode, applies custom settings from the text field.
+        Otherwise, applies the selected preset.
+        
+        Args:
+            settings (str, optional): Custom settings string. If None,
+                uses settings from text field or selected preset. Defaults to None.
+        """
         if self.chb_editSettings.isChecked():
             if not settings:
                 settings = self.te_settings.toPlainText()
@@ -299,7 +453,15 @@ class RenderSettingsClass(object):
             self.applyPreset(self.core, presets[selPreset], state=self)
 
     @err_catcher(name=__name__)
-    def preExecuteState(self):
+    def preExecuteState(self) -> List[Any]:
+        """Check for warnings before execution.
+        
+        Validates that render settings are specified if in edit mode.
+        Collects application-specific warnings.
+        
+        Returns:
+            List[Any]: List containing [state_name, [warnings]]
+        """
         warnings = []
 
         if self.chb_editSettings.isChecked() and not self.te_settings.toPlainText():
@@ -312,12 +474,36 @@ class RenderSettingsClass(object):
         return [self.state.text(0), warnings]
 
     @err_catcher(name=__name__)
-    def executeState(self, parent, useVersion="next"):
+    def executeState(self, parent: Any, useVersion: str = "next") -> List[str]:
+        """Execute the render settings state.
+        
+        Applies the configured render settings to the current scene.
+        
+        Args:
+            parent (Any): Parent state for context
+            useVersion (str, optional): Version strategy. Defaults to "next".
+        
+        Returns:
+            List[str]: List containing status message
+        """
         self.applySettings()
         return [self.state.text(0) + " - success"]
 
     @err_catcher(name=__name__)
-    def getStateProps(self):
+    def getStateProps(self) -> Dict[str, Any]:
+        """Get current state settings for saving.
+        
+        Collects all render settings state including name, preset option,
+        edit mode, and render settings data for serialization.
+        
+        Returns:
+            Dict[str, Any]: Dictionary containing state settings with keys:
+                - statename (str): Name of the state
+                - presetoption (str): Selected preset name
+                - editsettings (bool): Whether in custom edit mode
+                - rendersettings (Dict): Render settings data
+                - stateenabled (int): Check state value
+        """
         stateProps = {}
         stateProps.update(
             getattr(

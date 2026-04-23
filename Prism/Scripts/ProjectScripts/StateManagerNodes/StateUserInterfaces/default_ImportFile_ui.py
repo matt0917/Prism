@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'default_ImportFile.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.4.2
+## Created by: Qt User Interface Compiler version 6.8.3
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -16,7 +16,7 @@ class Ui_wg_ImportFile(object):
     def setupUi(self, wg_ImportFile):
         if not wg_ImportFile.objectName():
             wg_ImportFile.setObjectName(u"wg_ImportFile")
-        wg_ImportFile.resize(340, 600)
+        wg_ImportFile.resize(340, 604)
         self.verticalLayout = QVBoxLayout(wg_ImportFile)
         self.verticalLayout.setObjectName(u"verticalLayout")
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
@@ -66,7 +66,7 @@ class Ui_wg_ImportFile(object):
 
         self.horizontalLayout_5.addWidget(self.label_3)
 
-        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_5.addItem(self.horizontalSpacer)
 
@@ -88,7 +88,7 @@ class Ui_wg_ImportFile(object):
 
         self.horizontalLayout_6.addWidget(self.label_6)
 
-        self.horizontalSpacer_2 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_2 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_6.addItem(self.horizontalSpacer_2)
 
@@ -102,26 +102,49 @@ class Ui_wg_ImportFile(object):
 
         self.w_autoUpdate = QWidget(self.groupBox)
         self.w_autoUpdate.setObjectName(u"w_autoUpdate")
-        self.horizontalLayout_14 = QHBoxLayout(self.w_autoUpdate)
-        self.horizontalLayout_14.setObjectName(u"horizontalLayout_14")
-        self.horizontalLayout_14.setContentsMargins(9, 0, 9, 0)
+        self.horizontalLayout_15 = QHBoxLayout(self.w_autoUpdate)
+        self.horizontalLayout_15.setObjectName(u"horizontalLayout_15")
+        self.horizontalLayout_15.setContentsMargins(9, 0, 9, 0)
         self.l_autoUpdate = QLabel(self.w_autoUpdate)
         self.l_autoUpdate.setObjectName(u"l_autoUpdate")
 
-        self.horizontalLayout_14.addWidget(self.l_autoUpdate)
+        self.horizontalLayout_15.addWidget(self.l_autoUpdate)
 
-        self.horizontalSpacer_10 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_11 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
-        self.horizontalLayout_14.addItem(self.horizontalSpacer_10)
+        self.horizontalLayout_15.addItem(self.horizontalSpacer_11)
 
         self.chb_autoUpdate = QCheckBox(self.w_autoUpdate)
         self.chb_autoUpdate.setObjectName(u"chb_autoUpdate")
         self.chb_autoUpdate.setChecked(False)
 
-        self.horizontalLayout_14.addWidget(self.chb_autoUpdate)
+        self.horizontalLayout_15.addWidget(self.chb_autoUpdate)
 
 
         self.verticalLayout_3.addWidget(self.w_autoUpdate)
+
+        self.w_ignoreMaster = QWidget(self.groupBox)
+        self.w_ignoreMaster.setObjectName(u"w_ignoreMaster")
+        self.horizontalLayout_14 = QHBoxLayout(self.w_ignoreMaster)
+        self.horizontalLayout_14.setObjectName(u"horizontalLayout_14")
+        self.horizontalLayout_14.setContentsMargins(9, 0, 9, 0)
+        self.l_ignoreMaster = QLabel(self.w_ignoreMaster)
+        self.l_ignoreMaster.setObjectName(u"l_ignoreMaster")
+
+        self.horizontalLayout_14.addWidget(self.l_ignoreMaster)
+
+        self.horizontalSpacer_10 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_14.addItem(self.horizontalSpacer_10)
+
+        self.chb_ignoreMaster = QCheckBox(self.w_ignoreMaster)
+        self.chb_ignoreMaster.setObjectName(u"chb_ignoreMaster")
+        self.chb_ignoreMaster.setChecked(False)
+
+        self.horizontalLayout_14.addWidget(self.chb_ignoreMaster)
+
+
+        self.verticalLayout_3.addWidget(self.w_ignoreMaster)
 
         self.w_importLatest = QWidget(self.groupBox)
         self.w_importLatest.setObjectName(u"w_importLatest")
@@ -130,8 +153,8 @@ class Ui_wg_ImportFile(object):
         self.horizontalLayout_7.setContentsMargins(9, 0, 9, 0)
         self.b_browse = QPushButton(self.w_importLatest)
         self.b_browse.setObjectName(u"b_browse")
-        self.b_browse.setFocusPolicy(Qt.NoFocus)
-        self.b_browse.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.b_browse.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.b_browse.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 
         self.horizontalLayout_7.addWidget(self.b_browse)
 
@@ -139,7 +162,7 @@ class Ui_wg_ImportFile(object):
         self.b_importLatest.setObjectName(u"b_importLatest")
         self.b_importLatest.setMinimumSize(QSize(0, 0))
         self.b_importLatest.setMaximumSize(QSize(99999, 16777215))
-        self.b_importLatest.setFocusPolicy(Qt.NoFocus)
+        self.b_importLatest.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout_7.addWidget(self.b_importLatest)
 
@@ -153,7 +176,7 @@ class Ui_wg_ImportFile(object):
         self.horizontalLayout.setContentsMargins(-1, 0, -1, 0)
         self.b_import = QPushButton(self.widget)
         self.b_import.setObjectName(u"b_import")
-        self.b_import.setFocusPolicy(Qt.NoFocus)
+        self.b_import.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout.addWidget(self.b_import)
 
@@ -177,7 +200,7 @@ class Ui_wg_ImportFile(object):
 
         self.horizontalLayout_10.addWidget(self.l_keepRefEdits)
 
-        self.horizontalSpacer_5 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_5 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_10.addItem(self.horizontalSpacer_5)
 
@@ -200,7 +223,7 @@ class Ui_wg_ImportFile(object):
 
         self.horizontalLayout_12.addWidget(self.l_keepRefEdits_2)
 
-        self.horizontalSpacer_7 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_7 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_12.addItem(self.horizontalSpacer_7)
 
@@ -210,13 +233,13 @@ class Ui_wg_ImportFile(object):
 
         self.horizontalLayout_12.addWidget(self.chb_autoNameSpaces)
 
-        self.horizontalSpacer_3 = QSpacerItem(5, 20, QSizePolicy.Fixed, QSizePolicy.Minimum)
+        self.horizontalSpacer_3 = QSpacerItem(5, 20, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_12.addItem(self.horizontalSpacer_3)
 
         self.b_nameSpaces = QPushButton(self.f_nameSpaces)
         self.b_nameSpaces.setObjectName(u"b_nameSpaces")
-        self.b_nameSpaces.setFocusPolicy(Qt.NoFocus)
+        self.b_nameSpaces.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.horizontalLayout_12.addWidget(self.b_nameSpaces)
 
@@ -233,7 +256,7 @@ class Ui_wg_ImportFile(object):
 
         self.horizontalLayout_11.addWidget(self.l_abcPath)
 
-        self.horizontalSpacer_6 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_6 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_11.addItem(self.horizontalSpacer_6)
 
@@ -255,7 +278,7 @@ class Ui_wg_ImportFile(object):
 
         self.horizontalLayout_9.addWidget(self.l_trackObjects)
 
-        self.horizontalSpacer_9 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer_9 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.horizontalLayout_9.addItem(self.horizontalSpacer_9)
 
@@ -278,9 +301,9 @@ class Ui_wg_ImportFile(object):
         self.verticalLayout_4.setContentsMargins(9, 9, 9, 9)
         self.lw_objects = QListWidget(self.gb_objects)
         self.lw_objects.setObjectName(u"lw_objects")
-        self.lw_objects.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.lw_objects.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.lw_objects.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.lw_objects.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.lw_objects.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.lw_objects.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
 
         self.verticalLayout_4.addWidget(self.lw_objects)
 
@@ -295,8 +318,8 @@ class Ui_wg_ImportFile(object):
 
         self.verticalLayout.addWidget(self.gb_import)
 
-        QWidget.setTabOrder(self.e_name, self.chb_autoUpdate)
-        QWidget.setTabOrder(self.chb_autoUpdate, self.chb_keepRefEdits)
+        QWidget.setTabOrder(self.e_name, self.chb_ignoreMaster)
+        QWidget.setTabOrder(self.chb_ignoreMaster, self.chb_keepRefEdits)
         QWidget.setTabOrder(self.chb_keepRefEdits, self.chb_autoNameSpaces)
         QWidget.setTabOrder(self.chb_autoNameSpaces, self.chb_abcPath)
         QWidget.setTabOrder(self.chb_abcPath, self.chb_trackObjects)
@@ -318,8 +341,10 @@ class Ui_wg_ImportFile(object):
         self.l_curVersion.setText(QCoreApplication.translate("wg_ImportFile", u"-", None))
         self.label_6.setText(QCoreApplication.translate("wg_ImportFile", u"Latest Version:", None))
         self.l_latestVersion.setText(QCoreApplication.translate("wg_ImportFile", u"-", None))
-        self.l_autoUpdate.setText(QCoreApplication.translate("wg_ImportFile", u"Auto load latest version:", None))
+        self.l_autoUpdate.setText(QCoreApplication.translate("wg_ImportFile", u"Auto Load Latest Version:", None))
         self.chb_autoUpdate.setText("")
+        self.l_ignoreMaster.setText(QCoreApplication.translate("wg_ImportFile", u"Ignore Master Versions:", None))
+        self.chb_ignoreMaster.setText("")
         self.b_browse.setText(QCoreApplication.translate("wg_ImportFile", u"Browse", None))
         self.b_importLatest.setText(QCoreApplication.translate("wg_ImportFile", u"Import latest Version", None))
         self.b_import.setText(QCoreApplication.translate("wg_ImportFile", u"Re-Import", None))

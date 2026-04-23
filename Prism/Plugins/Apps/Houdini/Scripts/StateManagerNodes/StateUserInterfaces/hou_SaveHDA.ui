@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>340</width>
-    <height>380</height>
+    <height>406</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -346,6 +346,45 @@
          </item>
          <item>
           <widget class="QCheckBox" name="chb_blackboxHDA">
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QWidget" name="w_recipe" native="true">
+        <layout class="QHBoxLayout" name="horizontalLayout_21">
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QLabel" name="l_recipe">
+           <property name="text">
+            <string>Save as Tool Recipe:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_13">
+           <property name="orientation">
+            <enum>Qt::Orientation::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QCheckBox" name="chb_recipe">
            <property name="text">
             <string/>
            </property>

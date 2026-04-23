@@ -36,6 +36,7 @@ import os
 import sys
 import logging
 from collections import OrderedDict
+from typing import Any, Optional, List, Dict, Tuple
 
 prismRoot = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
@@ -56,9 +57,40 @@ logger = logging.getLogger(__name__)
 
 
 class EntityWidget(QWidget):
+    """Widget for displaying and managing project entities (assets and shots).
+    
+    This widget provides a tabbed interface for browsing assets and shots within
+    a project. It supports:
+    - Multiple pages (typically Assets and Shots)
+    - Location filtering (project, global, custom locations)
+    - Search functionality
+    - Entity selection and navigation
+    - Entity creation and editing
+    
+    Signals:
+        tabChanged: Emitted when the active tab (Assets/Shots) changes
+    
+    Attributes:
+        core: The Prism core instance
+        pageNames: Translated names of pages (e.g., ["Assets", "Shots"])
+        pages: List of EntityPage instances
+        refresh: Whether to refresh entities on creation
+        mode: Operation mode ("scenefiles", "products", "renders")
+        prevTab: Previously active EntityPage
+        editEntitiesOnDclick: Whether double-click opens entity edit dialog
+    """
+    
     tabChanged = Signal()
 
-    def __init__(self, core, refresh=True, mode="scenefiles", pages=None):
+    def __init__(self, core: Any, refresh: bool = True, mode: str = "scenefiles", pages: Optional[List[str]] = None) -> None:
+        """Initialize the EntityWidget.
+        
+        Args:
+            core: The Prism core instance providing access to pipeline functionality
+            refresh: Whether to refresh entities immediately after creation
+            mode: Operation mode - "scenefiles", "products", or "renders"
+            pages: List of page names to display (defaults to ["Assets", "Shots"])
+        """
         QWidget.__init__(self)
         self.core = core
         self.core.parentWindow(self)
@@ -75,7 +107,11 @@ class EntityWidget(QWidget):
         self.core.callback(name="onEntityWidgetCreated", args=[self])
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Set up the entity widget UI.
+        
+        Creates the tabbed interface with entity pages and search button.
+        """
         self.sw_tabs = QStackedWidget()
         self.w_header = QWidget()
         self.tb_entities = QTabBar()
@@ -141,18 +177,33 @@ class EntityWidget(QWidget):
         self.setLayout(self.lo_main)
 
     @err_catcher(name=__name__)
-    def resizeEvent(self, event):
+    def resizeEvent(self, event: Any) -> None:
+        """Handle widget resize events.
+        
+        Args:
+            event: The resize event object
+            
+        Repositions the search button to stay in the top-right corner.
+        """
         self.b_search.move(
             self.w_header.geometry().width() - self.b_search.geometry().width(), 0
         )
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect UI widget signals to handler functions."""
         self.tb_entities.currentChanged.connect(self.ontabChanged)
         self.b_search.toggled.connect(self.searchClicked)
 
     @err_catcher(name=__name__)
-    def refreshEntities(self, pages=None, restoreSelection=False, defaultSelection=True):
+    def refreshEntities(self, pages: Optional[List[str]] = None, restoreSelection: bool = False, defaultSelection: bool = True) -> None:
+        """Refresh entities on one or more pages.
+        
+        Args:
+            pages: List of page names to refresh, or None to refresh all
+            restoreSelection: Whether to restore the previous selection after refresh
+            defaultSelection: Whether to select a default item after refresh
+        """
         for page in self.pages:
             if pages and page.objectName() not in pages:
                 continue
@@ -163,25 +214,56 @@ class EntityWidget(QWidget):
                 page.dirty = True
 
     @err_catcher(name=__name__)
-    def getPage(self, pageName):
+    def getPage(self, pageName: str) -> Optional[Any]:
+        """Get a page by its name.
+        
+        Args:
+            pageName: Name of the page to retrieve
+            
+        Returns:
+            EntityPage instance, or None if not found
+        """
         for page in self.pages:
             if page.objectName() == self.core.tr(pageName):
                 return page
 
     @err_catcher(name=__name__)
-    def getCurrentPage(self):
+    def getCurrentPage(self) -> Optional[Any]:
+        """Get the currently active page.
+        
+        Returns:
+            Currently active EntityPage instance
+        """
         return self.sw_tabs.currentWidget()
 
     @err_catcher(name=__name__)
-    def getCurrentPageName(self):
+    def getCurrentPageName(self) -> str:
+        """Get the name of the currently active page.
+        
+        Returns:
+            Name of the currently active page (e.g., "Assets", "Shots")
+        """
         return self.sw_tabs.currentWidget().objectName()
 
     @err_catcher(name=__name__)
-    def searchClicked(self, state):
+    def searchClicked(self, state: bool) -> None:
+        """Handle search button click.
+        
+        Args:
+            state: Whether search is enabled
+        """
         self.sw_tabs.currentWidget().searchClicked(state)
 
     @err_catcher(name=__name__)
-    def ontabChanged(self, state):
+    def ontabChanged(self, state: int) -> None:
+        """Handle tab change events.
+        
+        Args:
+            state: Index of the newly active tab
+            
+        Switches the stacked widget to show the selected page, syncs location
+        selection, and refreshes if the page is dirty.
+        """
         self.sw_tabs.setCurrentIndex(state)
         state = self.b_search.isChecked()
         widget = self.sw_tabs.currentWidget()
@@ -201,7 +283,15 @@ class EntityWidget(QWidget):
         self.prevTab = self.getCurrentPage()
 
     @err_catcher(name=__name__)
-    def getCurrentData(self, returnOne=True):
+    def getCurrentData(self, returnOne: bool = True) -> Optional[Dict[str, Any]]:
+        """Get data for currently selected entity.
+        
+        Args:
+            returnOne: If True, return single item; if False, return list
+            
+        Returns:
+            Entity data dict with type, paths, identifiers
+        """
         data = self.getCurrentPage().getCurrentData(returnOne=returnOne)
         if not data:
             if self.getCurrentPageName() == "Assets":
@@ -216,11 +306,25 @@ class EntityWidget(QWidget):
         return data
 
     @err_catcher(name=__name__)
-    def getLocations(self):
+    def getLocations(self) -> Dict[str, str]:
+        """Get available locations for the current page.
+        
+        Returns:
+            Dictionary mapping location names to paths
+        """
         return self.getCurrentPage().getLocations()
 
     @err_catcher(name=__name__)
-    def navigate(self, data, clear=False):
+    def navigate(self, data: Any, clear: bool = False) -> Optional[bool]:
+        """Navigate to and select specific entities.
+        
+        Args:
+            data: Entity data dictionary or list of dictionaries to navigate to
+            clear: Whether to clear selection if navigation fails
+            
+        Returns:
+            False on failure, None on success
+        """
         if not data:
             if clear:
                 self.getCurrentPage().tw_tree.selectionModel().clearSelection()
@@ -247,7 +351,13 @@ class EntityWidget(QWidget):
         page.navigate(data)
 
     @err_catcher(name=__name__)
-    def syncFromWidget(self, widget, navData=None):
+    def syncFromWidget(self, widget: Any, navData: Optional[Any] = None) -> None:
+        """Synchronize state from another EntityWidget.
+        
+        Args:
+            widget: Source EntityWidget to sync from
+            navData: Optional navigation data to use instead of getting from widget
+        """
         data = navData or widget.getCurrentData()
         if data:
             self.navigate(data)
@@ -261,18 +371,57 @@ class EntityWidget(QWidget):
             self.getCurrentPage().cb_location.setCurrentIndex(idx)
 
     @err_catcher(name=__name__)
-    def getCurrentLocation(self):
+    def getCurrentLocation(self) -> str:
+        """Get the current location from the active page.
+        
+        Returns:
+            Location key (e.g., 'global', 'local')
+        """
         return self.getCurrentPage().getCurrentLocation()
 
 
 class EntityPage(QWidget):
+    """Individual page widget for displaying entities of a specific type.
+    
+    This class manages the display of either assets or shots in a tree view,
+    with support for:
+    - Hierarchical entity display (folders, sequences, shots)
+    - Entity thumbnails/previews
+    - Search filtering
+    - Location filtering
+    - Context menus for entity operations
+    - Drag and drop operations
+    
+    Signals:
+        itemChanged: Emitted when the selected item changes (passes item)
+        entityCreated: Emitted when a new entity is created (passes entity data)
+        shotSaved: Emitted when shot information is saved
+        nextClicked: Emitted when Next button is clicked in edit dialog
+    
+    Attributes:
+        entityWidget: Parent EntityWidget instance
+        core: The Prism core instance
+        pageName: Display name of this page ("Assets" or "Shots")
+        entityType: Type of entities on this page ("asset" or "shot")
+        expandedItems: List of expanded item paths
+        dirty: Whether the page needs refreshing
+        useCounter: Whether to display entity counters
+    """
+    
     itemChanged = Signal(object)
     entityCreated = Signal(object)
 
     shotSaved = Signal()
     nextClicked = Signal()
 
-    def __init__(self, widget, pageName, refresh=True):
+    def __init__(self, widget: Any, pageName: str, refresh: bool = True) -> None:
+        """Initialize the EntityPage.
+        
+        Args:
+            widget: Parent EntityWidget instance
+            pageName: Display name for this page (e.g., "Assets", "Shots")
+            refresh: Whether to refresh entities immediately after creation
+        """
         QWidget.__init__(self)
         self.entityWidget = widget
         self.core = widget.core
@@ -297,11 +446,21 @@ class EntityPage(QWidget):
             self.refreshEntities()
 
     @err_catcher(name=__name__)
-    def refreshEntities(self, restoreSelection=False, defaultSelection=True):
+    def refreshEntities(self, restoreSelection: bool = False, defaultSelection: bool = True) -> None:
+        """Refresh entity tree view with assets or shots.
+        
+        Args:
+            restoreSelection: Restore previous selection after refresh. Defaults to False.
+            defaultSelection: Select first item by default. Defaults to True.
+        """
         prevData = self.getCurrentData()
         self.itemWidgets = []
 
-        self.tw_tree.blockSignals(True)
+        wasBlocked = self.tw_tree.signalsBlocked()
+        if not wasBlocked:
+            self.tw_tree.blockSignals(True)
+            self.tw_tree.selectionModel().blockSignals(True)
+
         if self.entityType == "asset":
             self.refreshAssetHierarchy(defaultSelection=defaultSelection)
         elif self.entityType == "shot":
@@ -310,14 +469,17 @@ class EntityPage(QWidget):
         if restoreSelection:
             self.navigate(prevData)
 
-        self.tw_tree.blockSignals(False)
-        if self.getCurrentData() != prevData:
-            self.onItemChanged()
+        if not wasBlocked:
+            self.tw_tree.blockSignals(False)
+            self.tw_tree.selectionModel().blockSignals(False)
+            if self.getCurrentData() != prevData:
+                self.onItemChanged()
 
         self.dirty = False
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Set up EntityPage UI with search bar, location selector, and tree view."""
         self.e_search = QLineEdit()
         self.e_search.setPlaceholderText("Search...")
 
@@ -393,7 +555,8 @@ class EntityPage(QWidget):
             self.shotIcon = self.core.media.getColoredIcon(iconPath)
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect UI events and override tree widget mouse events."""
         self.tw_tree.mousePrEvent = self.tw_tree.mousePressEvent
         self.tw_tree.mousePressEvent = self.mouseClickEvent
         self.tw_tree.mouseClickEvent = self.tw_tree.mouseReleaseEvent
@@ -414,13 +577,26 @@ class EntityPage(QWidget):
         self.cb_location.activated.connect(self.onLocationChanged)
 
     @err_catcher(name=__name__)
-    def onSearchTextChanged(self, text):
+    def onSearchTextChanged(self, text: str) -> None:
+        """Handle search text changes and refresh entities when criteria met.
+        
+        Args:
+            text: The new search text entered by the user
+        """
         minLength = int(os.getenv("PRISM_MINIMUM_SEARCH_LENGTH", "0"))
         if len(text) >= minLength or len(text) == 0:
             self.refreshEntities(restoreSelection=True)
 
     @err_catcher(name=__name__)
-    def getLocations(self, includeAll=False):
+    def getLocations(self, includeAll: bool = False) -> Dict[str, str]:
+        """Get available entity locations.
+        
+        Args:
+            includeAll: Whether to include the 'all' location option
+            
+        Returns:
+            Dictionary mapping location names to their file system paths
+        """
         locs = self.locations.copy()
         if not includeAll:
             if "all" in locs:
@@ -429,7 +605,12 @@ class EntityPage(QWidget):
         return locs
 
     @err_catcher(name=__name__)
-    def getCurrentLocation(self):
+    def getCurrentLocation(self) -> str:
+        """Get the currently selected location.
+        
+        Returns:
+            The name of the current location, or 'all' if location selector is hidden
+        """
         if not self.cb_location.isHidden():
             locations = self.cb_location.currentText()
         else:
@@ -438,21 +619,36 @@ class EntityPage(QWidget):
         return locations
 
     @err_catcher(name=__name__)
-    def onLocationChanged(self, idx):
+    def onLocationChanged(self, idx: int) -> None:
+        """Handle location selection changes and refresh entities.
+        
+        Args:
+            idx: The index of the newly selected location
+        """
         self.refreshEntities(restoreSelection=True)
 
     @err_catcher(name=__name__)
-    def refreshAssetHierarchy(self, defaultSelection=True):
+    def refreshAssetHierarchy(self, defaultSelection: bool = True) -> None:
+        """Refresh the asset tree hierarchy with filtering support.
+        
+        Rebuilds the entire asset tree widget, applying search filters if active.
+        Preserves expanded items and restores selection state.
+        
+        Args:
+            defaultSelection: Whether to select the first item if no current selection exists
+        """
         wasBlocked = self.tw_tree.signalsBlocked()
         if not wasBlocked:
             self.tw_tree.blockSignals(True)
+            self.tw_tree.selectionModel().blockSignals(True)
 
         self.tw_tree.clear()
         self.addedAssetItems = {}
         self.filteredAssets = []
         if self.e_search.isVisible() and self.e_search.text():
+            showOmitted = self.core.getConfig("browser", "showOmittedEntities", config="user", dft=False)
             assets, folders = self.core.entities.getAssetPaths(
-                returnFolders=True, depth=0
+                returnFolders=True, depth=0, includeOmitted=showOmitted
             )
             filterStr = self.e_search.text()
             self.filteredAssets += self.core.entities.filterAssets(assets, filterStr)
@@ -475,10 +671,22 @@ class EntityPage(QWidget):
 
         if not wasBlocked:
             self.tw_tree.blockSignals(False)
+            self.tw_tree.selectionModel().blockSignals(False)
             self.itemChanged.emit(self.tw_tree.currentItem())
 
     @err_catcher(name=__name__)
-    def refreshAssets(self, path=None, parent=None, refreshChildren=True):
+    def refreshAssets(self, path: Optional[str] = None, parent: Optional[Any] = None, refreshChildren: bool = True) -> None:
+        """Refresh assets and folders at a specific path in the hierarchy.
+        
+        Loads assets and asset folders from the file system, applying location
+        and search filters. Adds items to the tree widget as children of the
+        specified parent.
+        
+        Args:
+            path: File system path to refresh from (defaults to asset root)
+            parent: Parent tree widget item (None for root level)
+            refreshChildren: Whether to refresh child items recursively
+        """
         if not path:
             if parent:
                 path = parent.data(0, Qt.UserRole)["paths"][0]
@@ -493,25 +701,20 @@ class EntityPage(QWidget):
 
         assets = {}
         folders = {}
+        showOmitted = self.core.getConfig("browser", "showOmittedEntities", config="user", dft=False)
         for location in locations:
             basePath = self.getLocations()[location]
             path = self.core.convertPath(path, location)
             assetPaths, folderPaths = self.core.entities.getAssetPaths(
-                path=path, returnFolders=True, depth=1
+                path=path, returnFolders=True, depth=1, includeOmitted=showOmitted
             )
             for assetPath in assetPaths:
-                if self.core.entities.isAssetPathOmitted(assetPath):
-                    continue
-
                 if basePath not in assets:
                     assets[basePath] = []
 
                 assets[basePath].append(assetPath)
 
             for folderPath in folderPaths:
-                if self.core.entities.isAssetPathOmitted(folderPath):
-                    continue
-
                 if basePath not in folders:
                     folders[basePath] = []
 
@@ -554,7 +757,18 @@ class EntityPage(QWidget):
             )
 
     @err_catcher(name=__name__)
-    def addAssetItem(self, path, itemType, parent=None, refreshItem=True):
+    def addAssetItem(self, path: str, itemType: str, parent: Optional[Any] = None, refreshItem: bool = True) -> None:
+        """Add an asset or asset folder item to the tree widget.
+        
+        Creates a new tree widget item for an asset or folder. If the asset already
+        exists in the tree (by relative path), adds the new path to its location list.
+        
+        Args:
+            path: File system path to the asset or folder
+            itemType: Type of item - 'asset' or 'assetFolder'
+            parent: Parent tree widget item (None for root level)
+            refreshItem: Whether to refresh the item's children after adding
+        """
         name = os.path.basename(path)
         relPath = self.core.entities.getAssetRelPathFromPath(path)
         if relPath in self.addedAssetItems:
@@ -585,7 +799,15 @@ class EntityPage(QWidget):
             self.refreshAssetItem(item)
 
     @err_catcher(name=__name__)
-    def refreshAssetItem(self, item):
+    def refreshAssetItem(self, item: Any) -> None:
+        """Refresh an asset tree item's display and children.
+        
+        Updates the item's visual representation, including preview thumbnails,
+        icons, and folder contents. Handles both asset and folder items.
+        
+        Args:
+            item: The tree widget item to refresh
+        """
         if not item:
             return
 
@@ -643,7 +865,16 @@ class EntityPage(QWidget):
             item.setExpanded(True)
 
     @err_catcher(name=__name__)
-    def itemExpanded(self, item):
+    def itemExpanded(self, item: Any) -> None:
+        """Handle tree item expansion events.
+        
+        Called when a user expands a tree item. Updates the expanded items list,
+        handles Ctrl+Click to expand all children, and lazily loads child items
+        for shots.
+        
+        Args:
+            item: The tree widget item that was expanded
+        """
         itemData = item.data(0, Qt.UserRole)
         if self.entityType == "asset":
             name = itemData["paths"][0]
@@ -668,7 +899,15 @@ class EntityPage(QWidget):
                 self.refreshShotItemChildren(item)
 
     @err_catcher(name=__name__)
-    def itemCollapsed(self, item):
+    def itemCollapsed(self, item: Any) -> None:
+        """Handle tree item collapse events.
+        
+        Called when a user collapses a tree item. Updates the expanded items list
+        and handles Ctrl+Click to collapse all children.
+        
+        Args:
+            item: The tree widget item that was collapsed
+        """
         if self.entityType == "asset":
             name = item.data(0, Qt.UserRole)["paths"][0]
         elif self.entityType == "shot":
@@ -683,10 +922,19 @@ class EntityPage(QWidget):
             self.setItemChildrenExpanded(item, expanded=False)
 
     @err_catcher(name=__name__)
-    def refreshShots(self, defaultSelection=True):
+    def refreshShots(self, defaultSelection: bool = True) -> None:
+        """Refresh the shot tree hierarchy.
+        
+        Rebuilds the entire shot tree widget with episodes (if enabled), sequences,
+        and shots. Applies search filters and restores expanded/selected states.
+        
+        Args:
+            defaultSelection: Whether to select the first item if no current selection exists
+        """
         wasBlocked = self.tw_tree.signalsBlocked()
         if not wasBlocked:
             self.tw_tree.blockSignals(True)
+            self.tw_tree.selectionModel().blockSignals(True)
 
         self.tw_tree.clear()
 
@@ -700,19 +948,20 @@ class EntityPage(QWidget):
         if self.e_search.isVisible():
             searchFilter = self.e_search.text()
 
+        showOmitted = self.core.getConfig("browser", "showOmittedEntities", config="user", dft=False)
         useEpisodes = self.core.getConfig(
             "globals",
             "useEpisodes",
             config="project",
         ) or False
         if useEpisodes:
-            episodes = self.core.entities.getEpisodes(locations=locations, searchFilter=searchFilter)
+            episodes = self.core.entities.getEpisodes(locations=locations, searchFilter=searchFilter, includeOmitted=showOmitted)
             parent = self.tw_tree.invisibleRootItem()
             for episode in episodes:
                 item = self.addEpisodeItem(episode, parent=parent)
 
         else:
-            sequences = self.core.entities.getSequences(locations=locations, searchFilter=searchFilter)
+            sequences = self.core.entities.getSequences(locations=locations, searchFilter=searchFilter, includeOmitted=showOmitted)
             seqItems = {}
             for sequence in sequences:
                 parent = self.tw_tree.invisibleRootItem()
@@ -742,10 +991,23 @@ class EntityPage(QWidget):
 
         if not wasBlocked:
             self.tw_tree.blockSignals(False)
+            self.tw_tree.selectionModel().blockSignals(False)
             self.itemChanged.emit(self.tw_tree.currentItem())
 
     @err_catcher(name=__name__)
-    def addEpisodeItem(self, episode, parent):
+    def addEpisodeItem(self, episode: Dict[str, Any], parent: Any) -> Any:
+        """Add an episode item to the tree widget.
+        
+        Creates a tree widget item for an episode container. Episodes are only
+        used when the project is configured to use episodic shot organization.
+        
+        Args:
+            episode: Dictionary containing episode data including 'episode' key
+            parent: Parent tree widget item to add this episode to
+            
+        Returns:
+            The created episode QTreeWidgetItem
+        """
         epName = episode["episode"]
         epItem = QTreeWidgetItem([epName])
         data = {"type": "shot", "episode": epName, "sequence": "_episode", "shot": "_sequence", "loaded": False, "itemType": "episode"}
@@ -762,7 +1024,21 @@ class EntityPage(QWidget):
         return epItem
 
     @err_catcher(name=__name__)
-    def addSequenceItem(self, sequence, parent, icon, hierarchy):
+    def addSequenceItem(self, sequence: Dict[str, Any], parent: Any, icon: Any, hierarchy: str) -> Any:
+        """Add a sequence item to the tree widget.
+        
+        Creates a tree widget item for a shot sequence. Supports both flat and
+        hierarchical sequence organization.
+        
+        Args:
+            sequence: Dictionary containing sequence data including 'sequence' key
+            parent: Parent tree widget item to add this sequence to
+            icon: QIcon to display for this sequence
+            hierarchy: Full hierarchical path to this sequence
+            
+        Returns:
+            The created sequence QTreeWidgetItem
+        """
         seqName = sequence["sequence"]
         seqItem = QTreeWidgetItem([seqName])
         data = {"type": "shot", "sequence": seqName, "shot": "_sequence", "hierarchy": hierarchy, "itemType": "sequence", "loaded": False}
@@ -792,7 +1068,20 @@ class EntityPage(QWidget):
         return seqItem
 
     @err_catcher(name=__name__)
-    def addShotItem(self, shot, parent, hierarchy, showThumb=None):
+    def addShotItem(self, shot: Dict[str, Any], parent: Any, hierarchy: str, showThumb: Optional[bool] = None) -> Any:
+        """Add a shot item to the tree widget.
+        
+        Creates a tree widget item for a shot with optional thumbnail preview.
+        
+        Args:
+            shot: Dictionary containing shot data including 'shot' and 'sequence' keys
+            parent: Parent tree widget item to add this shot to
+            hierarchy: Full hierarchical path to this shot
+            showThumb: Whether to show thumbnail preview (uses user config if None)
+            
+        Returns:
+            The created shot QTreeWidgetItem
+        """
         shotName = shot["shot"]
         shotItem = QTreeWidgetItem([shotName])
         data = {"type": "shot", "sequence": shot["sequence"], "shot": shotName, "hierarchy": hierarchy, "itemType": "shot"}
@@ -810,7 +1099,15 @@ class EntityPage(QWidget):
         return shotItem
 
     @err_catcher(name=__name__)
-    def refreshShotThumbnail(self, item):
+    def refreshShotThumbnail(self, item: Any) -> None:
+        """Refresh the thumbnail preview for a shot item.
+        
+        Loads and displays the shot's preview image as an inline widget
+        in the tree view.
+        
+        Args:
+            item: The shot tree widget item to update with a thumbnail
+        """
         if self.tw_tree.itemWidget(item, 0):
             return
 
@@ -841,7 +1138,15 @@ class EntityPage(QWidget):
         item.setText(0, "")
 
     @err_catcher(name=__name__)
-    def refreshShotItemChildren(self, item):
+    def refreshShotItemChildren(self, item: Any) -> None:
+        """Refresh the children of a shot hierarchy item (episode or sequence).
+        
+        Lazily loads and displays sequences under episodes or shots under sequences.
+        Marks the item as loaded to prevent redundant loading.
+        
+        Args:
+            item: The episode or sequence tree widget item to refresh children for
+        """
         data = item.data(0, Qt.UserRole)
         if data.get("loaded") is False:
             data["loaded"] = True
@@ -860,8 +1165,9 @@ class EntityPage(QWidget):
         else:
             locations = [location]
 
+        showOmitted = self.core.getConfig("browser", "showOmittedEntities", config="user", dft=False)
         if data["itemType"] == "episode":
-            sequences = self.core.entities.getSequences(episode=data["episode"], searchFilter=searchFilter, locations=locations)
+            sequences = self.core.entities.getSequences(episode=data["episode"], searchFilter=searchFilter, locations=locations, includeOmitted=showOmitted)
             for sequence in sequences:
                 self.addSequenceItem(sequence, item, self.seqIcon, "%s/%s" % (data["episode"], sequence["sequence"]))
         elif data["itemType"] == "sequence":
@@ -869,36 +1175,75 @@ class EntityPage(QWidget):
             if os.getenv("PRISM_USE_SEQUENCE_FOLDERS") == "1":
                 sequence = data["hierarchy"].replace("/", "__")
 
-            shots = self.core.entities.getShots(episode=data.get("episode", None), sequence=sequence, searchFilter=searchFilter, locations=locations)
+            shots = self.core.entities.getShots(episode=data.get("episode", None), sequence=sequence, searchFilter=searchFilter, locations=locations, includeOmitted=showOmitted)
             showThumb = self.core.getConfig("browser", "showEntityPreviews", config="user", dft=True)
             for shot in shots:
                 self.addShotItem(shot, item, "%s/%s" % (data["hierarchy"], shot["shot"]), showThumb=showThumb)
 
     @err_catcher(name=__name__)
-    def omitEntity(self, entity):
+    def toggleShowOmitted(self, state: bool) -> None:
+        """Toggle visibility of omitted entities.
+
+        Args:
+            state: True to show omitted entities, False to hide them
+        """
+        self.core.setConfig("browser", "showOmittedEntities", state, config="user")
+        self.refreshEntities(restoreSelection=True)
+
+    @err_catcher(name=__name__)
+    def omitEntity(self, entity: Dict[str, Any], omit: bool = True) -> None:
+        """Omit or unomit an entity from the browser.
+        
+        Prompts the user for confirmation before marking the entity as omitted
+        or restoring it. Omitted entities remain on disk but are hidden from
+        Prism browsers.
+        
+        Args:
+            entity: Entity data dictionary with 'type' and path information
+            omit: If True, omit the entity. If False, restore it.
+        """
         if entity["type"] in ["asset", "assetFolder"]:
             name = entity["asset_path"]
         elif entity["type"] == "shot":
             name = self.core.entities.getShotName(entity)
 
-        msgText = (
-            'Are you sure you want to omit %s "%s"?\n\nThis will hide the %s in Prism, but all scenefiles and renders remain on disk.'
-            % (entity["type"].lower(), name, entity["type"].lower())
-        )
+        if omit:
+            msgText = (
+                'Are you sure you want to omit %s "%s"?\n\nThis will hide the %s in Prism, but all scenefiles and renders remain on disk.'
+                % (entity["type"].lower(), name, entity["type"].lower())
+            )
+        else:
+            msgText = (
+                'Are you sure you want to unomit %s "%s"?\n\nThis will make the %s visible again in Prism.'
+                % (entity["type"].lower(), name, entity["type"].lower())
+            )
+
         result = self.core.popupQuestion(msgText)
         if result == "Yes":
-            self.core.entities.omitEntity(entity)
+            self.core.entities.omitEntity(entity, omit=omit)
             self.refreshEntities(restoreSelection=True)
 
     @err_catcher(name=__name__)
-    def setWidgetItemsExpanded(self, expanded=True):
+    def setWidgetItemsExpanded(self, expanded: bool = True) -> None:
+        """Expand or collapse all items in the tree widget.
+        
+        Args:
+            expanded: True to expand all items, False to collapse all
+        """
         for idx in range(self.tw_tree.topLevelItemCount()):
             item = self.tw_tree.topLevelItem(idx)
             item.setExpanded(expanded)
             self.setItemChildrenExpanded(item, expanded=expanded, recursive=True)
 
     @err_catcher(name=__name__)
-    def setItemChildrenExpanded(self, item, expanded=True, recursive=False):
+    def setItemChildrenExpanded(self, item: Any, expanded: bool = True, recursive: bool = False) -> None:
+        """Expand or collapse all children of a tree item.
+        
+        Args:
+            item: The tree widget item whose children to expand/collapse
+            expanded: True to expand, False to collapse
+            recursive: Whether to recursively expand/collapse all descendants
+        """
         for childIdx in range(item.childCount()):
             if recursive:
                 self.setItemChildrenExpanded(
@@ -907,7 +1252,16 @@ class EntityPage(QWidget):
             item.child(childIdx).setExpanded(expanded)
 
     @err_catcher(name=__name__)
-    def onItemChanged(self, selected=None, deselected=None):
+    def onItemChanged(self, selected: Optional[Any] = None, deselected: Optional[Any] = None) -> None:
+        """Handle tree item selection changes.
+        
+        Updates selection counters if enabled and emits the itemChanged signal
+        with the selected items.
+        
+        Args:
+            selected: QItemSelection of newly selected items
+            deselected: QItemSelection of newly deselected items
+        """
         if self.useCounter:
             changed = False
             if selected:
@@ -935,12 +1289,28 @@ class EntityPage(QWidget):
         self.itemChanged.emit(items)
 
     @err_catcher(name=__name__)
-    def showPreviewToggled(self, state):
+    def showPreviewToggled(self, state: bool) -> None:
+        """Handle toggling of entity preview display.
+        
+        Saves the user preference and refreshes the entity view to show or hide
+        thumbnail previews.
+        
+        Args:
+            state: True to show previews, False to hide them
+        """
         self.core.setConfig("browser", "showEntityPreviews", state, config="user")
         self.entityWidget.refreshEntities(restoreSelection=True)
 
     @err_catcher(name=__name__)
-    def searchClicked(self, state):
+    def searchClicked(self, state: bool) -> None:
+        """Handle search button toggle.
+        
+        Shows or hides the search input and location filter. Clears search
+        when hiding.
+        
+        Args:
+            state: True to show search controls, False to hide them
+        """
         if not hasattr(self.entityWidget, "b_search") or not self.entityWidget.b_search.isHidden():
             self.e_search.setVisible(state)
             if len(self.locations) > 1:
@@ -954,7 +1324,12 @@ class EntityPage(QWidget):
             self.e_search.textChanged.emit("")
 
     @err_catcher(name=__name__)
-    def setSearchVisible(self, state):
+    def setSearchVisible(self, state: bool) -> None:
+        """Programmatically show or hide the search controls.
+        
+        Args:
+            state: True to show search controls, False to hide them
+        """
         if hasattr(self.entityWidget, "b_search"):
             self.entityWidget.b_search.setChecked(state)
 
@@ -963,18 +1338,37 @@ class EntityPage(QWidget):
             self.w_location.setVisible(state)
 
     @err_catcher(name=__name__)
-    def setShowSearchAlways(self, state):
+    def setShowSearchAlways(self, state: bool) -> None:
+        """Set whether the search button is always visible.
+        
+        Args:
+            state: True to always show search, False to show toggle button
+        """
         self.b_shotSearch.setHidden(state)
 
     @err_catcher(name=__name__)
-    def isSearchVisible(self):
+    def isSearchVisible(self) -> bool:
+        """Check if search controls are currently visible.
+        
+        Returns:
+            True if search controls are visible, False otherwise
+        """
         if hasattr(self.entityWidget, "b_search"):
             return self.entityWidget.b_search.isChecked()
         else:
             return self.e_search.isVisible()
 
     @err_catcher(name=__name__)
-    def keyPressed(self, event, widgetType):
+    def keyPressed(self, event: Any, widgetType: str) -> None:
+        """Handle keyboard events for tree and search widgets.
+        
+        Implements keyboard shortcuts including Escape to hide search and
+        automatic search activation when typing.
+        
+        Args:
+            event: The keyboard event
+            widgetType: Type of widget receiving the event ('tree' or 'search')
+        """
         if widgetType == "tree":
             if event.key() == Qt.Key_Escape:
                 if hasattr(self.entityWidget, "b_search"):
@@ -1009,7 +1403,12 @@ class EntityPage(QWidget):
         event.accept()
 
     @err_catcher(name=__name__)
-    def getExpandedItems(self):
+    def getExpandedItems(self) -> List[str]:
+        """Get list of all currently expanded items.
+        
+        Returns:
+            List of paths/names for all expanded items in the tree
+        """
         expandedAssets = []
         for idx in range(self.tw_tree.topLevelItemCount()):
             item = self.tw_tree.topLevelItem(idx)
@@ -1018,7 +1417,15 @@ class EntityPage(QWidget):
         return expandedAssets
 
     @err_catcher(name=__name__)
-    def getExpandedChildren(self, item):
+    def getExpandedChildren(self, item: Any) -> List[str]:
+        """Recursively get expanded items under a parent item.
+        
+        Args:
+            item: The tree widget item to search under
+            
+        Returns:
+            List of paths/names for all expanded items under the parent
+        """
         expandedAssets = []
         if item.isExpanded():
             if self.entityType == "asset":
@@ -1034,11 +1441,23 @@ class EntityPage(QWidget):
         return expandedAssets
 
     @err_catcher(name=__name__)
-    def mouseEnter(self):
+    def mouseEnter(self) -> None:
+        """Handle mouse entering the tree widget.
+        
+        Sets focus to the tree widget when the mouse enters.
+        """
         self.tw_tree.setFocus()
 
     @err_catcher(name=__name__)
-    def mousedb(self, event):
+    def mousedb(self, event: Any) -> None:
+        """Handle mouse double-click events on the tree widget.
+        
+        Handles entity creation dialogs (for empty areas), item expansion/collapse,
+        and selection counter adjustments (Ctrl+Click).
+        
+        Args:
+            event: The mouse double-click event
+        """
         mIndex = self.tw_tree.indexAt(event.pos())
         cItem = self.tw_tree.itemFromIndex(mIndex)
 
@@ -1073,7 +1492,15 @@ class EntityPage(QWidget):
                 item.setExpanded(not item.isExpanded())
 
     @err_catcher(name=__name__)
-    def mouseClickEvent(self, event):
+    def mouseClickEvent(self, event: Any) -> None:
+        """Handle mouse click and release events on the tree widget.
+        
+        Manages selection behavior, item expansion, and counter adjustments
+        for Ctrl+Click operations.
+        
+        Args:
+            event: The mouse event (press or release)
+        """
         if not QEvent:
             return
 
@@ -1111,14 +1538,30 @@ class EntityPage(QWidget):
                     item.setExpanded(not item.isExpanded())
 
     @err_catcher(name=__name__)
-    def getCount(self, item):
+    def getCount(self, item: Any) -> int:
+        """Get the selection count for an item.
+        
+        Args:
+            item: The tree widget item to get count for
+            
+        Returns:
+            The current count value (0 if no counter exists)
+        """
         if not hasattr(item, "l_counter"):
             return 0
 
         return int(item.l_counter.text().strip("x") or "1")
 
     @err_catcher(name=__name__)
-    def setCount(self, item, count):
+    def setCount(self, item: Any, count: Optional[int]) -> None:
+        """Set the selection count for an item.
+        
+        Updates the counter label and deselects the item if count reaches zero.
+        
+        Args:
+            item: The tree widget item to update
+            count: The new count value (None to clear, 0 to deselect)
+        """
         if not hasattr(item, "l_counter"):
             return
 
@@ -1136,7 +1579,15 @@ class EntityPage(QWidget):
         self.onItemChanged()
 
     @err_catcher(name=__name__)
-    def createFolderDlg(self, startText=None):
+    def createFolderDlg(self, startText: Optional[str] = None) -> None:
+        """Show dialog to create a new folder (asset or shot hierarchy).
+        
+        Opens a dialog for the user to enter a folder name. The folder type
+        depends on the current entity type (asset folder or shot folder).
+        
+        Args:
+            startText: Initial text to populate in the name field
+        """
         if startText is None:
             curItem = self.tw_tree.currentItem()
             if curItem:
@@ -1168,7 +1619,12 @@ class EntityPage(QWidget):
         self.newItem.e_item.deselect()
 
     @err_catcher(name=__name__)
-    def onCreateFolderDlgAccepted(self):
+    def onCreateFolderDlgAccepted(self) -> None:
+        """Handle acceptance of the create folder dialog.
+        
+        Creates the folder and optionally re-opens the dialog if Ctrl was held
+        during acceptance (for batch creation).
+        """
         if self.entityType == "asset":
             self.createAsset("folder")
             mods = QApplication.keyboardModifiers()
@@ -1182,7 +1638,15 @@ class EntityPage(QWidget):
                 self.createShotDlg("folder", startText=self.newItem.e_item.text())
 
     @err_catcher(name=__name__)
-    def createAssetDlg(self, entityType, startText=None):
+    def createAssetDlg(self, entityType: str, startText: Optional[str] = None) -> None:
+        """Show dialog to create a new asset or asset folder.
+        
+        Opens the appropriate creation dialog based on entity type.
+        
+        Args:
+            entityType: Type of entity to create ('asset' or 'folder')
+            startText: Initial text to populate in the name field
+        """
         if startText is None:
             curItem = self.tw_tree.currentItem()
             if curItem:
@@ -1213,14 +1677,30 @@ class EntityPage(QWidget):
         self.newItem.e_item.deselect()
 
     @err_catcher(name=__name__)
-    def onCreateAssetDlgAccepted(self, entityType):
+    def onCreateAssetDlgAccepted(self, entityType: str) -> None:
+        """Handle acceptance of the create asset dialog.
+        
+        Creates the asset and optionally re-opens the dialog if Ctrl was held
+        during acceptance (for batch creation).
+        
+        Args:
+            entityType: Type of entity being created ('asset' or 'folder')
+        """
         self.createAsset(entityType)
         mods = QApplication.keyboardModifiers()
         if mods == Qt.ControlModifier and (not self.newItem.clickedButton or self.newItem.clickedButton.text() != self.newItem.btext):
             self.createAssetDlg(entityType, startText=self.newItem.e_item.text())
 
     @err_catcher(name=__name__)
-    def createAsset(self, entityType):
+    def createAsset(self, entityType: str) -> None:
+        """Create a new asset or asset folder in the project.
+        
+        Validates the asset name, creates the entity on disk, optionally creates
+        tasks from a preset, and navigates to the new entity.
+        
+        Args:
+            entityType: Type of entity to create ('asset' or 'folder')
+        """
         self.activateWindow()
         assetNames = self.newItem.e_item.text().replace(os.pathsep, ",").split(",")
         entityNames = [path.strip() for path in assetNames]
@@ -1278,7 +1758,16 @@ class EntityPage(QWidget):
             self.entityCreated.emit(data)
 
     @err_catcher(name=__name__)
-    def createShot(self, entityType):
+    def createShot(self, entityType: str) -> None:
+        """Create a new shot or shot folder in the project.
+        
+        Validates the shot name, creates the entity on disk, sets description and
+        preview if provided, optionally creates tasks from a preset, and navigates
+        to the new shot.
+        
+        Args:
+            entityType: Type of entity to create ('shot' or 'folder')
+        """
         self.activateWindow()
         assetNames = self.newItem.e_item.text().replace(os.pathsep, ",").split(",")
         entityNames = [path.strip() for path in assetNames]
@@ -1326,7 +1815,15 @@ class EntityPage(QWidget):
             self.entityCreated.emit(data)
 
     @err_catcher(name=__name__)
-    def shotCreated(self, shotData):
+    def shotCreated(self, shotData: Dict[str, Any]) -> None:
+        """Handle shot creation completion.
+        
+        Refreshes the shot list, navigates to the new shot, and emits the
+        entityCreated signal.
+        
+        Args:
+            shotData: Dictionary containing the created shot's data
+        """
         self.refreshShots()
 
         seqName = shotData["sequence"]
@@ -1336,7 +1833,14 @@ class EntityPage(QWidget):
         self.entityCreated.emit(shotData)
 
     @err_catcher(name=__name__)
-    def editShotDlg(self, shotData=None):
+    def editShotDlg(self, shotData: Optional[Dict[str, Any]] = None) -> None:
+        """Show dialog to edit or create a shot.
+        
+        Opens the EditShot dialog with the specified shot data or current selection.
+        
+        Args:
+            shotData: Shot data to edit (uses current selection if None)
+        """
         sequs = []
         for seqName in self.getTopLevelItemNames():
             sequs.append(seqName)
@@ -1367,7 +1871,16 @@ class EntityPage(QWidget):
         self.es.show()
 
     @err_catcher(name=__name__)
-    def getItems(self, parent=None, items=None):
+    def getItems(self, parent: Optional[Any] = None, items: Optional[List[Any]] = None) -> List[Any]:
+        """Get all tree widget items recursively.
+        
+        Args:
+            parent: Parent item to start from (None for root level)
+            items: Accumulator list for recursive collection
+            
+        Returns:
+            List of all QTreeWidgetItems in the tree
+        """
         if items is None:
             items = []
 
@@ -1385,7 +1898,12 @@ class EntityPage(QWidget):
         return items
 
     @err_catcher(name=__name__)
-    def selectItemType(self, itemType):
+    def selectItemType(self, itemType: str) -> None:
+        """Select all items of a specific type in the tree.
+        
+        Args:
+            itemType: Type of items to select (e.g., 'asset', 'shot', 'assetFolder')
+        """
         self.tw_tree.selectionModel().clearSelection()
         items = self.getItems()
         for item in items:
@@ -1394,7 +1912,15 @@ class EntityPage(QWidget):
                 item.setSelected(True)
 
     @err_catcher(name=__name__)
-    def getCurrentData(self, returnOne=True):
+    def getCurrentData(self, returnOne: bool = True) -> Any:
+        """Get data from currently selected tree items.
+        
+        Args:
+            returnOne: If True, return single item or default; if False, return list
+            
+        Returns:
+            Entity data dictionary (if returnOne=True) or list of dictionaries
+        """
         items = self.tw_tree.selectedItems()
         curData = []
 
@@ -1411,7 +1937,15 @@ class EntityPage(QWidget):
         return curData
 
     @err_catcher(name=__name__)
-    def getDataFromItem(self, item):
+    def getDataFromItem(self, item: Any) -> Dict[str, Any]:
+        """Extract entity data from a tree widget item.
+        
+        Args:
+            item: Tree widget item to extract data from
+            
+        Returns:
+            Entity data dictionary with type and relevant entity information
+        """
         data = {}
         data = item.data(0, Qt.UserRole)
         if "type" not in data:
@@ -1423,7 +1957,12 @@ class EntityPage(QWidget):
         return data
 
     @err_catcher(name=__name__)
-    def getTopLevelItemNames(self):
+    def getTopLevelItemNames(self) -> List[str]:
+        """Get names of all top-level items in the tree.
+        
+        Returns:
+            List of names from top-level tree items
+        """
         names = []
         for i in range(self.tw_tree.topLevelItemCount()):
             name = self.tw_tree.topLevelItem(i).text(0)
@@ -1432,11 +1971,23 @@ class EntityPage(QWidget):
         return names
 
     @err_catcher(name=__name__)
-    def navigate(self, data):
+    def navigate(self, data: Any) -> Optional[bool]:
+        """Navigate to and select specific entities in the tree.
+        
+        Expands the tree hierarchy as needed and selects the specified entities.
+        Supports both asset and shot navigation.
+        
+        Args:
+            data: Entity data dictionary or list of dictionaries to navigate to
+            
+        Returns:
+            False if navigation failed, None otherwise
+        """
         prevData = self.getCurrentData(returnOne=False)
         wasBlocked = self.tw_tree.signalsBlocked()
         if not wasBlocked:
             self.tw_tree.blockSignals(True)
+            self.tw_tree.selectionModel().blockSignals(True)
 
         self.tw_tree.selectionModel().clearSelection()
         if self.entityType == "asset":
@@ -1482,7 +2033,10 @@ class EntityPage(QWidget):
                 if hItem and not self.tw_tree.selectedItems():
                     self.tw_tree.setCurrentItem(hItem)
 
-                hItem.setSelected(True)
+                if self.core.isObjectValid(hItem):
+                    hItem.setSelected(True)
+                else:
+                    hItem = False
 
             if hItem:
                 self.tw_tree.scrollTo(self.tw_tree.indexFromItem(hItem))
@@ -1518,7 +2072,7 @@ class EntityPage(QWidget):
 
                 hItem = self.tw_tree.invisibleRootItem()
                 for sidx, seqPart in enumerate(seqParts):
-                    for idx in range(hItem.childCount()-1, -1, -1):
+                    for idx in range(hItem.childCount() - 1, -1, -1):
                         cItem = hItem.child(idx)
                         if cItem.childCount():
                             if useEpisodes:
@@ -1542,7 +2096,11 @@ class EntityPage(QWidget):
                                 hItem.setExpanded(True)
                                 self.itemExpanded(hItem)
 
-                            hItem.setSelected(True)
+                            if self.core.isObjectValid(hItem):
+                                hItem.setSelected(True)
+                            else:
+                                hItem = False
+
                             sItem = hItem
                             break
                     else:
@@ -1554,11 +2112,20 @@ class EntityPage(QWidget):
 
         if not wasBlocked:
             self.tw_tree.blockSignals(False)
+            self.tw_tree.selectionModel().blockSignals(False)
             if self.getCurrentData(returnOne=False) != prevData:
                 self.onItemChanged()
 
     @err_catcher(name=__name__)
-    def contextMenuTree(self, pos):
+    def contextMenuTree(self, pos: Any) -> None:
+        """Show context menu for tree widget items.
+        
+        Displays a context menu with actions appropriate for the clicked item,
+        including create, edit, refresh, open in explorer, omit, and custom actions.
+        
+        Args:
+            pos: Position where the context menu was requested
+        """
         rcmenu = QMenu(self)
         callbackName = ""
 
@@ -1619,12 +2186,21 @@ class EntityPage(QWidget):
 
         data = self.getCurrentData()
         if iname:
-            addOmit = False
+            omitMenu = None
+            showOmitted = self.core.getConfig("browser", "showOmittedEntities", config="user", dft=False)
             if self.entityType == "asset":
                 if data:
-                    oAct = QAction("Omit Asset", self)
-                    oAct.triggered.connect(lambda: self.omitEntity(data))
-                    addOmit = True
+                    isOmitted = self.core.entities.isAssetPathOmitted(data.get("asset_path", ""))
+                    omitMenu = QMenu("Omit", self)
+                    oActLabel = "Unomit Asset" if isOmitted else "Omit Asset"
+                    oAct = QAction(oActLabel, self)
+                    oAct.triggered.connect(lambda: self.omitEntity(data, omit=not isOmitted))
+                    omitMenu.addAction(oAct)
+                    showOmittedAct = QAction("Show Omitted Assets", self)
+                    showOmittedAct.setCheckable(True)
+                    showOmittedAct.setChecked(showOmitted)
+                    showOmittedAct.toggled.connect(self.toggleShowOmitted)
+                    omitMenu.addAction(showOmittedAct)
 
             elif self.entityType == "shot":
                 if item.childCount() == 0 and data:
@@ -1637,9 +2213,17 @@ class EntityPage(QWidget):
                     editAct.setIcon(icon)
                     editAct.triggered.connect(lambda: self.editShotDlg(data))
                     rcmenu.addAction(editAct)
-                    oAct = QAction("Omit Shot", self)
-                    oAct.triggered.connect(lambda: self.omitEntity(data))
-                    addOmit = True
+                    isOmitted = self.core.entities.isShotOmitted(data)
+                    omitMenu = QMenu("Omit", self)
+                    oActLabel = "Unomit Shot" if isOmitted else "Omit Shot"
+                    oAct = QAction(oActLabel, self)
+                    oAct.triggered.connect(lambda: self.omitEntity(data, omit=not isOmitted))
+                    omitMenu.addAction(oAct)
+                    showOmittedAct = QAction("Show Omitted Shots", self)
+                    showOmittedAct.setCheckable(True)
+                    showOmittedAct.setChecked(showOmitted)
+                    showOmittedAct.toggled.connect(self.toggleShowOmitted)
+                    omitMenu.addAction(showOmittedAct)
                 elif data:
                     path = self.core.paths.getEntityPath(data)
 
@@ -1687,8 +2271,8 @@ class EntityPage(QWidget):
             rcmenu.addAction(openex)
             copAct = self.core.getCopyAction(path, parent=self)
             rcmenu.addAction(copAct)
-            if addOmit:
-                rcmenu.addAction(oAct)
+            if omitMenu:
+                rcmenu.addMenu(omitMenu)
         else:
             self.tw_tree.setCurrentIndex(self.tw_tree.model().createIndex(-1, 0))
             act_refresh = QAction("Refresh", self)
@@ -1704,6 +2288,16 @@ class EntityPage(QWidget):
             rcmenu.addAction(openex)
             copAct = self.core.getCopyAction(path, parent=self)
             rcmenu.addAction(copAct)
+            showOmitted = self.core.getConfig("browser", "showOmittedEntities", config="user", dft=False)
+            if self.entityType == "asset":
+                showOmittedAct = QAction("Show Omitted Assets", self)
+            else:
+                showOmittedAct = QAction("Show Omitted Shots", self)
+
+            showOmittedAct.setCheckable(True)
+            showOmittedAct.setChecked(showOmitted)
+            showOmittedAct.toggled.connect(self.toggleShowOmitted)
+            rcmenu.addAction(showOmittedAct)
 
         expAct = QAction("Expand all", self)
         expAct.triggered.connect(self.setWidgetItemsExpanded)
@@ -1729,12 +2323,22 @@ class EntityPage(QWidget):
         rcmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def runAction(self, action):
+    def runAction(self, action: Dict[str, Any]) -> None:
+        """Execute a custom entity action.
+        
+        Args:
+            action: Action dictionary with 'function' key containing the callable
+        """
         data = self.getCurrentData(returnOne=False)
         action["function"](entities=data, parent=self.window())
 
     @err_catcher(name=__name__)
-    def openConnectEntitiesDlg(self):
+    def openConnectEntitiesDlg(self) -> None:
+        """Open dialog to connect entities (assets to shots or vice versa).
+        
+        Opens the connection dialog or navigates to entities depending on the
+        parent widget context.
+        """
         data = self.getCurrentData(returnOne=False)
         if self.entityWidget.parent().objectName() == "gb_connectedEntities":
             self.entityWidget.parent().parent().parent().navigate(data)

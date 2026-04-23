@@ -37,6 +37,7 @@ import sys
 import platform
 import shutil
 import glob
+from typing import Any, List, Optional
 
 if platform.system() == "Windows":
     import winreg as _winreg
@@ -49,7 +50,15 @@ from PrismUtils.Decorators import err_catcher_plugin as err_catcher
 
 
 class Prism_Cinema4D_Integration(object):
-    def __init__(self, core, plugin):
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize Cinema4D integration.
+        
+        Sets up integration manager for installing/removing Cinema4D plugin.
+        
+        Args:
+            core: Prism core instance
+            plugin: Plugin instance
+        """
         self.core = core
         self.plugin = plugin
 
@@ -57,7 +66,14 @@ class Prism_Cinema4D_Integration(object):
             self.examplePath = self.getExamplePath()
 
     @err_catcher(name=__name__)
-    def getExamplePath(self):
+    def getExamplePath(self) -> str:
+        """Get example Cinema4D user preferences path.
+        
+        Returns latest Maxon Cinema 4D version path from APPDATA, or default 2026.
+        
+        Returns:
+            Example user preferences directory path
+        """
         base = (
             os.environ["APPDATA"] + "\\Maxon"
         )
@@ -71,7 +87,12 @@ class Prism_Cinema4D_Integration(object):
         return examplePath
 
     @err_catcher(name=__name__)
-    def getExecutable(self):
+    def getExecutable(self) -> str:
+        """Get path to Cinema4D.exe.
+        
+        Returns:
+            Path to Cinema4D executable, or empty string if not found
+        """
         execPath = ""
         if platform.system() == "Windows":
             base = self.getCinema4DPath() or ""
@@ -82,7 +103,12 @@ class Prism_Cinema4D_Integration(object):
         return execPath
 
     @err_catcher(name=__name__)
-    def getCinema4DPath(self):
+    def getCinema4DPath(self) -> Optional[str]:
+        """Get first Cinema4D installation path.
+        
+        Returns:
+            First Cinema4D install path, or None if not found
+        """
         paths = self.getCinema4DPaths()
         if not paths:
             return
@@ -90,7 +116,14 @@ class Prism_Cinema4D_Integration(object):
         return paths[0]
 
     @err_catcher(name=__name__)
-    def getCinema4DPaths(self):
+    def getCinema4DPaths(self) -> List[str]:
+        """Get all Cinema4D installation paths from Windows registry.
+        
+        Reads registry at SOFTWARE\\Maxon to find all numeric Cinema 4D versions.
+        
+        Returns:
+            List of installation directory paths, or empty list if none found
+        """
         try:
             key = _winreg.OpenKey(
                 _winreg.HKEY_LOCAL_MACHINE,
@@ -131,7 +164,18 @@ class Prism_Cinema4D_Integration(object):
         except Exception:
             return []
 
-    def addIntegration(self, installPath):
+    def addIntegration(self, installPath: str) -> bool:
+        """Install Prism integration into Cinema4D.
+        
+        Copies Prism.pyp plugin file to Cinema4D plugins directory, replacing
+        PRISMROOT placeholder with actual Prism installation path.
+        
+        Args:
+            installPath: Cinema4D installation directory path
+            
+        Returns:
+            True if installation successful, False otherwise
+        """
         try:
             integrationBase = os.path.join(
                 os.path.dirname(os.path.dirname(__file__)), "Integration"
@@ -176,7 +220,17 @@ class Prism_Cinema4D_Integration(object):
             self.core.popup(msgStr)
             return False
 
-    def removeIntegration(self, installPath):
+    def removeIntegration(self, installPath: str) -> bool:
+        """Remove Prism integration from Cinema4D.
+        
+        Deletes Prism.pyp plugin file from Cinema4D plugins directory.
+        
+        Args:
+            installPath: Cinema4D installation directory path
+            
+        Returns:
+            True if removal successful, False otherwise
+        """
         try:
             initPy = os.path.join(installPath, "plugins/Prism/Prism.pyp")
             for i in [initPy]:
@@ -196,7 +250,15 @@ class Prism_Cinema4D_Integration(object):
             self.core.popup(msgStr)
             return False
 
-    def updateInstallerUI(self, userFolders, pItem):
+    def updateInstallerUI(self, userFolders: Any, pItem: Any) -> None:
+        """Populate Cinema4D section in Prism installer UI.
+        
+        Adds tree items for each detected Cinema4D installation and custom path option.
+        
+        Args:
+            userFolders: User folders configuration
+            pItem: Parent tree widget item to populate
+        """
         try:
             pluginItem = QTreeWidgetItem(["Cinema4D"])
             pluginItem.setCheckState(0, Qt.Checked)
@@ -232,7 +294,18 @@ class Prism_Cinema4D_Integration(object):
             self.core.popup(msg)
             return False
 
-    def installerExecute(self, pluginItem, result):
+    def installerExecute(self, pluginItem: Any, result: dict) -> List[str]:
+        """Execute Cinema4D integration during Prism installation.
+        
+        Installs Prism into all checked Cinema4D paths from installer UI.
+        
+        Args:
+            pluginItem: Tree widget item with checkbox states
+            result: Dictionary to store installation results
+            
+        Returns:
+            List of successfully integrated installation paths
+        """
         try:
             pluginPaths = []
             installLocs = []

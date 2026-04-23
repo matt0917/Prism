@@ -35,6 +35,7 @@
 import os
 import sys
 import platform
+from typing import Any, Dict, List, Union
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -44,7 +45,16 @@ from PrismUtils.Decorators import err_catcher_plugin as err_catcher
 
 
 class Prism_Nuke_Integration(object):
-    def __init__(self, core, plugin):
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize Nuke integration handler.
+        
+        Sets up the integration with platform-specific .nuke directory paths
+        for menu.py and init.py integration files.
+        
+        Args:
+            core: The Prism core instance
+            plugin: The plugin instance
+        """
         self.core = core
         self.plugin = plugin
         if platform.system() == "Windows":
@@ -65,14 +75,29 @@ class Prism_Nuke_Integration(object):
             self.examplePath = "/Users/%s/.nuke" % userName
 
     @err_catcher(name=__name__)
-    def getExecutable(self):
+    def getExecutable(self) -> str:
+        """Get the default Nuke executable path.
+        
+        Returns:
+            Path to the Nuke executable, or empty string if not on Windows
+        """
         execPath = ""
         if platform.system() == "Windows":
             execPath = "C:\\Program Files\\Nuke15.0v4\\Nuke15.0.exe"
 
         return execPath
 
-    def addIntegration(self, installPath):
+    def addIntegration(self, installPath: str) -> bool:
+        """Install Prism integration to a Nuke .nuke directory.
+        
+        Installs menu.py and init.py files with Prism initialization code.
+        
+        Args:
+            installPath: Path to the .nuke directory
+            
+        Returns:
+            True if installation succeeded, False otherwise
+        """
         try:
             if not os.path.exists(installPath):
                 QMessageBox.warning(
@@ -125,7 +150,18 @@ class Prism_Nuke_Integration(object):
             QMessageBox.warning(self.core.messageParent, "Prism Integration", msgStr)
             return False
 
-    def removeIntegration(self, installPath):
+    def removeIntegration(self, installPath: str) -> bool:
+        """Remove Prism integration from a Nuke .nuke directory.
+        
+        Removes integration code from menu.py and init.py, and cleans up
+        legacy files.
+        
+        Args:
+            installPath: Path to the .nuke directory
+            
+        Returns:
+            True if removal succeeded, False otherwise
+        """
         try:
             # kept for backwards compatibility
             gizmo = os.path.join(installPath, "WritePrism.gizmo")
@@ -155,7 +191,15 @@ class Prism_Nuke_Integration(object):
             QMessageBox.warning(self.core.messageParent, "Prism Integration", msgStr)
             return False
 
-    def updateInstallerUI(self, userFolders, pItem):
+    def updateInstallerUI(self, userFolders: Dict[str, str], pItem: QTreeWidgetItem) -> None:
+        """Update the installer UI with Nuke integration options.
+        
+        Adds a tree item for Nuke with its .nuke directory path.
+        
+        Args:
+            userFolders: Dictionary of user folder paths
+            pItem: Parent tree widget item to add Nuke item to
+        """
         try:
             nukeItem = QTreeWidgetItem(["Nuke"])
             pItem.addChild(nukeItem)
@@ -194,7 +238,18 @@ class Prism_Nuke_Integration(object):
             )
             return False
 
-    def installerExecute(self, nukeItem, result):
+    def installerExecute(self, nukeItem: QTreeWidgetItem, result: Dict[str, Any]) -> Union[List[str], bool]:
+        """Execute Nuke integration installation.
+        
+        Called by the Prism installer to perform the integration.
+        
+        Args:
+            nukeItem: Tree widget item containing Nuke integration settings
+            result: Dictionary to store integration results
+            
+        Returns:
+            List of installed paths on success, False on error
+        """
         try:
             installLocs = []
 

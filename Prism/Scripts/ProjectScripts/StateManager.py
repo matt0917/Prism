@@ -38,6 +38,8 @@ import traceback
 import time
 import logging
 import uuid
+import copy
+from typing import Any, Optional, List, Dict, Union
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -63,7 +65,50 @@ logger = logging.getLogger(__name__)
 
 
 class StateManager(QMainWindow, StateManager_ui.Ui_mw_StateManager):
-    def __init__(self, core, stateDataPath=None, forceStates=[], standalone=False):
+    """Main State Manager window for managing pipeline states.
+    
+    The StateManager is the central interface for managing import and export states
+    in a Prism scene file. States represent different pipeline operations like:
+    - Import: Load assets, cache files, or reference files into the scene
+    - Export: Export geometry, cameras, alembic, or other data from the scene
+    - Render: Configure and execute render tasks
+    - Playblast: Create viewport previews
+    - ImageRender: Render image sequences or single frames
+    - Folder: Organize states into hierarchical folders
+    
+    The StateManager provides:
+    - State creation and organization
+    - State execution (publish workflow)
+    - State presets and defaults
+    - Import and export pipeline management
+    - Version control integration
+    
+    Attributes:
+        core: Prism core instance
+        scenename: Current scene file path
+        standalone: Whether running in standalone mode
+        forceStates: List of state types to forcibly load
+        stateData: Dictionary of all loaded state data
+        states: List of active state instances
+        activeList: Currently active state list widget (import/export)
+        tw_import: Tree widget for import states
+        tw_export: Tree widget for export states
+        executingStates: List of states currently being executed
+    """
+    
+    def __init__(self, core: Any, stateDataPath: Optional[str] = None, 
+                 forceStates: Optional[List[str]] = None, standalone: bool = False) -> None:
+        """Initialize the State Manager.
+        
+        Args:
+            core: Prism core instance
+            stateDataPath: Path to saved state data file (optional)
+            forceStates: List of state type names to force load
+            standalone: Whether running without a DCC host
+        """
+        if forceStates is None:
+            forceStates = []
+            
         QMainWindow.__init__(self)
         self.setupUi(self)
 
@@ -194,7 +239,15 @@ class StateManager(QMainWindow, StateManager_ui.Ui_mw_StateManager):
                 self.resize(screenW - space, self.height())
 
     @err_catcher(name=__name__)
-    def loadStateTypeFromFile(self, filepath):
+    def loadStateTypeFromFile(self, filepath: str) -> Optional[type]:
+        """Load a state type class from a Python file.
+        
+        Args:
+            filepath: Path to the Python file containing state class
+            
+        Returns:
+            State class type, or None if loading failed
+        """
         try:
             filename = os.path.basename(filepath)
 
@@ -282,7 +335,16 @@ class %s(QWidget, %s.%s, %s.%sClass):
             self.core.writeErrorLog(erStr)
 
     @err_catcher(name=__name__)
-    def loadState(self, clsDef, filename=None):
+    def loadState(self, clsDef: type, filename: Optional[str] = None) -> Optional[Any]:
+        """Load and instantiate a state from a class definition.
+        
+        Args:
+            clsDef: State class type
+            filename: Optional filename for the state module
+            
+        Returns:
+            State instance, or None if loading failed
+        """
         try:
             if not clsDef.isActive(self.core):
                 return
@@ -294,7 +356,8 @@ class %s(QWidget, %s.%s, %s.%sClass):
         self.stateTypes[clsDef.className] = clsDef
 
     @err_catcher(name=__name__)
-    def loadLayout(self):
+    def loadLayout(self) -> None:
+        """Create and configure the State Manager UI layout and menu bar."""
         self.actionSaveBeforePub = QAction("Save scenefile before publish", self)
         self.actionSaveBeforePub.setCheckable(True)
         self.actionSaveBeforePub.setChecked(self.core.getConfig("stateManager", "saveSceneBeforePublish", dft=True))
@@ -423,20 +486,36 @@ class %s(QWidget, %s.%s, %s.%sClass):
         self.b_description.setIcon(icon)
 
     @err_catcher(name=__name__)
-    def onVersionUpToggled(self, state):
+    def onVersionUpToggled(self, state: bool) -> None:
+        """Handle version up checkbox toggle.
+        
+        Args:
+            state: New checkbox state
+        """
         self.core.setConfig("stateManager", "versionUpSceneOnPublish", val=state, config="user")
 
     @err_catcher(name=__name__)
-    def onSaveBeforePubToggled(self, state):
+    def onSaveBeforePubToggled(self, state: bool) -> None:
+        """Handle save before publish checkbox toggle.
+        
+        Args:
+            state: New checkbox state
+        """
         self.core.setConfig("stateManager", "saveSceneBeforePublish", val=state, config="user")
         self.actionVersionUp.setEnabled(state)
 
     @err_catcher(name=__name__)
-    def onSaveDuringPubToggled(self, state):
+    def onSaveDuringPubToggled(self, state: bool) -> None:
+        """Handle save during publish checkbox toggle.
+        
+        Args:
+            state: New checkbox state
+        """
         self.core.setConfig("stateManager", "saveSceneDuringPublish", val=state, config="user")
 
     @err_catcher(name=__name__)
-    def showRenderPresets(self):
+    def showRenderPresets(self) -> None:
+        """Show the render presets settings dialog."""
         rsUi = self.stateTypes["Render Settings"]()
         rsUi.setup(None, self.core, self)
         rsUi.f_name.setVisible(False)
@@ -468,13 +547,26 @@ class %s(QWidget, %s.%s, %s.%sClass):
         self.dlg_settings.show()
 
     @err_catcher(name=__name__)
-    def editPresetChanged(self, state):
+    def editPresetChanged(self, state: bool) -> None:
+        """Handle edit preset checkbox change.
+        
+        Args:
+            state: New checkbox state
+        """
         QCoreApplication.processEvents()
         self.dlg_settings.resize(0, 0)
         self.dlg_settings.spacer.setVisible(not state)
 
     @err_catcher(name=__name__)
-    def setTreePalette(self, listWidget, inactive, inactivef, activef):
+    def setTreePalette(self, listWidget: QTreeWidget, inactive: str, inactivef: str, activef: str) -> None:
+        """Set color palette for state tree widget.
+        
+        Args:
+            listWidget: Tree widget to style
+            inactive: Inactive background color
+            inactivef: Inactive foreground color
+            activef: Active foreground color
+        """
         actStyle = "QTreeWidget { border: 1px solid rgb(150,150,150); }"
         inActStyle = "QTreeWidget { border: 1px solid rgb(30,30,30); }"
         listWidget.setStyleSheet(
@@ -487,7 +579,8 @@ class %s(QWidget, %s.%s, %s.%sClass):
         )
 
     @err_catcher(name=__name__)
-    def collapseFolders(self):
+    def collapseFolders(self) -> None:
+        """Collapse all folder states in the tree widgets."""
         if not hasattr(self, "collapsedFolders"):
             return
 
@@ -498,7 +591,12 @@ class %s(QWidget, %s.%s, %s.%sClass):
             self.ensureVisibility(state)
 
     @err_catcher(name=__name__)
-    def selectState(self, state):
+    def selectState(self, state: Optional[Any]) -> None:
+        """Select a state in the tree widget.
+        
+        Args:
+            state: State instance to select
+        """
         if not state:
             return
 
@@ -514,14 +612,24 @@ class %s(QWidget, %s.%s, %s.%sClass):
         self.showState()
 
     @err_catcher(name=__name__)
-    def ensureVisibility(self, state):
+    def ensureVisibility(self, state: Any) -> None:
+        """Ensure a state is visible by expanding parent folder states.
+        
+        Args:
+            state: State instance to make visible
+        """
         parent = state.parent()
         while parent:
             parent.setExpanded(True)
             parent = parent.parent()
 
     @err_catcher(name=__name__)
-    def getSelectedStates(self):
+    def getSelectedStates(self) -> List[Any]:
+        """Get currently selected state instances.
+        
+        Returns:
+            List of selected state instances
+        """
         states = []
         for state in self.states:
             if state.isSelected():
@@ -530,7 +638,8 @@ class %s(QWidget, %s.%s, %s.%sClass):
         return states
 
     @err_catcher(name=__name__)
-    def showState(self):
+    def showState(self) -> None:
+        """Display the selected state's settings in the properties panel."""
         try:
             grid = QGridLayout()
         except:
@@ -554,20 +663,31 @@ class %s(QWidget, %s.%s, %s.%sClass):
         self.checkStateSettingsWidth()
 
     @err_catcher(name=__name__)
-    def checkStateSettingsWidth(self):
+    def checkStateSettingsWidth(self) -> None:
+        """Check and adjust state settings panel width to fit content."""
         QApplication.processEvents()
         if self.sa_stateSettings.horizontalScrollBar().isVisible():
             self.resize(self.width() + self.w_stateUi.width() - self.sa_stateSettings.width() + 18, self.height())
 
     @err_catcher(name=__name__)
-    def stateChanged(self, activeList):
+    def stateChanged(self, activeList: Optional[QTreeWidget]) -> None:
+        """Handle state selection change in tree widget.
+        
+        Args:
+            activeList: Tree widget with changed selection
+        """
         if self.loading:
             return False
 
         self.showState()
 
     @err_catcher(name=__name__)
-    def setListActive(self, listWidget):
+    def setListActive(self, listWidget: QTreeWidget) -> None:
+        """Set the active state list (import or export).
+        
+        Args:
+            listWidget: Tree widget to set as active
+        """
         if listWidget == self.tw_import:
             inactive = self.tw_export
             inactivef = self.f_export
@@ -593,19 +713,37 @@ class %s(QWidget, %s.%s, %s.%sClass):
         self.activeList.setFocus()
 
     @err_catcher(name=__name__)
-    def focusImport(self, event):
+    def focusImport(self, event: Any) -> None:
+        """Handle focus event for import tree widget.
+        
+        Args:
+            event: Focus event
+        """
         self.setListActive(self.tw_import)
         self.tw_export.setCurrentIndex(self.tw_export.model().createIndex(-1, 0))
         event.accept()
 
     @err_catcher(name=__name__)
-    def focusExport(self, event):
+    def focusExport(self, event: Any) -> None:
+        """Handle focus event for export tree widget.
+        
+        Args:
+            event: Focus event
+        """
         self.setListActive(self.tw_export)
         self.tw_import.setCurrentIndex(self.tw_import.model().createIndex(-1, 0))
         event.accept()
 
     @err_catcher(name=__name__)
-    def updateForeground(self, item=None, column=None, activeList=None):
+    def updateForeground(self, item: Optional[Any] = None, column: Optional[int] = None, 
+                         activeList: Optional[QTreeWidget] = None) -> None:
+        """Update foreground colors for tree widget items based on state enabled status.
+        
+        Args:
+            item: Tree widget item to update
+            column: Column index
+            activeList: Active tree widget
+        """
         if activeList is not None:
             if activeList == self.tw_import:
                 inactive = self.tw_export
@@ -629,7 +767,13 @@ class %s(QWidget, %s.%s, %s.%sClass):
                 self.enableChildren(item.child(k), fcolor)
 
     @err_catcher(name=__name__)
-    def enableChildren(self, item, fcolor):
+    def enableChildren(self, item: Any, fcolor: Any) -> None:
+        """Enable or disable child state items based on parent checkstate.
+        
+        Args:
+            item: Parent tree widget item
+            fcolor: Foreground color
+        """
         if item.checkState(0) == Qt.Unchecked:
             fcolor = self.disabledCol
 
@@ -644,7 +788,8 @@ class %s(QWidget, %s.%s, %s.%sClass):
             self.enableChildren(item.child(i), fcolor)
 
     @err_catcher(name=__name__)
-    def updateStateList(self):
+    def updateStateList(self) -> None:
+        """Update state data for saving to scene."""
         stateData = []
         for i in range(self.tw_import.topLevelItemCount()):
             stateData.append([self.tw_import.topLevelItem(i), None])
@@ -657,7 +802,12 @@ class %s(QWidget, %s.%s, %s.%sClass):
         self.states = [x[0] for x in stateData]
 
     @err_catcher(name=__name__)
-    def useStateComments(self):
+    def useStateComments(self) -> bool:
+        """Check if state comments should be used.
+        
+        Returns:
+            True if state comments are enabled
+        """
         if "PRISM_USE_STATE_COMMENTS" in os.environ:
             useStateComments = os.getenv("PRISM_USE_STATE_COMMENTS", "0") == "1"
         else:
@@ -666,7 +816,8 @@ class %s(QWidget, %s.%s, %s.%sClass):
         return useStateComments
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect UI signals to their handler methods."""
         self.actionPrismSettings.triggered.connect(self.core.prismSettings)
         self.actionProjectBrowser.triggered.connect(self.core.projectBrowser)
         self.actionCopyStates.triggered.connect(self.copyAllStates)
@@ -748,17 +899,33 @@ class %s(QWidget, %s.%s, %s.%sClass):
         self.b_publish.clicked.connect(self.publish)
 
     @err_catcher(name=__name__)
-    def closeEvent(self, event):
+    def closeEvent(self, event: Any) -> None:
+        """Handle window close event.
+        
+        Args:
+            event: Close event
+        """
         self.core.callback(name="onStateManagerClose", args=[self])
         event.accept()
 
     @err_catcher(name=__name__)
-    def focusRename(self, item, column):
+    def focusRename(self, item: Optional[Any], column: int) -> None:
+        """Focus state name for renaming.
+        
+        Args:
+            item: Tree widget item
+            column: Column index
+        """
         if item is not None:
             item.ui.e_name.setFocus()
 
     @err_catcher(name=__name__)
-    def checkKeyPressed(self, event):
+    def checkKeyPressed(self, event: Any) -> None:
+        """Handle key press events for state tree navigation.
+        
+        Args:
+            event: Key event
+        """
         if event.key() == Qt.Key_Tab:
             self.showStateMenu()
         elif event.key() == Qt.Key_Delete:
@@ -771,7 +938,12 @@ class %s(QWidget, %s.%s, %s.%sClass):
         event.accept()
 
     @err_catcher(name=__name__)
-    def checkFocusOut(self, event):
+    def checkFocusOut(self, event: Any) -> None:
+        """Handle focus out events.
+        
+        Args:
+            event: Focus event
+        """
         if event.reason() == Qt.FocusReason.TabFocusReason:
             event.ignore()
             self.activeList.setFocus()
@@ -780,20 +952,36 @@ class %s(QWidget, %s.%s, %s.%sClass):
             event.accept()
 
     @err_catcher(name=__name__)
-    def handleImportDrop(self, event):
+    def handleImportDrop(self, event: Any) -> None:
+        """Handle drop event for import tree widget.
+        
+        Args:
+            event: Drop event
+        """
         self.tw_import.origDropEvent(event)
         self.updateForeground()
         self.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def handleExportDrop(self, event):
+    def handleExportDrop(self, event: Any) -> None:
+        """Handle drop event for export tree widget.
+        
+        Args:
+            event: Drop event
+        """
         self.tw_export.origDropEvent(event)
         self.updateForeground()
         self.updateStateList()
         self.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def stateListToggled(self, widget, state):
+    def stateListToggled(self, widget: QWidget, state: bool) -> None:
+        """Handle state list visibility toggle.
+        
+        Args:
+            widget: Container widget
+            state: Visibility state
+        """
         for idx in reversed(range(widget.layout().count())):
             item = widget.layout().itemAt(idx)
             w = item.widget()
@@ -842,7 +1030,15 @@ QGroupBox::indicator:checked {
         widget.setStyleSheet(ssheet)
 
     @err_catcher(name=__name__)
-    def getStateTypes(self, listType=None):
+    def getStateTypes(self, listType: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get available state type definitions.
+        
+        Args:
+            listType: 'Import', 'Export', or None for all
+            
+        Returns:
+            List of state type definition dictionaries
+        """
         stateTypes = []
         stateNames = sorted(self.stateTypes.keys())
 
@@ -857,7 +1053,16 @@ QGroupBox::indicator:checked {
         return stateTypes
 
     @err_catcher(name=__name__)
-    def getStateMenu(self, listType=None, parentState=None):
+    def getStateMenu(self, listType: Optional[str] = None, parentState: Optional[Any] = None) -> QMenu:
+        """Create a context menu for creating states.
+        
+        Args:
+            listType: 'Import' or 'Export'
+            parentState: Parent folder state
+            
+        Returns:
+            QMenu with state creation actions
+        """
         if listType is None:
             listType = "Import" if self.activeList == self.tw_import else "Export"
 
@@ -883,7 +1088,7 @@ QGroupBox::indicator:checked {
         pmenu = QMenu("Presets", self)
         for preset in presets:
             exp = QAction(preset["name"], self)
-            exp.triggered.connect(lambda p=preset: self.loadStatePreset(p))
+            exp.triggered.connect(lambda state=None, p=preset: self.loadStatePreset(p))
             pmenu.addAction(exp)
 
         exp = QAction("< Save current states as preset >", self)
@@ -896,19 +1101,101 @@ QGroupBox::indicator:checked {
         return createMenu
 
     @err_catcher(name=__name__)
-    def loadStatePreset(self, preset):
+    def loadStatePreset(self, preset: Dict[str, Any]) -> None:
+        """Load and apply a state preset.
+        
+        Args:
+            preset: Preset configuration dictionary
+        """
+        ignoreImports = False
         if self.states:
-            msg = "Delete all existing states?"
-            result = self.core.popupQuestion(msg, buttons=["Yes", "No", "Cancel"])
-            if result == "Yes":
-                self = self.removeAllStates(quiet=True)
+            msg = "Do you want to add the preset to your existing states?"
+            chb_ignoreImports = QCheckBox("Ignore Import states")
+            chb_ignoreImports.setChecked(True)
+            msgBox = self.core.popupQuestion(
+                msg,
+                buttons=["Add States", "Replace States", "Cancel"],
+                widget=chb_ignoreImports,
+                doExec=False,
+            )
+            msgBox.exec_()
+            button = msgBox.clickedButton()
+            result = button.text() if button else None
+            ignoreImports = chb_ignoreImports.isChecked()
+            msgBox.deleteLater()
+            if result == "Replace States":
+                self.removeAllStates(quiet=True, exportStates=True, importStates=not ignoreImports)
             elif result == "Cancel":
                 return
 
-        self.loadStates(preset.get("states"))
+        states = preset.get("states")
+        if ignoreImports:
+            stateData = self.core.configs.readJson(data=states)
+            originalStates = stateData["states"]
+            filteredStates = [
+                s
+                for s in originalStates
+                if s.get("listtype") != "Import" and s.get("stateclass") not in ["ImportFile"]
+            ]
+            stateData["states"] = self.reindexStateParents(originalStates, filteredStates)
+            states = self.core.configs.writeJson(stateData)
+
+        self.core.getStateManager().loadStates(states)
 
     @err_catcher(name=__name__)
-    def saveStatePresetFromCurrent(self):
+    def reindexStateParents(self, originalStates: List[Dict[str, Any]], filteredStates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Reindex serialized state parent links after states were removed.
+
+        Args:
+            originalStates: Full serialized state list before filtering
+            filteredStates: Subset of states to keep
+
+        Returns:
+            filteredStates with adjusted ``stateparent``/``stateParent`` values
+        """
+        # Build old->new 1-based loadedStates index mapping.
+        # loadedStates is populated for every entry that has a "stateclass",
+        # in the order they appear.  "stateparent" stores a 1-based position
+        # into that list.
+        keptIds = {id(s) for s in filteredStates}
+        oldToNewIdx = {}  # old 1-based pos -> new 1-based pos
+        oldPos = 0
+        newPos = 0
+        for state in originalStates:
+            if not state.get("stateclass"):
+                continue
+            oldPos += 1
+            if id(state) in keptIds:
+                newPos += 1
+                oldToNewIdx[oldPos] = newPos
+
+        for state in filteredStates:
+            if not state.get("stateclass"):
+                continue
+
+            parentKey = "stateparent" if "stateparent" in state else "stateParent"
+            if parentKey not in state:
+                continue
+
+            parentVal = state.get(parentKey)
+            if parentVal in [None, "None", ""]:
+                state[parentKey] = "None"
+                continue
+
+            try:
+                parentIdx = int(parentVal)
+            except (TypeError, ValueError):
+                state[parentKey] = "None"
+                continue
+
+            newParentIdx = oldToNewIdx.get(parentIdx)
+            state[parentKey] = str(newParentIdx) if newParentIdx else "None"
+
+        return filteredStates
+
+    @err_catcher(name=__name__)
+    def saveStatePresetFromCurrent(self) -> None:
+        """Save current states as a new preset via settings dialog."""
         dlg = self.core.prismSettings(tab="States", settingsType="Project")
         states = self.getStateSettings()
         name = "preset_%s" % (len(dlg.w_project.gb_statePresets.items) + 1)
@@ -918,7 +1205,15 @@ QGroupBox::indicator:checked {
         item.e_name.setFocus()
 
     @err_catcher(name=__name__)
-    def getCurrentItem(self, widget):
+    def getCurrentItem(self, widget: QTreeWidget) -> Optional[Any]:
+        """Get currently selected item from tree widget.
+        
+        Args:
+            widget: Tree widget
+            
+        Returns:
+            Selected item or None
+        """
         items = widget.selectedItems()
         if not items:
             return
@@ -930,7 +1225,13 @@ QGroupBox::indicator:checked {
         return item
 
     @err_catcher(name=__name__)
-    def showStateMenu(self, listType=None, useSelection=False):
+    def showStateMenu(self, listType: Optional[str] = None, useSelection: bool = False) -> None:
+        """Show state creation context menu at cursor position.
+        
+        Args:
+            listType: 'Import' or 'Export'
+            useSelection: Whether to use selected parent state
+        """
         globalPos = QCursor.pos()
         parentState = None
         if useSelection:
@@ -949,7 +1250,13 @@ QGroupBox::indicator:checked {
         menu.exec_(globalPos)
 
     @err_catcher(name=__name__)
-    def rclTree(self, pos, activeList):
+    def rclTree(self, pos: Any, activeList: QTreeWidget) -> None:
+        """Show context menu for state tree widget.
+        
+        Args:
+            pos: Menu position
+            activeList: Active tree widget
+        """
         rcmenu = QMenu(self)
         idx = self.activeList.indexAt(pos)
         parentState = self.activeList.itemFromIndex(idx)
@@ -1045,16 +1352,34 @@ QGroupBox::indicator:checked {
     @err_catcher(name=__name__)
     def createState(
         self,
-        statetype,
-        parent=None,
-        node=None,
-        importPath=None,
-        stateData=None,
-        setActive=False,
-        renderer=None,
-        openProductsBrowser=None,
-        settings=None
-    ):
+        statetype: str,
+        parent: Optional[Any] = None,
+        node: Optional[Any] = None,
+        importPath: Optional[str] = None,
+        stateData: Optional[Dict[str, Any]] = None,
+        setActive: bool = False,
+        renderer: Optional[str] = None,
+        openProductsBrowser: Optional[bool] = None,
+        settings: Optional[Dict[str, Any]] = None,
+        applyDefaults: Optional[bool] = None,
+    ) -> Optional[Any]:
+        """Create a new state of the specified type.
+        
+        Args:
+            statetype: Type of state to create (e.g., 'ImportFile', 'Playblast')
+            parent: Parent state (for state hierarchy)
+            node: Node/object to associate with state
+            importPath: Path for import states
+            stateData: Saved state data to restore
+            setActive: If True, activate the state after creation
+            renderer: Renderer name for render states
+            openProductsBrowser: If True, open products browser
+            settings: Additional state settings
+            applyDefaults: If True, apply default settings
+            
+        Returns:
+            Created state instance or None if failed
+        """
         logger.debug("create state: %s" % statetype)
         if statetype not in self.stateTypes:
             logger.warning("invalid state type: %s" % statetype)
@@ -1087,7 +1412,7 @@ QGroupBox::indicator:checked {
         if settings is not None:
             kwargs["settings"] = settings
 
-        if item.ui.className == "Folder" and stateData is None:
+        if item.ui.className == "Folder" and (stateData is None or "listtype" not in stateData):
             if self.activeList == self.tw_import:
                 listType = "Import"
             else:
@@ -1132,8 +1457,11 @@ QGroupBox::indicator:checked {
         if statetype != "Folder":
             item.setFlags(item.flags() & ~Qt.ItemIsDropEnabled)
 
-        if not stateData:
-            self.applyDefaultStateSettings(item.ui)
+        if not stateData or applyDefaults is True:
+            if hasattr(item.ui, "initializeContextBasedSettings"):
+                item.ui.initializeContextBasedSettings()
+
+            self.applyDefaultStateSettings(item.ui, stateData)
 
         self.core.callback(
             name="onStateCreated", args=[self, item.ui], **{"stateData": stateData}
@@ -1153,35 +1481,75 @@ QGroupBox::indicator:checked {
         return item
 
     @err_catcher(name=__name__)
-    def applyDefaultStateSettings(self, state):
+    def applyDefaultStateSettings(self, state: Any, additionalSettings: Optional[Dict[str, Any]] = None) -> None:
+        """Apply default settings to a state based on context.
+        
+        Args:
+            state: State instance
+            additionalSettings: Additional settings to apply
+        """
         filepath = self.core.getCurrentFileName()
         data = self.core.getScenefileData(filepath)
+        stateSettings = {}
         settings = self.getDefaultStateSettingsForContext(state.className, data)
         if settings and settings.get("stateData"):
-            state.loadData(settings["stateData"])
+            stateSettings = copy.deepcopy(settings["stateData"])
+
+        if additionalSettings:
+            stateSettings.update(copy.deepcopy(additionalSettings))
+
+        if stateSettings:
+            state.loadData(stateSettings)
             return True
 
         return False
 
     @err_catcher(name=__name__)
-    def getDefaultStateSettingsForContext(self, typeName, context):
+    def getDefaultStateSettingsForContext(self, typeName: str, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Get default settings for state type in context.
+        
+        Args:
+            typeName: State type name
+            context: Context dictionary (asset/shot info)
+            
+        Returns:
+            Dictionary of default settings
+        """
         defaults = self.getStateDefaults(typeName)
         return self.core.entities.getItemMatchingContext(defaults, context)
 
     @err_catcher(name=__name__)
-    def getStateDefaults(self, typeName=None):
+    def getStateDefaults(self, typeName: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get state default settings from project config.
+        
+        Args:
+            typeName: State type name filter (optional)
+            
+        Returns:
+            List of default setting dictionaries
+        """
         presets = self.core.getConfig("studio", "stateDefaults", config="project") or []
         presets = [p for p in presets if p.get("name") == typeName or not typeName]
         return presets
 
     @err_catcher(name=__name__)
-    def getStatePresets(self):
+    def getStatePresets(self) -> List[Dict[str, Any]]:
+        """Get state presets from project config.
+        
+        Returns:
+            List of preset dictionaries
+        """
         presets = self.core.getConfig("studio", "statePresets", config="project") or []
         presets = [p for p in presets if p.get("name")]
         return presets
 
     @err_catcher(name=__name__)
-    def loadDefaultStates(self, quiet=False):
+    def loadDefaultStates(self, quiet: bool = False) -> None:
+        """Load default states for current scene context.
+        
+        Args:
+            quiet: If True, suppress confirmation dialogs
+        """
         filepath = self.core.getCurrentFileName()
         data = self.core.getScenefileData(filepath)
         preset = self.getDefaultStatePresetForContext(data)
@@ -1194,23 +1562,33 @@ QGroupBox::indicator:checked {
 
             return
 
-        self.loadStatePreset(self.core.getStateManager(), preset)
+        self.loadStatePreset(preset)
 
     @err_catcher(name=__name__)
-    def getDefaultStatePresetForContext(self, context):
+    def getDefaultStatePresetForContext(self, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Get default state preset matching scene context.
+        
+        Args:
+            context: Context dictionary with asset/shot info
+            
+        Returns:
+            Preset dictionary or None
+        """
         presets = self.getStatePresets()
         return self.core.entities.getItemMatchingContext(presets, context)
 
     @err_catcher(name=__name__)
-    def copyAllStates(self):
+    def copyAllStates(self) -> None:
+        """Copy all states to clipboard."""
         stateData = getattr(self.core.appPlugin, "sm_readStates", lambda x: None)(self)
 
-        cb = QClipboard()
+        cb = QApplication.clipboard()
         cb.setText(stateData)
 
     @err_catcher(name=__name__)
-    def pasteStates(self):
-        cb = QClipboard()
+    def pasteStates(self) -> None:
+        """Paste states from clipboard."""
+        cb = QApplication.clipboard()
         try:
             rawText = cb.text("plain")[0]
         except:
@@ -1228,7 +1606,8 @@ QGroupBox::indicator:checked {
         self.activeList.setFocus()
 
     @err_catcher(name=__name__)
-    def selectNextState(self):
+    def selectNextState(self) -> None:
+        """Select the next state in execution order."""
         states = self.getSelectedStates()
         if not states:
             return
@@ -1238,7 +1617,8 @@ QGroupBox::indicator:checked {
             self.selectState(state)
 
     @err_catcher(name=__name__)
-    def selectPreviousState(self):
+    def selectPreviousState(self) -> None:
+        """Select the previous state in execution order."""
         states = self.getSelectedStates()
         if not states:
             return
@@ -1248,26 +1628,47 @@ QGroupBox::indicator:checked {
             self.selectState(state)
 
     @err_catcher(name=__name__)
-    def removeAllStates(self, quiet=False):
+    def removeAllStates(self, quiet: bool = False, exportStates: bool = True, importStates: bool = True) -> None:
+        """Remove all states from State Manager.
+        
+        Args:
+            quiet: If True, skip confirmation dialog
+            exportStates: If True, export states before deletion
+            importStates: If True, import states after deletion
+        """
         if self.core.uiAvailable and not quiet:
             msg = "Are you sure you want to delete all states in the current scene?"
             result = self.core.popupQuestion(msg, buttons=["Yes", "Cancel"])
 
             if result == "Cancel":
                 return
-
-        self.core.appPlugin.sm_deleteStates(self)
-        return self.core.closeSM(restart=True)
+            
+        if exportStates and importStates:
+            self.core.appPlugin.sm_deleteStates(self)
+            self.core.closeSM(restart=True)
+        else:
+            for state in self.states[:]:
+                if (exportStates and state.ui.listType == "Export") or (importStates and state.ui.listType == "Import"):
+                    self.deleteState(state)
 
     @err_catcher(name=__name__)
-    def sortStates(self, states):
+    def sortStates(self, states: List[Any]) -> List[Any]:
+        """Sort states by their sort keys.
+        
+        Args:
+            states: List of state instances
+            
+        Returns:
+            Sorted list of states
+        """
         states = sorted(states, key=lambda x: getattr(x.ui, "getSortKey", lambda: "")() or "")
         for idx, state in enumerate(states[1:]):
             afterState = states[idx]
             self.moveStateAfterState(state, afterState)
 
     @err_catcher(name=__name__)
-    def copyState(self):
+    def copyState(self) -> None:
+        """Copy selected states to clipboard."""
         selStateData = [[s, None] for s in self.getSelectedStates()]
         self.appendChildStates(selStateData[len(selStateData) - 1][0], selStateData)
 
@@ -1282,11 +1683,12 @@ QGroupBox::indicator:checked {
 
         stateStr = self.core.configs.writeJson(stateData)
 
-        cb = QClipboard()
+        cb = QApplication.clipboard()
         cb.setText(stateStr)
 
     @err_catcher(name=__name__)
-    def renameState(self):
+    def renameState(self) -> None:
+        """Rename the selected state."""
         states = self.getSelectedStates()
         name = states[0].ui.e_name.text()
         dlg_ec = PrismWidgets.CreateItem(
@@ -1306,9 +1708,16 @@ QGroupBox::indicator:checked {
         newName = dlg_ec.e_item.text()
         for state in states:
             state.ui.e_name.setText(newName)
+            self.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def deleteState(self, state=None, **kwargs):
+    def deleteState(self, state: Optional[Any] = None, **kwargs: Any) -> None:
+        """Delete a state or selected states.
+        
+        Args:
+            state: State instance to delete, or None to delete selected
+            **kwargs: Additional arguments
+        """
         if state is None:
             items = self.getSelectedStates()
         else:
@@ -1373,7 +1782,8 @@ QGroupBox::indicator:checked {
         self.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def requestImportPaths(self):
+    def requestImportPaths(self) -> None:
+        """Request import paths from callbacks."""
         result = self.core.callback("requestImportPath", self)
         for res in result:
             if isinstance(res, dict) and res.get("importPaths") is not None:
@@ -1389,7 +1799,15 @@ QGroupBox::indicator:checked {
         return importPaths
 
     @err_catcher(name=__name__)
-    def createPressed(self, stateType, renderer=None, createEmptyState=None):
+    def createPressed(self, stateType: str, renderer: Optional[str] = None, 
+                      createEmptyState: Optional[bool] = None) -> None:
+        """Create a new state of specified type.
+        
+        Args:
+            stateType: State type name
+            renderer: Renderer name for render states
+            createEmptyState: Whether to create empty state
+        """
         curSel = self.getCurrentItem(self.activeList)
         if stateType == "Import":
             if (
@@ -1477,7 +1895,16 @@ QGroupBox::indicator:checked {
         self.activeList.setFocus()
 
     @err_catcher(name=__name__)
-    def importShotCam(self, shot=None, quiet=False):
+    def importShotCam(self, shot: Optional[Dict[str, Any]] = None, quiet: bool = False) -> bool:
+        """Import camera from a shot.
+        
+        Args:
+            shot: Shot dictionary (optional, prompts if None)
+            quiet: If True, skip dialogs
+
+        Returns:
+            True if shotcam was imported successfully, False otherwise
+        """
         self.saveEnabled = False
         for i in self.states:
             if i.ui.className == "ImportFile" and i.ui.taskName == "ShotCam":
@@ -1490,7 +1917,7 @@ QGroupBox::indicator:checked {
         else:
             if not shot:
                 fileName = self.core.getCurrentFileName()
-                fnameData = self.core.getScenefileData(fileName)
+                shot = self.core.getScenefileData(fileName)
                 if not (
                     os.path.exists(fileName)
                     and self.core.fileInPipeline(fileName)
@@ -1499,7 +1926,7 @@ QGroupBox::indicator:checked {
                     self.saveEnabled = True
                     return False
 
-                if fnameData.get("type") != "shot":
+                if shot.get("type") != "shot":
                     msgStr = "Shotcams are not supported for assets."
                     if not quiet:
                         self.core.popup(msgStr)
@@ -1508,8 +1935,8 @@ QGroupBox::indicator:checked {
                     return False
 
             if self.core.getConfig("globals", "productTasks", config="project"):
-                fnameData["department"] = os.getenv("PRISM_SHOTCAM_DEPARTMENT", "Layout")
-                fnameData["task"] = os.getenv("PRISM_SHOTCAM_TASK", "Cameras")
+                shot["department"] = os.getenv("PRISM_SHOTCAM_DEPARTMENT", "Layout")
+                shot["task"] = os.getenv("PRISM_SHOTCAM_TASK", "Cameras")
 
             filepath = self.core.products.getLatestVersionpathFromProduct(
                 "_ShotCam", entity=shot
@@ -1537,14 +1964,25 @@ QGroupBox::indicator:checked {
         self.activeList.setFocus()
         self.saveEnabled = True
         self.saveStatesToScene()
+        return True
 
-    def enterEvent(self, event):
+    def enterEvent(self, event: Any) -> None:
+        """Handle mouse enter event.
+        
+        Args:
+            event: Enter event
+        """
         try:
             QApplication.restoreOverrideCursor()
         except:
             pass
 
-    def showEvent(self, event):
+    def showEvent(self, event: Any) -> None:
+        """Handle window show event.
+        
+        Args:
+            event: Show event
+        """
         for state in self.states:
             state.ui.updateUi()
 
@@ -1553,7 +1991,12 @@ QGroupBox::indicator:checked {
         self.core.callback("onStateManagerShow", args=[self])
 
     @err_catcher(name=__name__)
-    def loadStates(self, stateText=None):
+    def loadStates(self, stateText: Optional[str] = None) -> None:
+        """Load states from scene or text data.
+        
+        Args:
+            stateText: JSON string with state data (optional)
+        """
         if self.standalone and not stateText:
             return False
 
@@ -1593,7 +2036,10 @@ QGroupBox::indicator:checked {
                 else:
                     stateParent = None
                     if i["stateparent"] != "None":
-                        stateParent = loadedStates[int(i["stateparent"]) - 1]
+                        parentIdx = int(i["stateparent"]) - 1
+                        if parentIdx < len(loadedStates):
+                            stateParent = loadedStates[parentIdx]
+
                     state = self.createState(
                         i["stateclass"], parent=stateParent, stateData=i
                     )
@@ -1605,7 +2051,12 @@ QGroupBox::indicator:checked {
         self.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def loadSettings(self, data):
+    def loadSettings(self, data: Dict[str, Any]) -> None:
+        """Load State Manager settings.
+        
+        Args:
+            data: Settings dictionary
+        """
         if "comment" in data:
             self.e_comment.setText(data["comment"])
         if "description" in data:
@@ -1616,7 +2067,12 @@ QGroupBox::indicator:checked {
                 self.b_description.setStyleSheet(self.styleExists)
 
     @err_catcher(name=__name__)
-    def getSettings(self):
+    def getSettings(self) -> Dict[str, Any]:
+        """Get State Manager settings for saving.
+        
+        Returns:
+            Dictionary with StateManager settings
+        """
         stateProps = {}
         stateProps.update(
             {
@@ -1628,7 +2084,12 @@ QGroupBox::indicator:checked {
         return stateProps
 
     @err_catcher(name=__name__)
-    def saveStatesToScene(self, param=None):
+    def saveStatesToScene(self, param: Optional[Any] = None) -> None:
+        """Save states to the current scene file.
+        
+        Args:
+            param: Optional parameter
+        """
         if not self.saveEnabled:
             return False
 
@@ -1640,7 +2101,12 @@ QGroupBox::indicator:checked {
         getattr(self.core.appPlugin, "sm_saveStates", lambda x, y: None)(self, stateStr)
 
     @err_catcher(name=__name__)
-    def getStateSettings(self):
+    def getStateSettings(self) -> List[Any]:
+        """Get all state settings for saving.
+        
+        Returns:
+            List of state data dictionaries
+        """
         self.stateData = []
         for i in range(self.tw_import.topLevelItemCount()):
             self.stateData.append([self.tw_import.topLevelItem(i), None])
@@ -1697,7 +2163,8 @@ QGroupBox::indicator:checked {
         return stateStr
 
     @err_catcher(name=__name__)
-    def saveImports(self):
+    def saveImports(self) -> None:
+        """Save import states to scene."""
         if not self.saveEnabled:
             return False
 
@@ -1708,7 +2175,8 @@ QGroupBox::indicator:checked {
         getattr(self.core.appPlugin, "sm_saveImports", lambda x, y: None)(self, importPaths)
 
     @err_catcher(name=__name__)
-    def updateAllImportStates(self):
+    def updateAllImportStates(self) -> None:
+        """Update all import states to latest versions."""
         for state in self.states:
             if state.ui.listType != "Import":
                 continue
@@ -1738,7 +2206,18 @@ QGroupBox::indicator:checked {
                 state.ui.importLatest(refreshUi=False)
 
     @err_catcher(name=__name__)
-    def getFilePaths(self, item, paths=[]):
+    def getFilePaths(self, item: Any, paths: Optional[List[str]] = None) -> List[str]:
+        """Get file paths from tree widget item.
+        
+        Args:
+            item: Tree widget item
+            paths: Accumulated paths list
+            
+        Returns:
+            List of file paths
+        """
+        if paths is None:
+            paths = []
         if (
             hasattr(item, "ui")
             and item.ui.className != "Folder"
@@ -1751,14 +2230,25 @@ QGroupBox::indicator:checked {
         return paths
 
     @err_catcher(name=__name__)
-    def appendChildStates(self, state, stateList):
+    def appendChildStates(self, state: Any, stateList: List[Any]) -> None:
+        """Append state and child states to list recursively.
+        
+        Args:
+            state: Parent state
+            stateList: List to append to
+        """
         stateNum = len(stateList)
         for i in range(state.childCount()):
             stateList.append([state.child(i), stateNum])
             self.appendChildStates(state.child(i), stateList)
 
     @err_catcher(name=__name__)
-    def onImportContextMenuRequested(self, pos=None):
+    def onImportContextMenuRequested(self, pos: Optional[Any] = None) -> None:
+        """Show context menu for import states.
+        
+        Args:
+            pos: Menu position (unused, uses cursor position)
+        """
         pos = QCursor.pos()
         menu = QMenu(self)
         actSet = QAction("Import Product...", self)
@@ -1776,7 +2266,12 @@ QGroupBox::indicator:checked {
         menu.exec_(pos)
 
     @err_catcher(name=__name__)
-    def commentChanged(self, text):
+    def commentChanged(self, text: str) -> None:
+        """Handle publish comment text change.
+        
+        Args:
+            text: New comment text
+        """
         required = self.core.getConfig("globals", "requirePublishComment", config="project", dft=True)
         if required:
             minLength = self.core.getConfig("globals", "publishCommentLength", config="project", dft=3)
@@ -1795,7 +2290,8 @@ QGroupBox::indicator:checked {
             )
 
     @err_catcher(name=__name__)
-    def showDescription(self):
+    def showDescription(self) -> None:
+        """Show dialog to edit publish description."""
         descriptionDlg = PrismWidgets.EnterText()
         descriptionDlg.buttonBox.removeButton(descriptionDlg.buttonBox.buttons()[1])
         descriptionDlg.setModal(True)
@@ -1813,7 +2309,8 @@ QGroupBox::indicator:checked {
         self.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def getPreview(self):
+    def getPreview(self) -> None:
+        """Capture a preview screenshot for publish."""
         from PrismUtils import ScreenShot
 
         self.setHidden(True)
@@ -1828,7 +2325,12 @@ QGroupBox::indicator:checked {
             self.b_preview.setStyleSheet(self.styleExists)
 
     @err_catcher(name=__name__)
-    def clearDescription(self, pos=None):
+    def clearDescription(self, pos: Optional[Any] = None) -> None:
+        """Clear the publish description.
+        
+        Args:
+            pos: Position (unused)
+        """
         self.description = ""
         self.b_description.setStyleSheet(self.styleMissing)
         if hasattr(self, "detailWin") and self.detailWin.isVisible():
@@ -1836,14 +2338,25 @@ QGroupBox::indicator:checked {
         self.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def clearPreview(self, pos=None):
+    def clearPreview(self, pos: Optional[Any] = None) -> None:
+        """Clear the preview image.
+        
+        Args:
+            pos: Position (unused)
+        """
         self.previewImg = None
         self.b_preview.setStyleSheet(self.styleMissing)
         if hasattr(self, "detailWin") and self.detailWin.isVisible():
             self.detailWin.close()
 
     @err_catcher(name=__name__)
-    def detailMoveEvent(self, event, table):
+    def detailMoveEvent(self, event: Any, table: str) -> None:
+        """Handle mouse move for detail preview popup.
+        
+        Args:
+            event: Mouse event
+            table: Table identifier ('d' for description, 'p' for preview)
+        """
         self.showDetailWin(event, table)
         if hasattr(self, "detailWin") and self.detailWin.isVisible():
             self.detailWin.move(
@@ -1851,7 +2364,13 @@ QGroupBox::indicator:checked {
             )
 
     @err_catcher(name=__name__)
-    def showDetailWin(self, event, detailType):
+    def showDetailWin(self, event: Any, detailType: str) -> None:
+        """Show detail preview window.
+        
+        Args:
+            event: Mouse event
+            detailType: 'd' for description, 'p' for preview
+        """
         if detailType == "d":
             detail = self.description
         elif detailType == "p":
@@ -1903,17 +2422,38 @@ QGroupBox::indicator:checked {
             self.detailWin.show()
 
     @err_catcher(name=__name__)
-    def detailLeaveEvent(self, event, table):
+    def detailLeaveEvent(self, event: Any, table: str) -> None:
+        """Handle mouse leave for detail windows.
+        
+        Args:
+            event: Mouse event
+            table: Table identifier
+        """
         if hasattr(self, "detailWin") and self.detailWin.isVisible():
             self.detailWin.close()
 
     @err_catcher(name=__name__)
-    def detailFocusOutEvent(self, event, table):
+    def detailFocusOutEvent(self, event: Any, table: str) -> None:
+        """Handle focus out for detail windows.
+        
+        Args:
+            event: Focus event
+            table: Table identifier
+        """
         if hasattr(self, "detailWin") and self.detailWin.isVisible():
             self.detailWin.close()
 
     @err_catcher(name=__name__)
-    def getImportStateOrder(self, par=None, stateOrder=None):
+    def getImportStateOrder(self, par: Optional[Any] = None, stateOrder: Optional[List[Any]] = None) -> List[Any]:
+        """Get import states in execution order.
+        
+        Args:
+            par: Parent item
+            stateOrder: Accumulated order list
+            
+        Returns:
+            List of states in order
+        """
         if not par:
             par = self.tw_import.invisibleRootItem()
 
@@ -1926,7 +2466,16 @@ QGroupBox::indicator:checked {
         return stateOrder
 
     @err_catcher(name=__name__)
-    def getStateExecutionOrder(self, par=None, stateOrder=None):
+    def getStateExecutionOrder(self, par: Optional[Any] = None, stateOrder: Optional[List[Any]] = None) -> List[Any]:
+        """Get export states in execution order.
+        
+        Args:
+            par: Parent item
+            stateOrder: Accumulated order list
+            
+        Returns:
+            List of states in order
+        """
         if not par:
             par = self.tw_export.invisibleRootItem()
 
@@ -1939,7 +2488,15 @@ QGroupBox::indicator:checked {
         return stateOrder
 
     @err_catcher(name=__name__)
-    def getStateBeforeState(self, state):
+    def getStateBeforeState(self, state: Any) -> Optional[Any]:
+        """Get the state immediately before given state in execution order.
+        
+        Args:
+            state: Reference state
+            
+        Returns:
+            Previous state or None
+        """
         if state.ui.listType == "Import":
             stateOrder = self.getImportStateOrder()
         else:
@@ -1953,7 +2510,15 @@ QGroupBox::indicator:checked {
         return state
 
     @err_catcher(name=__name__)
-    def getStateAfterState(self, state):
+    def getStateAfterState(self, state: Any) -> Optional[Any]:
+        """Get the state immediately after given state in execution order.
+        
+        Args:
+            state: Reference state
+            
+        Returns:
+            Next state or None
+        """
         if state.ui.listType == "Import":
             stateOrder = self.getImportStateOrder()
         else:
@@ -1967,7 +2532,13 @@ QGroupBox::indicator:checked {
         return state
 
     @err_catcher(name=__name__)
-    def moveStateBeforeState(self, state, beforeState):
+    def moveStateBeforeState(self, state: Any, beforeState: Any) -> None:
+        """Move a state to position before another state.
+        
+        Args:
+            state: State to move
+            beforeState: Target state to insert before
+        """
         par = state.parent()
         listWidget = self.tw_import if state.ui.listType == "Import" else self.tw_export
         if not par:
@@ -1981,7 +2552,13 @@ QGroupBox::indicator:checked {
         par.insertChild(par.indexOfChild(beforeState), state)
 
     @err_catcher(name=__name__)
-    def moveStateAfterState(self, state, afterState):
+    def moveStateAfterState(self, state: Any, afterState: Any) -> None:
+        """Move a state to position after another state.
+        
+        Args:
+            state: State to move
+            afterState: Target state to insert after
+        """
         par = state.parent()
         listWidget = self.tw_import if state.ui.listType == "Import" else self.tw_export
         if not par:
@@ -1995,7 +2572,15 @@ QGroupBox::indicator:checked {
         par.insertChild(par.indexOfChild(afterState)+1, state)
 
     @err_catcher(name=__name__)
-    def getChildStates(self, state):
+    def getChildStates(self, state: Any) -> List[Any]:
+        """Get all child states recursively.
+        
+        Args:
+            state: Parent state
+            
+        Returns:
+            List including state and all descendants
+        """
         states = [state]
 
         for i in range(state.childCount()):
@@ -2006,25 +2591,50 @@ QGroupBox::indicator:checked {
         return states
 
     @err_catcher(name=__name__)
-    def getVersionUpAfterPublish(self):
+    def getVersionUpAfterPublish(self) -> bool:
+        """Check if version up should happen after publish.
+        
+        Returns:
+            True if PRISM_VERSION_UP_AFTER_PUBLISH environment variable is set
+        """
         return os.getenv("PRISM_VERSION_UP_AFTER_PUBLISH", "0") == "1"
 
     @err_catcher(name=__name__)
     def publish(
         self,
-        executeState=False,
-        continuePublish=False,
-        useVersion="next",
-        states=None,
-        successPopup=True,
-        saveScene=None,
-        incrementScene=None,
-        sanityChecks=True,
-        versionWarning=True,
-        currentSceneWaring=True,
-        dependencies=None,
-        comment=None,
-    ):
+        executeState: bool = False,
+        continuePublish: bool = False,
+        useVersion: str = "next",
+        states: Optional[List[Any]] = None,
+        successPopup: bool = True,
+        saveScene: Optional[bool] = None,
+        incrementScene: Optional[bool] = None,
+        sanityChecks: bool = True,
+        versionWarning: bool = True,
+        currentSceneWaring: bool = True,
+        dependencies: Optional[List[Any]] = None,
+        comment: Optional[str] = None,
+    ) -> bool:
+        """Execute publish operation for export/render states.
+        
+        Args:
+            executeState: If True, execute the state
+            continuePublish: If True, skip validation checks
+            useVersion: Version mode ('next', 'current', specific version)
+            states: List of specific states to publish (default: all enabled exports/renders)
+            successPopup: If True, show success popup
+            saveScene: If True, save scene before publishing
+            incrementScene: If True, increment scene version after publishing
+            sanityChecks: If True, run sanity checks
+            versionWarning: If True, warn about version mismatches
+            currentSceneWaring: If True, warn if scene not current
+            dependencies: List of dependencies for the publish operation
+            comment: Optional comment for the publish operation
+            
+        Returns:
+            True if publish succeeded
+        """
+
         if self.publishPaused and not continuePublish:
             return
 
@@ -2086,7 +2696,7 @@ QGroupBox::indicator:checked {
                 if result == "Cancel":
                     return
 
-            if sanityChecks:
+            if sanityChecks and os.getenv("PRISM_RUN_PUBLISH_CHECKS", "1") == "1":
                 sanityResult = self.runSantityChecks(executeState)
                 if not sanityResult:
                     return
@@ -2157,14 +2767,25 @@ QGroupBox::indicator:checked {
                     return
 
         if executeState:
-            self.pubMsg = self.core.waitPopup(self.core, "")
+            text = 'Executing states - please wait..'
+            self.pubMsg = self.core.waitPopup(self.core, text)
             with self.pubMsg as pubMsg:
                 for i in range(self.tw_export.topLevelItemCount()):
                     curUi = self.tw_export.topLevelItem(i).ui
                     if curUi.className == "Folder" or id(curUi.state) in set([id(s) for s in self.execStates]):
                         text = 'Executing "%s" - please wait..' % curUi.state.text(0)
                         if pubMsg.msg:
-                            pubMsg.msg.setText(text)            
+                            pubMsg.msg.setText(text)
+                            pubMsg.msg.adjustSize()
+                            screenGeo = QApplication.primaryScreen().availableGeometry()
+                            pubMsg.msg.setGeometry(
+                                QStyle.alignedRect(
+                                    Qt.LeftToRight,
+                                    Qt.AlignCenter,
+                                    pubMsg.msg.size(),
+                                    screenGeo,
+                                )
+                            )
                             QApplication.processEvents()
 
                         self.curExecutedState = curUi
@@ -2313,7 +2934,13 @@ QGroupBox::indicator:checked {
         return result
 
     @err_catcher(name=__name__)
-    def showLastPathMenu(self, state, msgToClose=None):
+    def showLastPathMenu(self, state: Any, msgToClose: Optional[Any] = None) -> None:
+        """Show menu with output path options.
+        
+        Args:
+            state: State with output paths
+            msgToClose: Message widget to close when option selected
+        """
         options = getattr(state, "getLastPathOptions", lambda: None)()
         kwargs = {"stateManager": self, "state": state, "options": options}
         self.core.callback(name="onGetLastPathOptions", **kwargs)
@@ -2329,11 +2956,22 @@ QGroupBox::indicator:checked {
         menu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def onOutputOptionsClicked(self, msg):
+    def onOutputOptionsClicked(self, msg: Any) -> None:
+        """Handle output options button click.
+        
+        Args:
+            msg: Message widget
+        """
         self.showLastPathMenu(self.publishResult[0]["state"], msgToClose=msg)
 
     @err_catcher(name=__name__)
-    def onshowLastPathMenuTriggered(self, option, msgToClose=None):
+    def onshowLastPathMenuTriggered(self, option: Dict[str, Any], msgToClose: Optional[Any] = None) -> None:
+        """Handle selection from last path menu.
+        
+        Args:
+            option: Selected option dictionary
+            msgToClose: Message widget to close
+        """
         if msgToClose:
             msgToClose.close()
             msgToClose.deleteLater()
@@ -2344,7 +2982,15 @@ QGroupBox::indicator:checked {
         self.lastPathActionTimer.start(100)
 
     @err_catcher(name=__name__)
-    def runSantityChecks(self, executeState):
+    def runSantityChecks(self, executeState: bool) -> List[Dict[str, Any]]:
+        """Run sanity checks before state execution.
+        
+        Args:
+            executeState: Whether to execute state warnings/errors
+            
+        Returns:
+            List of check result dictionaries
+        """
         result = []
         extResult = getattr(self.core.appPlugin, "sm_getExternalFiles", lambda x: None)(self)
         if extResult is not None:
@@ -2543,7 +3189,15 @@ QGroupBox::indicator:checked {
         return True
 
     @err_catcher(name=__name__)
-    def getFrameRangeTypeToolTip(self, rangeType):
+    def getFrameRangeTypeToolTip(self, rangeType: str) -> str:
+        """Get tooltip for frame range type.
+        
+        Args:
+            rangeType: Frame range type identifier
+            
+        Returns:
+            Tooltip text
+        """
         tt = ""
         if rangeType == "Scene":
             tt = "The framerange from the timeline in the currently open scenefile is used."
@@ -2586,14 +3240,29 @@ No frame will be rendered twice. This makes it easier to spot problems in the se
         return tt
 
     @err_catcher(name=__name__)
-    def getStateProps(self):
+    def getStateProps(self) -> Dict[str, Any]:
+        """Get state properties dictionary.
+        
+        Returns:
+            Dictionary with state properties
+        """
         return {
             "comment": self.e_comment.text(),
             "description": self.description,
         }
 
     @err_catcher(name=__name__)
-    def importFile(self, path, activateWindow=True, settings=None):
+    def importFile(self, path: str, activateWindow: bool = True, settings: Optional[Dict[str, Any]] = None) -> bool:
+        """Import a file into the scene.
+        
+        Args:
+            path: File path to import
+            activateWindow: Whether to activate State Manager window
+            settings: Import settings dictionary
+            
+        Returns:
+            True if import successful
+        """
         if not path:
             return
 
@@ -2613,11 +3282,32 @@ No frame will be rendered twice. This makes it easier to spot problems in the se
 
 
 class ImportDelegate(QStyledItemDelegate):
-    def __init__(self, stateManager):
+    """Custom delegate for import state tree widget items.
+    
+    Renders state type icons next to state names.
+    
+    Attributes:
+        stateManager: Parent StateManager instance
+        widget: Import tree widget
+    """
+    
+    def __init__(self, stateManager: Any) -> None:
+        """Initialize the import delegate.
+        
+        Args:
+            stateManager: Parent StateManager instance
+        """
         super(ImportDelegate, self).__init__()
         self.stateManager = stateManager
 
-    def paint(self, painterQPainter, optionQStyleOptionViewItem, indexQModelIndex):
+    def paint(self, painterQPainter: Any, optionQStyleOptionViewItem: Any, indexQModelIndex: Any) -> None:
+        """Paint the import state item with type icon.
+        
+        Args:
+            painterQPainter: QPainter instance
+            optionQStyleOptionViewItem: Style options
+            indexQModelIndex: Model index
+        """
         QStyledItemDelegate.paint(
             self, painterQPainter, optionQStyleOptionViewItem, indexQModelIndex
         )
@@ -2634,7 +3324,20 @@ class ImportDelegate(QStyledItemDelegate):
         painterQPainter.fillRect(rect, QBrush(item.ui.statusColor))
 
 
-def getStateWindow(core, stateType, settings=None, connectBBox=True, parent=None):
+def getStateWindow(core: Any, stateType: str, settings: Optional[Dict[str, Any]] = None, 
+                   connectBBox: bool = True, parent: Optional[Any] = None) -> Optional[QDialog]:
+    """Create a standalone state settings window.
+    
+    Args:
+        core: Prism core instance
+        stateType: State type name
+        settings: Initial state settings
+        connectBBox: Whether to connect button box
+        parent: Parent widget
+        
+    Returns:
+        QDialog with state UI, or None if state type not found
+    """
     settings = settings or None
     #  stateNameBase = stateType.replace(stateType.split("_", 1)[0] + "_", "")
     sm = StateManager(core, forceStates=[stateType], standalone=True)
@@ -2666,7 +3369,17 @@ def getStateWindow(core, stateType, settings=None, connectBBox=True, parent=None
     return dlg_settings
 
 
-def openStateSettings(core, stateType, settings=None):
+def openStateSettings(core: Any, stateType: str, settings: Optional[Dict[str, Any]] = None) -> Optional[Any]:
+    """Open state settings dialog.
+    
+    Args:
+        core: Prism core instance
+        stateType: State type name
+        settings: Initial state settings
+        
+    Returns:
+        Result from dialog execution
+    """
     dlg_settings = getStateWindow(stateType, settings)
     action = dlg_settings.exec_()
 
@@ -2680,7 +3393,13 @@ class EntityDlg(QDialog):
 
     entitySelected = Signal(object)
 
-    def __init__(self, origin, parent=None):
+    def __init__(self, origin: Any, parent: Optional[QWidget] = None) -> None:
+        """Initialize EntityDlg for entity selection.
+        
+        Args:
+            origin: Origin widget (typically a state)
+            parent: Parent dialog. Defaults to None.
+        """
         super(EntityDlg, self).__init__()
         self.origin = origin
         self.parentDlg = parent
@@ -2688,7 +3407,8 @@ class EntityDlg(QDialog):
         self.setupUi()
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Create and configure the dialog UI."""
         title = "Select entity"
 
         self.setWindowTitle(title)
@@ -2715,11 +3435,22 @@ class EntityDlg(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def itemDoubleClicked(self, item, column):
+    def itemDoubleClicked(self, item: Any, column: int) -> None:
+        """Handle entity item double-click.
+        
+        Args:
+            item: Tree widget item
+            column: Column index
+        """
         self.buttonClicked("select")
 
     @err_catcher(name=__name__)
-    def buttonClicked(self, button):
+    def buttonClicked(self, button: Union[str, Any]) -> None:
+        """Handle button click.
+        
+        Args:
+            button: Button object or string identifier
+        """
         if button == "select" or button.text() == "Select":
             entities = self.w_entities.getCurrentData()
             if isinstance(entities, dict):
@@ -2742,5 +3473,10 @@ class EntityDlg(QDialog):
         self.close()
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Provide size hint for dialog.
+        
+        Returns:
+            QSize of (400, 400)
+        """
         return QSize(400, 400)

@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'ProjectSettings.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.9.0
+## Created by: Qt User Interface Compiler version 6.8.3
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -22,22 +22,22 @@ class Ui_dlg_ProjectSettings(object):
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(dlg_ProjectSettings.sizePolicy().hasHeightForWidth())
         dlg_ProjectSettings.setSizePolicy(sizePolicy)
-        dlg_ProjectSettings.setFocusPolicy(Qt.NoFocus)
+        dlg_ProjectSettings.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.verticalLayout = QVBoxLayout(dlg_ProjectSettings)
         self.verticalLayout.setSpacing(20)
         self.verticalLayout.setObjectName(u"verticalLayout")
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
         self.splitter = QSplitter(dlg_ProjectSettings)
         self.splitter.setObjectName(u"splitter")
-        self.splitter.setOrientation(Qt.Horizontal)
+        self.splitter.setOrientation(Qt.Orientation.Horizontal)
         self.lw_categories = QListWidget(self.splitter)
         self.lw_categories.setObjectName(u"lw_categories")
-        self.lw_categories.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.lw_categories.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.lw_categories.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.lw_categories.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.splitter.addWidget(self.lw_categories)
         self.tw_settings = QTabWidget(self.splitter)
         self.tw_settings.setObjectName(u"tw_settings")
-        self.tw_settings.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tw_settings.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tab_general = QWidget()
         self.tab_general.setObjectName(u"tab_general")
         self.verticalLayout_2 = QVBoxLayout(self.tab_general)
@@ -47,7 +47,7 @@ class Ui_dlg_ProjectSettings(object):
         self.sa_general.setWidgetResizable(True)
         self.w_saGeneralContent = QWidget()
         self.w_saGeneralContent.setObjectName(u"w_saGeneralContent")
-        self.w_saGeneralContent.setGeometry(QRect(0, 0, 639, 739))
+        self.w_saGeneralContent.setGeometry(QRect(0, -183, 644, 849))
         self.verticalLayout_8 = QVBoxLayout(self.w_saGeneralContent)
         self.verticalLayout_8.setObjectName(u"verticalLayout_8")
         self.verticalLayout_8.setContentsMargins(0, 0, 0, 0)
@@ -122,8 +122,8 @@ class Ui_dlg_ProjectSettings(object):
         sizePolicy1.setHeightForWidth(self.l_preview.sizePolicy().hasHeightForWidth())
         self.l_preview.setSizePolicy(sizePolicy1)
         self.l_preview.setMinimumSize(QSize(300, 169))
-        self.l_preview.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.l_preview.setAlignment(Qt.AlignCenter)
+        self.l_preview.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.l_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.horizontalLayout.addWidget(self.l_preview)
 
@@ -539,7 +539,7 @@ class Ui_dlg_ProjectSettings(object):
 
         self.b_reqPlugins = QToolButton(self.w_reqPlugins)
         self.b_reqPlugins.setObjectName(u"b_reqPlugins")
-        self.b_reqPlugins.setArrowType(Qt.DownArrow)
+        self.b_reqPlugins.setArrowType(Qt.ArrowType.DownArrow)
 
         self.gridLayout_2.addWidget(self.b_reqPlugins, 0, 3, 1, 1)
 
@@ -550,6 +550,35 @@ class Ui_dlg_ProjectSettings(object):
 
 
         self.verticalLayout_9.addWidget(self.w_reqPlugins)
+
+        self.w_disabledPlugins = QWidget(self.w_prjSettings)
+        self.w_disabledPlugins.setObjectName(u"w_disabledPlugins")
+        self.gridLayout_6 = QGridLayout(self.w_disabledPlugins)
+        self.gridLayout_6.setObjectName(u"gridLayout_6")
+        self.gridLayout_6.setContentsMargins(0, 0, 0, 0)
+        self.horizontalSpacer_28 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.gridLayout_6.addItem(self.horizontalSpacer_28, 0, 1, 1, 1)
+
+        self.e_disabledPlugins = QLineEdit(self.w_disabledPlugins)
+        self.e_disabledPlugins.setObjectName(u"e_disabledPlugins")
+        self.e_disabledPlugins.setMinimumSize(QSize(300, 0))
+
+        self.gridLayout_6.addWidget(self.e_disabledPlugins, 0, 2, 1, 1)
+
+        self.b_disabledPlugins = QToolButton(self.w_disabledPlugins)
+        self.b_disabledPlugins.setObjectName(u"b_disabledPlugins")
+        self.b_disabledPlugins.setArrowType(Qt.ArrowType.DownArrow)
+
+        self.gridLayout_6.addWidget(self.b_disabledPlugins, 0, 3, 1, 1)
+
+        self.l_disabledPlugins = QLabel(self.w_disabledPlugins)
+        self.l_disabledPlugins.setObjectName(u"l_disabledPlugins")
+
+        self.gridLayout_6.addWidget(self.l_disabledPlugins, 0, 0, 1, 1)
+
+
+        self.verticalLayout_9.addWidget(self.w_disabledPlugins)
 
         self.w_expectedPrjPath = QWidget(self.w_prjSettings)
         self.w_expectedPrjPath.setObjectName(u"w_expectedPrjPath")
@@ -578,6 +607,51 @@ class Ui_dlg_ProjectSettings(object):
 
 
         self.verticalLayout_9.addWidget(self.w_expectedPrjPath)
+
+        self.w_defaultImportStateName = QWidget(self.w_prjSettings)
+        self.w_defaultImportStateName.setObjectName(u"w_defaultImportStateName")
+        self.gridLayout_defaultImportStateName = QGridLayout(self.w_defaultImportStateName)
+        self.gridLayout_defaultImportStateName.setObjectName(u"gridLayout_defaultImportStateName")
+        self.gridLayout_defaultImportStateName.setContentsMargins(0, 0, 0, 0)
+        self.horizontalSpacer_defaultImportStateName = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.gridLayout_defaultImportStateName.addItem(self.horizontalSpacer_defaultImportStateName, 0, 1, 1, 1)
+
+        self.e_defaultImportStateName = QLineEdit(self.w_defaultImportStateName)
+        self.e_defaultImportStateName.setObjectName(u"e_defaultImportStateName")
+        self.e_defaultImportStateName.setMinimumSize(QSize(300, 0))
+
+        self.gridLayout_defaultImportStateName.addWidget(self.e_defaultImportStateName, 0, 2, 1, 1)
+
+        self.l_defaultImportStateName = QLabel(self.w_defaultImportStateName)
+        self.l_defaultImportStateName.setObjectName(u"l_defaultImportStateName")
+
+        self.gridLayout_defaultImportStateName.addWidget(self.l_defaultImportStateName, 0, 0, 1, 1)
+
+
+        self.verticalLayout_9.addWidget(self.w_defaultImportStateName)
+
+        self.w_manageProductTags = QWidget(self.w_prjSettings)
+        self.w_manageProductTags.setObjectName(u"w_manageProductTags")
+        self.horizontalLayout_manageProductTags = QHBoxLayout(self.w_manageProductTags)
+        self.horizontalLayout_manageProductTags.setObjectName(u"horizontalLayout_manageProductTags")
+        self.horizontalLayout_manageProductTags.setContentsMargins(0, 0, 0, 0)
+        self.l_manageProductTags = QLabel(self.w_manageProductTags)
+        self.l_manageProductTags.setObjectName(u"l_manageProductTags")
+
+        self.horizontalLayout_manageProductTags.addWidget(self.l_manageProductTags)
+
+        self.horizontalSpacer_manageProductTags = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_manageProductTags.addItem(self.horizontalSpacer_manageProductTags)
+
+        self.b_manageProductTags = QPushButton(self.w_manageProductTags)
+        self.b_manageProductTags.setObjectName(u"b_manageProductTags")
+
+        self.horizontalLayout_manageProductTags.addWidget(self.b_manageProductTags)
+
+
+        self.verticalLayout_9.addWidget(self.w_manageProductTags)
 
         self.widget_15 = QWidget(self.w_prjSettings)
         self.widget_15.setObjectName(u"widget_15")
@@ -652,12 +726,12 @@ class Ui_dlg_ProjectSettings(object):
         sizePolicy2.setVerticalStretch(10)
         sizePolicy2.setHeightForWidth(self.tw_assetDepartments.sizePolicy().hasHeightForWidth())
         self.tw_assetDepartments.setSizePolicy(sizePolicy2)
-        self.tw_assetDepartments.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.tw_assetDepartments.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.tw_assetDepartments.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.tw_assetDepartments.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.tw_assetDepartments.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.tw_assetDepartments.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.tw_assetDepartments.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tw_assetDepartments.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tw_assetDepartments.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.tw_assetDepartments.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tw_assetDepartments.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.tw_assetDepartments.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.tw_assetDepartments.setCornerButtonEnabled(False)
         self.tw_assetDepartments.setColumnCount(2)
         self.tw_assetDepartments.horizontalHeader().setHighlightSections(False)
@@ -700,10 +774,10 @@ class Ui_dlg_ProjectSettings(object):
         sizePolicy3.setVerticalStretch(3)
         sizePolicy3.setHeightForWidth(self.lw_taskPresetsAsset.sizePolicy().hasHeightForWidth())
         self.lw_taskPresetsAsset.setSizePolicy(sizePolicy3)
-        self.lw_taskPresetsAsset.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.lw_taskPresetsAsset.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.lw_taskPresetsAsset.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.lw_taskPresetsAsset.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.lw_taskPresetsAsset.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.lw_taskPresetsAsset.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.lw_taskPresetsAsset.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.lw_taskPresetsAsset.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
 
         self.verticalLayout_5.addWidget(self.lw_taskPresetsAsset)
 
@@ -737,12 +811,12 @@ class Ui_dlg_ProjectSettings(object):
         self.tw_shotDepartments.setObjectName(u"tw_shotDepartments")
         sizePolicy2.setHeightForWidth(self.tw_shotDepartments.sizePolicy().hasHeightForWidth())
         self.tw_shotDepartments.setSizePolicy(sizePolicy2)
-        self.tw_shotDepartments.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.tw_shotDepartments.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.tw_shotDepartments.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.tw_shotDepartments.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.tw_shotDepartments.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.tw_shotDepartments.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.tw_shotDepartments.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tw_shotDepartments.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tw_shotDepartments.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.tw_shotDepartments.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tw_shotDepartments.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.tw_shotDepartments.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.tw_shotDepartments.setCornerButtonEnabled(False)
         self.tw_shotDepartments.setColumnCount(2)
         self.tw_shotDepartments.horizontalHeader().setHighlightSections(False)
@@ -782,10 +856,10 @@ class Ui_dlg_ProjectSettings(object):
         self.lw_taskPresetsShot.setObjectName(u"lw_taskPresetsShot")
         sizePolicy3.setHeightForWidth(self.lw_taskPresetsShot.sizePolicy().hasHeightForWidth())
         self.lw_taskPresetsShot.setSizePolicy(sizePolicy3)
-        self.lw_taskPresetsShot.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.lw_taskPresetsShot.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.lw_taskPresetsShot.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.lw_taskPresetsShot.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.lw_taskPresetsShot.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.lw_taskPresetsShot.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.lw_taskPresetsShot.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.lw_taskPresetsShot.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
 
         self.verticalLayout_6.addWidget(self.lw_taskPresetsShot)
 
@@ -839,9 +913,9 @@ class Ui_dlg_ProjectSettings(object):
         __qtablewidgetitem5 = QTableWidgetItem()
         self.tw_exportPaths.setHorizontalHeaderItem(1, __qtablewidgetitem5)
         self.tw_exportPaths.setObjectName(u"tw_exportPaths")
-        self.tw_exportPaths.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.tw_exportPaths.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.tw_exportPaths.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.tw_exportPaths.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tw_exportPaths.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.tw_exportPaths.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.tw_exportPaths.setColumnCount(2)
         self.tw_exportPaths.horizontalHeader().setStretchLastSection(True)
         self.tw_exportPaths.verticalHeader().setVisible(False)
@@ -899,10 +973,10 @@ class Ui_dlg_ProjectSettings(object):
         __qtablewidgetitem7 = QTableWidgetItem()
         self.tw_renderPaths.setHorizontalHeaderItem(1, __qtablewidgetitem7)
         self.tw_renderPaths.setObjectName(u"tw_renderPaths")
-        self.tw_renderPaths.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.tw_renderPaths.setSelectionBehavior(QAbstractItemView.SelectItems)
-        self.tw_renderPaths.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.tw_renderPaths.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.tw_renderPaths.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tw_renderPaths.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
+        self.tw_renderPaths.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.tw_renderPaths.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.tw_renderPaths.setColumnCount(2)
         self.tw_renderPaths.horizontalHeader().setStretchLastSection(True)
         self.tw_renderPaths.verticalHeader().setVisible(False)
@@ -949,7 +1023,7 @@ class Ui_dlg_ProjectSettings(object):
 
         self.b_resetStructure = QToolButton(self.widget_3)
         self.b_resetStructure.setObjectName(u"b_resetStructure")
-        self.b_resetStructure.setLayoutDirection(Qt.RightToLeft)
+        self.b_resetStructure.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
 
         self.horizontalLayout_3.addWidget(self.b_resetStructure)
 
@@ -961,7 +1035,7 @@ class Ui_dlg_ProjectSettings(object):
         self.sa_structure.setWidgetResizable(True)
         self.scrollAreaWidgetContents = QWidget()
         self.scrollAreaWidgetContents.setObjectName(u"scrollAreaWidgetContents")
-        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 656, 638))
+        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 98, 28))
         self.lo_structure = QGridLayout(self.scrollAreaWidgetContents)
         self.lo_structure.setObjectName(u"lo_structure")
         self.sa_structure.setWidget(self.scrollAreaWidgetContents)
@@ -986,9 +1060,9 @@ class Ui_dlg_ProjectSettings(object):
         __qtablewidgetitem9 = QTableWidgetItem()
         self.tw_environment.setHorizontalHeaderItem(1, __qtablewidgetitem9)
         self.tw_environment.setObjectName(u"tw_environment")
-        self.tw_environment.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.tw_environment.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.tw_environment.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.tw_environment.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tw_environment.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.tw_environment.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.tw_environment.horizontalHeader().setStretchLastSection(True)
         self.tw_environment.verticalHeader().setVisible(False)
 
@@ -1022,7 +1096,7 @@ class Ui_dlg_ProjectSettings(object):
         self.horizontalLayout_28.setObjectName(u"horizontalLayout_28")
         self.splitter_2 = QSplitter(self.widget_13)
         self.splitter_2.setObjectName(u"splitter_2")
-        self.splitter_2.setOrientation(Qt.Horizontal)
+        self.splitter_2.setOrientation(Qt.Orientation.Horizontal)
         self.widget_23 = QWidget(self.splitter_2)
         self.widget_23.setObjectName(u"widget_23")
         sizePolicy4 = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
@@ -1058,11 +1132,11 @@ class Ui_dlg_ProjectSettings(object):
 
         self.lw_hooks = QListWidget(self.widget_23)
         self.lw_hooks.setObjectName(u"lw_hooks")
-        self.lw_hooks.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.lw_hooks.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.lw_hooks.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.lw_hooks.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        self.lw_hooks.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.lw_hooks.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.lw_hooks.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.lw_hooks.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.lw_hooks.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.lw_hooks.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
 
         self.verticalLayout_10.addWidget(self.lw_hooks)
 
@@ -1081,14 +1155,14 @@ class Ui_dlg_ProjectSettings(object):
         sizePolicy5.setVerticalStretch(0)
         sizePolicy5.setHeightForWidth(self.te_hook.sizePolicy().hasHeightForWidth())
         self.te_hook.setSizePolicy(sizePolicy5)
-        self.te_hook.setLineWrapMode(QTextEdit.NoWrap)
+        self.te_hook.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         self.te_hook.setReadOnly(False)
 
         self.verticalLayout_11.addWidget(self.te_hook)
 
         self.b_saveHook = QPushButton(self.widget_24)
         self.b_saveHook.setObjectName(u"b_saveHook")
-        self.b_saveHook.setFocusPolicy(Qt.NoFocus)
+        self.b_saveHook.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.verticalLayout_11.addWidget(self.b_saveHook)
 
@@ -1106,9 +1180,9 @@ class Ui_dlg_ProjectSettings(object):
 
         self.buttonBox = QDialogButtonBox(dlg_ProjectSettings)
         self.buttonBox.setObjectName(u"buttonBox")
-        self.buttonBox.setFocusPolicy(Qt.NoFocus)
-        self.buttonBox.setOrientation(Qt.Horizontal)
-        self.buttonBox.setStandardButtons(QDialogButtonBox.Apply|QDialogButtonBox.Cancel|QDialogButtonBox.Save)
+        self.buttonBox.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.buttonBox.setOrientation(Qt.Orientation.Horizontal)
+        self.buttonBox.setStandardButtons(QDialogButtonBox.StandardButton.Apply|QDialogButtonBox.StandardButton.Cancel|QDialogButtonBox.StandardButton.Save)
 
         self.verticalLayout.addWidget(self.buttonBox)
 
@@ -1168,8 +1242,13 @@ class Ui_dlg_ProjectSettings(object):
         self.l_expectedPrjPath_2.setText(QCoreApplication.translate("dlg_ProjectSettings", u"Project Version:", None))
         self.b_reqPlugins.setText(QCoreApplication.translate("dlg_ProjectSettings", u"...", None))
         self.l_reqPlugins.setText(QCoreApplication.translate("dlg_ProjectSettings", u"Required Plugins:", None))
+        self.b_disabledPlugins.setText(QCoreApplication.translate("dlg_ProjectSettings", u"...", None))
+        self.l_disabledPlugins.setText(QCoreApplication.translate("dlg_ProjectSettings", u"Disabled Plugins:", None))
         self.b_expectedPrjPath.setText(QCoreApplication.translate("dlg_ProjectSettings", u"...", None))
         self.l_expectedPrjPath.setText(QCoreApplication.translate("dlg_ProjectSettings", u"Expected Project Path:", None))
+        self.l_defaultImportStateName.setText(QCoreApplication.translate("dlg_ProjectSettings", u"Import State Name Template:", None))
+        self.l_manageProductTags.setText(QCoreApplication.translate("dlg_ProjectSettings", u"Product Tags:", None))
+        self.b_manageProductTags.setText(QCoreApplication.translate("dlg_ProjectSettings", u"Manage Product Tags", None))
 #if QT_CONFIG(tooltip)
         self.b_importSettings.setToolTip(QCoreApplication.translate("dlg_ProjectSettings", u"Import Project Settings...", None))
 #endif // QT_CONFIG(tooltip)

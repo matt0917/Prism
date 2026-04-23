@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'hou_SaveHDA.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.9.0
+## Created by: Qt User Interface Compiler version 6.8.3
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -16,7 +16,7 @@ class Ui_wg_SaveHDA(object):
     def setupUi(self, wg_SaveHDA):
         if not wg_SaveHDA.objectName():
             wg_SaveHDA.setObjectName(u"wg_SaveHDA")
-        wg_SaveHDA.resize(340, 380)
+        wg_SaveHDA.resize(340, 406)
         self.verticalLayout = QVBoxLayout(wg_SaveHDA)
         self.verticalLayout.setObjectName(u"verticalLayout")
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
@@ -198,6 +198,28 @@ class Ui_wg_SaveHDA(object):
 
         self.verticalLayout_3.addWidget(self.w_blackboxHDA)
 
+        self.w_recipe = QWidget(self.groupBox_2)
+        self.w_recipe.setObjectName(u"w_recipe")
+        self.horizontalLayout_21 = QHBoxLayout(self.w_recipe)
+        self.horizontalLayout_21.setObjectName(u"horizontalLayout_21")
+        self.horizontalLayout_21.setContentsMargins(-1, 0, -1, 0)
+        self.l_recipe = QLabel(self.w_recipe)
+        self.l_recipe.setObjectName(u"l_recipe")
+
+        self.horizontalLayout_21.addWidget(self.l_recipe)
+
+        self.horizontalSpacer_13 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_21.addItem(self.horizontalSpacer_13)
+
+        self.chb_recipe = QCheckBox(self.w_recipe)
+        self.chb_recipe.setObjectName(u"chb_recipe")
+
+        self.horizontalLayout_21.addWidget(self.chb_recipe)
+
+
+        self.verticalLayout_3.addWidget(self.w_recipe)
+
         self.f_status = QWidget(self.groupBox_2)
         self.f_status.setObjectName(u"f_status")
         self.horizontalLayout_4 = QHBoxLayout(self.f_status)
@@ -304,6 +326,8 @@ class Ui_wg_SaveHDA(object):
         self.chb_externalReferences.setText("")
         self.l_blackboxHDA.setText(QCoreApplication.translate("wg_SaveHDA", u"Create Blackbox:", None))
         self.chb_blackboxHDA.setText("")
+        self.l_recipe.setText(QCoreApplication.translate("wg_SaveHDA", u"Save as Tool Recipe:", None))
+        self.chb_recipe.setText("")
         self.label.setText(QCoreApplication.translate("wg_SaveHDA", u"Status:", None))
         self.l_status.setText(QCoreApplication.translate("wg_SaveHDA", u"Not connected", None))
         self.b_goTo.setText(QCoreApplication.translate("wg_SaveHDA", u"Go to Node", None))

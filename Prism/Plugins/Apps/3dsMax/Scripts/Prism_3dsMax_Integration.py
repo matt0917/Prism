@@ -37,6 +37,7 @@ import sys
 import platform
 import shutil
 import glob
+from typing import Any, List, Dict
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -52,17 +53,39 @@ from PrismUtils.Decorators import err_catcher_plugin as err_catcher
 
 
 class Prism_3dsMax_Integration(object):
-    def __init__(self, core, plugin):
+    """Integration functionality for 3ds Max plugin.
+    
+    Handles DCC installation/removal, registry access, and integration
+    with 3ds Max preferences and startup scripts.
+    
+    Attributes:
+        core: PrismCore instance
+        plugin: Plugin instance
+        examplePath (str): Example path for 3ds Max preferences (Windows only)
+    """
+
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize 3ds Max integration.
+        
+        Args:
+            core: PrismCore instance.
+            plugin: Plugin instance.
+        """
         self.core = core
         self.plugin = plugin
 
         if platform.system() == "Windows":
             self.examplePath = (
-                os.environ["localappdata"] + "\\Autodesk\\3dsMax\\2026 - 64bit"
+                os.environ["localappdata"] + "\\Autodesk\\3dsMax\\2027 - 64bit"
             )
 
     @err_catcher(name=__name__)
-    def getExecutable(self):
+    def getExecutable(self) -> str:
+        """Get path to 3ds Max executable.
+        
+        Returns:
+            Path to 3dsmax.exe or empty string if not found.
+        """
         execPath = ""
         if platform.system() == "Windows":
             defaultpath = os.path.join(self.get3dsMaxPath(), "3dsmax.exe")
@@ -72,7 +95,12 @@ class Prism_3dsMax_Integration(object):
         return execPath
 
     @err_catcher(name=__name__)
-    def get3dsMaxPath(self):
+    def get3dsMaxPath(self) -> str:
+        """Get 3ds Max installation directory from Windows registry.
+        
+        Returns:
+            Install directory path or empty string if not found.
+        """
         try:
             key = _winreg.OpenKey(
                 _winreg.HKEY_LOCAL_MACHINE,
@@ -107,7 +135,18 @@ class Prism_3dsMax_Integration(object):
         except:
             return ""
 
-    def addIntegration(self, installPath):
+    def addIntegration(self, installPath: str) -> bool:
+        """Install Prism integration to 3ds Max preferences folder.
+        
+        Copies startup scripts, Python init files, menu macros to the
+        specified 3ds Max preferences path.
+        
+        Args:
+            installPath: Path to 3ds Max preferences folder.
+        
+        Returns:
+            True if installation successful, False otherwise.
+        """
         try:
             maxpath = os.path.join(installPath, "ENU", "scripts", "startup")
 
@@ -187,7 +226,17 @@ class Prism_3dsMax_Integration(object):
             QMessageBox.warning(self.core.messageParent, "Prism Integration", msgStr)
             return False
 
-    def removeIntegration(self, installPath):
+    def removeIntegration(self, installPath: str) -> bool:
+        """Remove Prism integration from 3ds Max preferences folder.
+        
+        Removes all Prism-related files from 3ds Max startup and macro folders.
+        
+        Args:
+            installPath: Path to 3ds Max preferences folder.
+        
+        Returns:
+            True if removal successful, False otherwise.
+        """
         try:
             installPath = os.path.join(installPath, "ENU", "scripts", "startup")
 
@@ -210,7 +259,7 @@ class Prism_3dsMax_Integration(object):
             uninstallStr = """
 if menuMan.findMenu "Prism" != undefined then
 (
-	menuMan.unRegisterMenu (menuMan.findMenu "Prism")
+    menuMan.unRegisterMenu (menuMan.findMenu "Prism")
 )
 
 curPath = getThisScriptFilename()
@@ -239,7 +288,12 @@ deleteFile curPath
             return False
 
     @err_catcher(name=__name__)
-    def getPreferencesPaths(self):
+    def getPreferencesPaths(self) -> List[List[str]]:
+        """Get all 3ds Max preferences paths found on system.
+        
+        Returns:
+            List of [preferences_path, version_string] pairs.
+        """
         paths = []
         basepath = os.environ["localappdata"] + "\\Autodesk\\3dsMax\\"
 
@@ -253,7 +307,13 @@ deleteFile curPath
 
         return paths
 
-    def updateInstallerUI(self, userFolders, pItem):
+    def updateInstallerUI(self, userFolders: Any, pItem: QTreeWidgetItem) -> None:
+        """Update installer UI with 3ds Max installation options.
+        
+        Args:
+            userFolders: User folders data.
+            pItem: Parent tree widget item.
+        """
         try:
             maxItem = QTreeWidgetItem(["3dsMax"])
             maxItem.setCheckState(0, Qt.Checked)
@@ -293,7 +353,16 @@ deleteFile curPath
             )
             return False
 
-    def installerExecute(self, maxItem, result):
+    def installerExecute(self, maxItem: QTreeWidgetItem, result: Dict) -> List[str]:
+        """Execute integration installation for checked items.
+        
+        Args:
+            maxItem: Tree widget item containing 3ds Max paths.
+            result: Dictionary to store installation results.
+        
+        Returns:
+            List of successfully installed paths.
+        """
         try:
             maxPaths = []
             installLocs = []

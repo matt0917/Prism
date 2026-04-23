@@ -32,7 +32,14 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+"""Houdini Mantra renderer implementation for Prism.
+
+Provides renderer-specific functionality for Mantra (IFD) ROP nodes
+including AOV management, IFD generation, deep EXR support, and parameter configuration.
+"""
+
 import os
+from typing import Any, List, Optional, Union
 
 import hou
 
@@ -45,29 +52,66 @@ label = "Mantra"
 ropNames = ["ifd"]
 
 
-def isActive():
+def isActive() -> bool:
+    """Check if Mantra renderer is available.
+    
+    Returns:
+        True if renderer is active.
+    """
     return True
 
 
-def activated(origin):
+def activated(origin: Any) -> None:
+    """Called when Mantra renderer is activated.
+    
+    Adds deep EXR format option to format dropdown.
+    
+    Args:
+        origin: State manager origin object.
+    """
     deep = ".exr (deep)"
     idx = origin.cb_format.findText(deep)
     if idx == -1:
         origin.cb_format.addItem(deep)
 
 
-def deactivated(origin):
+def deactivated(origin: Any) -> None:
+    """Called when Mantra renderer is deactivated.
+    
+    Removes deep EXR format option from format dropdown.
+    
+    Args:
+        origin: State manager origin object.
+    """
     deep = ".exr (deep)"
     idx = origin.cb_format.findText(deep)
     if idx != -1:
         origin.cb_format.removeItem(idx)
 
 
-def getCam(node):
+def getCam(node: Any) -> Any:
+    """Get camera node from renderer ROP.
+    
+    Args:
+        node: Mantra ROP node.
+    
+    Returns:
+        Camera node object.
+    """
     return hou.node(node.parm("camera").eval())
 
 
-def getFormatFromNode(node):
+def getFormatFromNode(node: Any) -> str:
+    """Get output format from renderer node.
+    
+    Detects deep EXR format if deep resolver is enabled.
+    
+    Args:
+        node: Mantra ROP node.
+    
+    Returns:
+        File extension string.
+    """
     ext = os.path.splitext(node.parm("vm_picture").eval())[1]
     if ext == ".exr" and node.parm("vm_deepresolver").eval() != "null":
         ext = ".exr (deep)"
@@ -75,11 +119,24 @@ def getFormatFromNode(node):
     return ext
 
 
-def createROP(origin):
+def createROP(origin: Any) -> None:
+    """Create Mantra ROP node.
+    
+    Args:
+        origin: State manager origin object.
+    """
     origin.node = origin.core.appPlugin.createRop("ifd")
 
 
-def setAOVData(origin, node, aovNum, item):
+def setAOVData(origin: Any, node: Any, aovNum: str, item: Any) -> None:
+    """Set AOV data on node from table widget item.
+    
+    Args:
+        origin: State manager origin object.
+        node: Mantra ROP node.
+        aovNum: AOV number string.
+        item: Table widget item with AOV data.
+    """
     if item.column() == 0:
         origin.core.appPlugin.setNodeParm(
             node, "vm_channel_plane" + aovNum, val=item.text()
@@ -90,7 +147,17 @@ def setAOVData(origin, node, aovNum, item):
         )
 
 
-def getDefaultPasses(origin):
+def getDefaultPasses(origin: Any) -> List:
+    """Get default render passes for Mantra.
+    
+    Retrieves from config or plugin defaults.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        List of default AOV configurations.
+    """
     aovs = origin.core.getConfig(
         "defaultpasses", "houdini_mantra", configPath=origin.core.prismIni
     )
@@ -100,7 +167,15 @@ def getDefaultPasses(origin):
     return aovs
 
 
-def addAOV(origin, aovData):
+def addAOV(origin: Any, aovData: List) -> None:
+    """Add AOV to Mantra renderer.
+    
+    Creates new auxiliary render plane with channel and VEX variable.
+    
+    Args:
+        origin: State manager origin object.
+        aovData: List containing [channel_name, vex_variable].
+    """
     passNum = origin.node.parm("vm_numaux").eval() + 1
     origin.core.appPlugin.setNodeParm(origin.node, "vm_numaux", val=passNum)
     origin.core.appPlugin.setNodeParm(
@@ -114,7 +189,14 @@ def addAOV(origin, aovData):
     )
 
 
-def refreshAOVs(origin):
+def refreshAOVs(origin: Any) -> None:
+    """Refresh AOV list in UI table.
+    
+    Reads auxiliary planes from node and populates table widget.
+    
+    Args:
+        origin: State manager origin object.
+    """
     origin.tw_passes.horizontalHeaderItem(0).setText("Name")
     origin.tw_passes.horizontalHeaderItem(1).setText("VEX Variable")
 
@@ -141,20 +223,55 @@ def refreshAOVs(origin):
         passNum += 1
 
 
-def deleteAOV(origin, row):
+def deleteAOV(origin: Any, row: int) -> None:
+    """Delete AOV from renderer.
+    
+    Removes auxiliary plane multiparm instance.
+    
+    Args:
+        origin: State manager origin object.
+        row: Row index in table widget.
+    """
     pid = int(origin.tw_passes.item(row, 2).text())
     origin.node.parm("vm_numaux").removeMultiParmInstance(pid)
 
 
-def aovDbClick(origin, event):
+def aovDbClick(origin: Any, event: Any) -> None:
+    """Handle AOV double-click event.
+    
+    Args:
+        origin: State manager origin object.
+        event: Mouse event.
+    """
     origin.tw_passes.mouseDbcEvent(event)
 
 
-def setCam(origin, node, val):
+def setCam(origin: Any, node: Any, val: str) -> bool:
+    """Set camera on renderer node.
+    
+    Args:
+        origin: State manager origin object.
+        node: Mantra ROP node.
+        val: Camera path string.
+    
+    Returns:
+        True if successful.
+    """
     return origin.core.appPlugin.setNodeParm(node, "camera", val=val)
 
 
-def executeAOVs(origin, outputName):
+def executeAOVs(origin: Any, outputName: str) -> Union[bool, List[str]]:
+    """Execute AOV setup and configure output paths.
+    
+    Handles IFD generation, deep EXR setup, and AOV output paths.
+    
+    Args:
+        origin: State manager origin object.
+        outputName: Primary render output file path.
+    
+    Returns:
+        True if successful, list of error messages otherwise.
+    """
     if (
         not origin.gb_submit.isHidden()
         and origin.gb_submit.isChecked()
@@ -252,7 +369,15 @@ def executeAOVs(origin, outputName):
     return True
 
 
-def setResolution(origin):
+def setResolution(origin: Any) -> Union[bool, List[str]]:
+    """Set render resolution on node.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful, list of error messages otherwise.
+    """
     if not origin.core.appPlugin.setNodeParm(
         origin.node, "override_camerares", val=True
     ):
@@ -273,7 +398,15 @@ def setResolution(origin):
     return True
 
 
-def executeRender(origin):
+def executeRender(origin: Any) -> Union[bool, str]:
+    """Execute the render with user choice for foreground/background.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful, error message string otherwise.
+    """
     bkrender = origin.stateManager.publishInfos["backgroundRender"]
     if bkrender is None:
         msg = "How do you want to render?"
@@ -295,7 +428,17 @@ def executeRender(origin):
     return True
 
 
-def postExecute(origin):
+def postExecute(origin: Any) -> Union[bool, List[str]]:
+    """Post-execution cleanup.
+    
+    Restores original AOV channel names after render.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful, list of error messages otherwise.
+    """
     for i in range(origin.node.parm("vm_numaux").eval()):
         if not origin.core.appPlugin.setNodeParm(
             origin.node, "vm_channel_plane" + str(i + 1), val=origin.passNames[i][0]
@@ -305,7 +448,12 @@ def postExecute(origin):
     return True
 
 
-def getCleanupScript():
+def getCleanupScript() -> str:
+    """Get cleanup script for IFD file removal.
+    
+    Returns:
+        Python script string for post-render IFD cleanup.
+    """
     script = """
 
 import os

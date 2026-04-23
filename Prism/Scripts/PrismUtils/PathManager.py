@@ -35,6 +35,7 @@
 import os
 import re
 import logging
+from typing import Any, Optional, List, Dict, Tuple
 from collections import OrderedDict
 
 from qtpy.QtCore import *
@@ -48,7 +49,23 @@ logger = logging.getLogger(__name__)
 
 
 class PathManager(object):
-    def __init__(self, core):
+    """Manages file path generation and manipulation for the Prism pipeline.
+    
+    Handles scene file paths, render output paths, cache paths, and product paths.
+    Manages path conversions between different storage locations (global/local/custom).
+    Provides utilities for path parsing, version extraction, and entity type detection.
+    
+    Attributes:
+        core: Reference to the Prism core instance.
+        masterManager: Reference to MasterManager class for version management.
+    """
+    
+    def __init__(self, core: Any) -> None:
+        """Initialize the PathManager.
+        
+        Args:
+            core: Reference to the Prism core instance.
+        """
         super(PathManager, self).__init__()
         self.core = core
         self.masterManager = MasterManager
@@ -56,23 +73,50 @@ class PathManager(object):
     @err_catcher(name=__name__)
     def getCompositingOut(
         self,
-        taskName,
-        fileType,
-        useVersion,
-        render,
-        location="global",
-        comment="",
-        ignoreEmpty=False,
-        node=None,
-    ):
-        fileName = self.core.getCurrentFileName()
-        if self.core.fileInPipeline(filepath=fileName, validateFilename=False):
-            fnameData = self.core.getScenefileData(fileName)
+        taskName: Optional[str],
+        fileType: Optional[str],
+        useVersion: Optional[str],
+        render: bool,
+        location: str = "global",
+        comment: str = "",
+        ignoreEmpty: bool = False,
+        node: Any = None,
+        entity: Optional[Any] = None
+    ) -> str:
+        """Generate output path for compositing renders.
+        
+        Creates output paths for 2D compositing renders based on current scene context.
+        Handles version management, creates directories, and tracks render state.
+        
+        Args:
+            taskName: Name of the compositing task/identifier.
+            fileType: Output file format extension.
+            useVersion: Version string to use (if separate version stack enabled).
+            render: If True, creates folders and starts render tracking.
+            location: Storage location ('global' or custom). Defaults to 'global'.
+            comment: Optional version comment.
+            ignoreEmpty: If True, allows reusing existing versions with files.
+            node: Optional node reference for render tracking.
+            entity: Optional entity to use for path calculation.
+            
+        Returns:
+            str: Output file path pattern, or 'FileNotInPipeline' if scene not in pipeline.
+        """
+        if not entity:
+            fileName = self.core.getCurrentFileName()
+            if self.core.fileInPipeline(filepath=fileName, validateFilename=False):
+                entity = self.core.getScenefileData(fileName)
+
+            else:
+                # logger.debug("not in pipeline: %s" % fileName)
+                outputPath = "FileNotInPipeline"
+
+        if entity:
             if taskName is None:
                 taskName = ""
 
             if not self.core.separateOutputVersionStack:
-                version = fnameData.get("version")
+                version = entity.get("version")
             else:
                 version = useVersion
 
@@ -80,7 +124,7 @@ class PathManager(object):
             extension = "." + fileType
             framePadding = "#" * self.core.framePadding if extension not in self.core.media.videoFormats else ""
             outputData = self.core.mediaProducts.generateMediaProductPath(
-                entity=fnameData,
+                entity=entity,
                 task=taskName,
                 version=version,
                 extension=extension,
@@ -95,11 +139,8 @@ class PathManager(object):
             if outputData:
                 outputPath = outputData["path"].replace("\\", "/")
             else:
-                # logger.debug("no output data: %s - %s - %s - %s" % (fnameData, taskName, version, extension))
+                # logger.debug("no output data: %s - %s - %s - %s" % (entity, taskName, version, extension))
                 outputPath = "FileNotInPipeline"
-        else:
-            # logger.debug("not in pipeline: %s" % fileName)
-            outputPath = "FileNotInPipeline"
 
         if render and outputPath != "FileNotInPipeline":
             expandedOutputpath = os.path.expandvars(outputPath)
@@ -135,7 +176,24 @@ class PathManager(object):
         return outputPath
 
     @err_catcher(name=__name__)
-    def getMediaConversionOutputPath(self, context, inputpath, extension, addFramePadding=True):
+    def getMediaConversionOutputPath(
+        self,
+        context: Dict,
+        inputpath: str,
+        extension: str,
+        addFramePadding: bool = True
+    ) -> str:
+        """Generate output path for media format conversions.
+        
+        Args:
+            context: Context dict with entity, version, and media type information.
+            inputpath: Path to input media file.
+            extension: Target file extension for conversion.
+            addFramePadding: If True, adds frame padding for image sequences.
+            
+        Returns:
+            str: Output path for converted media.
+        """
         if context.get("mediaType") == "playblasts":
             if context["type"] == "asset":
                 key = "playblastFilesAssets"
@@ -160,7 +218,7 @@ class PathManager(object):
             context["frame"] = "%%0%sd" % self.core.framePadding
 
         context["layer"] = ""
-        mode = os.getenv("PRISM_MEDIA_CONVERSION_OUTPUT_MODE", "version_suffix")
+        mode = os.getenv("PRISM_MEDIA_CONVERSION_OUTPUT_MODE", "same_folder")
         if mode == "version_suffix":
             context["version"] = context["version"] + " (%s)" % extension[1:]
         elif mode == "same_folder":
@@ -175,8 +233,25 @@ class PathManager(object):
 
     @err_catcher(name=__name__)
     def getEntityPath(
-        self, entity=None, step=None, category=None, reqEntity=None, location="global"
-    ):
+        self,
+        entity: Optional[Dict] = None,
+        step: Optional[str] = None,
+        category: Optional[str] = None,
+        reqEntity: Optional[str] = None,
+        location: str = "global"
+    ) -> str:
+        """Get file system path for an entity or department.
+        
+        Args:
+            entity: Entity dict containing type ('asset', 'shot', etc.) and entity data.
+            step: Optional department/step name.
+            category: Optional category within the department.
+            reqEntity: If 'step', returns parent department folder path.
+            location: Storage location. Defaults to 'global'.
+            
+        Returns:
+            str: File system path for the entity or empty string if invalid.
+        """
         if entity.get("type") not in ["asset", "assetFolder", "shot", "sequence"]:
             return ""
 
@@ -227,15 +302,33 @@ class PathManager(object):
     @err_catcher(name=__name__)
     def generateScenePath(
         self,
-        entity,
-        department,
-        task="",
-        extension="",
-        version="",
-        comment="",
-        user="",
-        location=None,
-    ):
+        entity: Dict,
+        department: str,
+        task: str = "",
+        extension: str = "",
+        version: str = "",
+        comment: str = "",
+        user: str = "",
+        location: Optional[str] = None,
+    ) -> str:
+        """Generate a scene file path based on entity and task information.
+        
+        Creates properly formatted scene file paths following project structure templates.
+        Automatically determines next version if not specified.
+        
+        Args:
+            entity: Entity dict with asset or shot information.
+            department: Department/step name (e.g., 'modeling', 'animation').
+            task: Task name within the department. Defaults to empty.
+            extension: File extension. Defaults to empty.
+            version: Version string. Auto-generates if empty.
+            comment: Optional version comment. Defaults to empty.
+            user: User name. Uses current user if empty.
+            location: Storage location. Uses 'global' if None.
+            
+        Returns:
+            str: Complete scene file path, or empty string if invalid entity.
+        """
         user = user or self.core.user
         location = location or "global"
         context = entity.copy()
@@ -258,7 +351,6 @@ class PathManager(object):
             context["version"] = self.core.entities.getHighestVersion(
                 dstentity, department, task
             )
-
         if entity["type"] == "asset":
             if (
                 self.core.compareVersions(self.core.projectVersion, "v1.2.1.6")
@@ -277,7 +369,6 @@ class PathManager(object):
             scenePath = self.core.projects.getResolvedProjectStructurePath(
                 "assetScenefiles", context=context
             )
-
         elif entity["type"] == "shot":
             context["sequence"] = entity["sequence"]
             context["shot"] = entity["shot"]
@@ -290,7 +381,6 @@ class PathManager(object):
             scenePath = self.core.projects.getResolvedProjectStructurePath(
                 "shotScenefiles", context=context
             )
-
         else:
             return ""
 
@@ -298,7 +388,26 @@ class PathManager(object):
         return scenePath
 
     @err_catcher(name=__name__)
-    def getCachePathData(self, cachePath, addPathData=True, validateModTime=False, allowCache=True):
+    def getCachePathData(
+        self,
+        cachePath: str,
+        addPathData: bool = True,
+        validateModTime: bool = False,
+        allowCache: bool = True
+    ) -> Dict:
+        """Get metadata and path information for a cache file or folder.
+        
+        Reads cache version info and extracts path-based metadata.
+        
+        Args:
+            cachePath: Path to cache file or folder.
+            addPathData: If True, extracts additional data from path structure.
+            validateModTime: If True, clears cache if modification time changed.
+            allowCache: If True, allows using cached config data.
+            
+        Returns:
+            Dict: Cache metadata including version, entity, user, locations, etc.
+        """
         if not cachePath:
             return {}
 
@@ -346,7 +455,22 @@ class PathManager(object):
         return cacheData
 
     @err_catcher(name=__name__)
-    def getMediaProductData(self, productPath, isFilepath=True, addPathData=True, mediaType=None, validateModTime=False, isVersionFolder=False):
+    def getMediaProductData(self, productPath: str, isFilepath: bool = True, addPathData: bool = True, mediaType: Optional[str] = None, validateModTime: bool = False, isVersionFolder: bool = False) -> Dict[str, Any]:
+        """Get metadata for media product (render or playblast).
+        
+        Routes to getRenderProductData or getPlayblastProductData based on mediaType.
+        
+        Args:
+            productPath: Path to product file or version folder
+            isFilepath: If True, path is to a file; if False, to a folder
+            addPathData: If True, extract and add path metadata
+            mediaType: Media type ('3drenders', '2drenders', 'playblasts', etc.)
+            validateModTime: If True, invalidate cache if file modified
+            isVersionFolder: If True, path is to version folder not file
+            
+        Returns:
+            Dict with product metadata (version, user, comment, paths, locations, etc.)
+        """
         mediaType = mediaType or "3drenders"
         if mediaType == "playblasts":
             return self.getPlayblastProductData(productPath, isFilepath=isFilepath, addPathData=addPathData, validateModTime=validateModTime, isVersionFolder=isVersionFolder)
@@ -354,7 +478,24 @@ class PathManager(object):
             return self.getRenderProductData(productPath, isFilepath=isFilepath, addPathData=addPathData, mediaType=mediaType, validateModTime=validateModTime, isVersionFolder=isVersionFolder)
 
     @err_catcher(name=__name__)
-    def getRenderProductData(self, productPath, isFilepath=True, addPathData=True, mediaType=None, validateModTime=False, isVersionFolder=False, allowCache=True):
+    def getRenderProductData(self, productPath: str, isFilepath: bool = True, addPathData: bool = True, mediaType: Optional[str] = None, validateModTime: bool = False, isVersionFolder: bool = False, allowCache: bool = True) -> Dict[str, Any]:
+        """Get metadata for render product.
+        
+        Reads versioninfo config and extracts metadata from product path.
+        Handles multiple locations (global, local, custom).
+        
+        Args:
+            productPath: Path to render file or version folder
+            isFilepath: If True, path is to a file; if False, to a folder
+            addPathData: If True, extract and add path-derived metadata
+            mediaType: Media type ('3drenders', '2drenders', etc.)
+            validateModTime: If True, clear cache if file modified
+            isVersionFolder: If True, path is to version folder
+            allowCache: If True, use cached config data
+            
+        Returns:
+            Dict with render product metadata including locations, entity info, version, etc.
+        """
         productPath = os.path.normpath(productPath)
         mediaType = mediaType or "3drenders"
         if os.path.splitext(productPath)[1]:
@@ -416,7 +557,21 @@ class PathManager(object):
         return productData
 
     @err_catcher(name=__name__)
-    def getPlayblastProductData(self, productPath, isFilepath=True, addPathData=True, validateModTime=False, isVersionFolder=False):
+    def getPlayblastProductData(self, productPath: str, isFilepath: bool = True, addPathData: bool = True, validateModTime: bool = False, isVersionFolder: bool = False) -> Dict[str, Any]:
+        """Get metadata for playblast product.
+        
+        Reads playblast versioninfo config and extracts metadata from path.
+        
+        Args:
+            productPath: Path to playblast file or version folder
+            isFilepath: If True, path is to a file; if False, to a folder
+            addPathData: If True, extract and add path-derived metadata
+            validateModTime: If True, clear cache if file modified
+            isVersionFolder: If True, path is to version folder
+            
+        Returns:
+            Dict with playblast metadata including locations, entity info, version, etc.
+        """
         productPath = os.path.normpath(productPath)
         if os.path.splitext(productPath)[1]:
             productConfig = self.core.mediaProducts.getPlayblastVersionInfoPathFromFilepath(productPath)
@@ -444,7 +599,22 @@ class PathManager(object):
         return productData
 
     @err_catcher(name=__name__)
-    def requestPath(self, title="Select folder", startPath="", parent=None):
+    def requestPath(
+        self,
+        title: str = "Select folder",
+        startPath: str = "",
+        parent: Optional[QWidget] = None
+    ) -> str:
+        """Show a folder selection dialog.
+        
+        Args:
+            title: Dialog title. Defaults to 'Select folder'.
+            startPath: Initial directory path. Defaults to empty.
+            parent: Optional parent widget. Uses core messageParent if None.
+            
+        Returns:
+            str: Selected folder path, or empty string if canceled.
+        """
         path = ""
         parent = parent or self.core.messageParent
         if self.core.uiAvailable:
@@ -459,12 +629,24 @@ class PathManager(object):
     @err_catcher(name=__name__)
     def requestFilepath(
         self,
-        title="Select File",
-        startPath="",
-        parent=None,
-        fileFilter="All files (*.*)",
-        saveDialog=True
-    ):
+        title: str = "Select File",
+        startPath: str = "",
+        parent: Optional[QWidget] = None,
+        fileFilter: str = "All files (*.*)",
+        saveDialog: bool = True
+    ) -> str:
+        """Show a file selection dialog.
+        
+        Args:
+            title: Dialog title. Defaults to 'Select File'.
+            startPath: Initial directory path. Defaults to empty.
+            parent: Optional parent widget. Uses core messageParent if None.
+            fileFilter: File filter string. Defaults to 'All files (*.*)'.
+            saveDialog: If True, shows save dialog. If False, shows open dialog.
+            
+        Returns:
+            str: Selected file path, or empty string if canceled.
+        """
         path = ""
         parent = parent or self.core.messageParent
         if self.core.uiAvailable:
@@ -476,7 +658,17 @@ class PathManager(object):
         return path
 
     @err_catcher(name=__name__)
-    def convertExportPath(self, path, fromLocation, toLocation):
+    def convertExportPath(self, path: str, fromLocation: str, toLocation: str) -> str:
+        """Convert an export product path from one location to another.
+        
+        Args:
+            path: Path to convert.
+            fromLocation: Source location name.
+            toLocation: Target location name.
+            
+        Returns:
+            str: Converted path with new base location.
+        """
         bases = self.getExportProductBasePaths()
         baseFrom = bases[fromLocation]
         baseTo = bases[toLocation]
@@ -491,7 +683,17 @@ class PathManager(object):
         return cPath
 
     @err_catcher(name=__name__)
-    def addExportProductBasePath(self, location, path, configData=None):
+    def addExportProductBasePath(self, location: str, path: str, configData: Optional[Dict] = None) -> Optional[bool]:
+        """Add or update a custom export product base path.
+        
+        Args:
+            location: Location name (e.g., 'custom1').
+            path: Filesystem path for this location.
+            configData: Optional config dict to update instead of saving to project.
+            
+        Returns:
+            Optional[bool]: True if path already exists, None otherwise. If configData provided, returns updated dict.
+        """
         exportPaths = self.getExportProductBasePaths(
             default=False, configData=configData
         )
@@ -506,7 +708,17 @@ class PathManager(object):
             self.core.setConfig("export_paths", val=exportPaths, config="project")
 
     @err_catcher(name=__name__)
-    def addRenderProductBasePath(self, location, path, configData=None):
+    def addRenderProductBasePath(self, location: str, path: str, configData: Optional[Dict] = None) -> Optional[bool]:
+        """Add or update a custom render product base path.
+        
+        Args:
+            location: Location name (e.g., 'custom1').
+            path: Filesystem path for this location.
+            configData: Optional config dict to update instead of saving to project.
+            
+        Returns:
+            Optional[bool]: True if path already exists, None otherwise. If configData provided, returns updated dict.
+        """
         renderPaths = self.getRenderProductBasePaths(
             default=False, configData=configData
         )
@@ -521,7 +733,16 @@ class PathManager(object):
             self.core.setConfig("render_paths", val=renderPaths, config="project")
 
     @err_catcher(name=__name__)
-    def removeExportProductBasePath(self, location, configData=None):
+    def removeExportProductBasePath(self, location: str, configData: Optional[Dict] = None) -> Optional[Dict]:
+        """Remove a custom export product base path.
+        
+        Args:
+            location: Location name to remove.
+            configData: Optional config dict to update instead of saving to project.
+            
+        Returns:
+            Optional[Dict]: Updated config dict if configData was provided, None otherwise.
+        """
         exportPaths = self.getExportProductBasePaths(
             default=False, configData=configData
         )
@@ -535,7 +756,16 @@ class PathManager(object):
                 self.core.setConfig("export_paths", val=exportPaths, config="project")
 
     @err_catcher(name=__name__)
-    def removeRenderProductBasePath(self, location, configData=None):
+    def removeRenderProductBasePath(self, location: str, configData: Optional[Dict] = None) -> Optional[Dict]:
+        """Remove a custom render product base path.
+        
+        Args:
+            location: Location name to remove.
+            configData: Optional config dict to update instead of saving to project.
+            
+        Returns:
+            Optional[Dict]: Updated config dict if configData was provided, None otherwise.
+        """
         renderPaths = self.getRenderProductBasePaths(
             default=False, configData=configData
         )
@@ -549,7 +779,17 @@ class PathManager(object):
                 self.core.setConfig("render_paths", val=renderPaths, config="project")
 
     @err_catcher(name=__name__)
-    def getExportProductBasePaths(self, default=True, configPath=None, configData=None):
+    def getExportProductBasePaths(self, default: bool = True, configPath: Optional[str] = None, configData: Optional[Dict] = None) -> OrderedDict:
+        """Get all configured export product base paths.
+        
+        Args:
+            default: Whether to include default paths (global, local). Defaults to True.
+            configPath: Optional path to config file. Uses project config if None.
+            configData: Optional config dict to read from instead of file.
+            
+        Returns:
+            OrderedDict: Mapping of location names to filesystem paths.
+        """
         export_paths = OrderedDict([])
         if default:
             if hasattr(self.core, "projectPath"):
@@ -577,7 +817,17 @@ class PathManager(object):
         return export_paths
 
     @err_catcher(name=__name__)
-    def getRenderProductBasePaths(self, default=True, configPath=None, configData=None):
+    def getRenderProductBasePaths(self, default: bool = True, configPath: Optional[str] = None, configData: Optional[Dict] = None) -> OrderedDict:
+        """Get all configured render product base paths.
+        
+        Args:
+            default: Whether to include default paths (global, local). Defaults to True.
+            configPath: Optional path to config file. Uses project config if None.
+            configData: Optional config dict to read from instead of file.
+            
+        Returns:
+            OrderedDict: Mapping of location names to filesystem paths.
+        """
         render_paths = OrderedDict([])
         if not self.core.projects.hasActiveProject():
             return render_paths
@@ -607,7 +857,16 @@ class PathManager(object):
         return render_paths
 
     @err_catcher(name=__name__)
-    def convertGlobalRenderPath(self, path, target="global"):
+    def convertGlobalRenderPath(self, path: str, target: str = "global") -> str:
+        """Convert a render path from global location to another location.
+        
+        Args:
+            path: Path to convert.
+            target: Target location name. Defaults to 'global'.
+            
+        Returns:
+            str: Converted path.
+        """
         path = os.path.normpath(path)
         basepaths = self.getRenderProductBasePaths()
         prjPath = os.path.normpath(self.core.projectPath)
@@ -615,7 +874,16 @@ class PathManager(object):
         return convertedPath
 
     @err_catcher(name=__name__)
-    def replaceVersionInStr(self, inputStr, replacement):
+    def replaceVersionInStr(self, inputStr: str, replacement: str) -> str:
+        """Replace all version strings in a string with a new value.
+        
+        Args:
+            inputStr: String containing version patterns (e.g., 'v0001').
+            replacement: Replacement version string.
+            
+        Returns:
+            str: String with versions replaced.
+        """
         versions = re.findall("v[0-9]{%s}" % self.core.versionPadding, inputStr)
         replacedStr = inputStr
         for version in versions:
@@ -624,7 +892,15 @@ class PathManager(object):
         return replacedStr
 
     @err_catcher(name=__name__)
-    def getFrameFromFilename(self, filename):
+    def getFrameFromFilename(self, filename: str) -> Optional[str]:
+        """Extract frame number from a filename.
+        
+        Args:
+            filename: Filename to parse.
+            
+        Returns:
+            Optional[str]: Frame number string, or None if not found.
+        """
         filename = os.path.basename(filename)
         base, ext = os.path.splitext(filename)
         match = re.search("[0-9]{%s}$" % self.core.framePadding, base)
@@ -635,7 +911,17 @@ class PathManager(object):
         return frame
 
     @err_catcher(name=__name__)
-    def getLocationFromPath(self, path):
+    def getLocationFromPath(self, path: str) -> Optional[str]:
+        """Determine the storage location name from a path.
+        
+        Checks both export and render product paths.
+        
+        Args:
+            path: Path to check.
+            
+        Returns:
+            Optional[str]: Location name ('global', 'local', or custom), or None if not found.
+        """
         locations = []
         productPaths = self.getExportProductBasePaths()
         for ppath in productPaths:
@@ -655,7 +941,15 @@ class PathManager(object):
             return sorted(locations, key=lambda x: len(renderPaths[x]), reverse=True)[0]
 
     @err_catcher(name=__name__)
-    def getLocationPath(self, locationName):
+    def getLocationPath(self, locationName: str) -> Optional[str]:
+        """Get the filesystem path for a storage location name.
+        
+        Args:
+            locationName: Location name to look up.
+            
+        Returns:
+            Optional[str]: Filesystem path, or None if location not found.
+        """
         if locationName == "global":
             return self.core.projectPath
         elif self.core.useLocalFiles and locationName == "local":
@@ -670,14 +964,33 @@ class PathManager(object):
                 return renderPaths[locationName]
 
     @err_catcher(name=__name__)
-    def splitext(self, path):
+    def splitext(self, path: str) -> List[str]:
+        """Split path into root and extension, with special handling for compound extensions.
+        
+        Handles special cases like '.bgeo.sc'.
+        
+        Args:
+            path: File path to split.
+            
+        Returns:
+            List[str]: [root, extension] pair.
+        """
         if path.endswith(".bgeo.sc"):
             return [path[: -len(".bgeo.sc")], ".bgeo.sc"]
         else:
             return os.path.splitext(path)
 
     @err_catcher(name=__name__)
-    def getEntityTypeFromPath(self, path, projectPath=None):
+    def getEntityTypeFromPath(self, path: str, projectPath: Optional[str] = None) -> Optional[str]:
+        """Determine entity type from a project path.
+        
+        Args:
+            path: Path to analyze.
+            projectPath: Optional project path for path resolution.
+            
+        Returns:
+            Optional[str]: 'asset' or 'shot', or None if cannot be determined.
+        """
         globalPath = self.core.convertPath(path, "global")
         globalPath = os.path.normpath(globalPath)
         globalPath = os.path.splitdrive(globalPath)[1]
@@ -709,7 +1022,27 @@ class PathManager(object):
 
 
 class MasterManager(QDialog):
-    def __init__(self, core, entities, mode, parent=None):
+    """Dialog for managing master version updates across multiple entities.
+    
+    Displays outdated master versions and provides batch update functionality.
+    Can manage both cache products and media renders.
+    
+    Attributes:
+        core: Reference to Prism core instance.
+        mode: Operating mode - 'products' or 'media'.
+        entities: List of entity dicts to check for updates.
+        outdatedVersions (List[Dict]): List of versions needing master updates.
+    """
+    
+    def __init__(self, core: Any, entities: List[Dict], mode: str, parent: Any = None) -> None:
+        """Initialize MasterManager dialog.
+        
+        Args:
+            core: PrismCore instance
+            entities: List of entity dictionaries to check
+            mode: 'products' or 'mediaProducts'
+            parent: Parent widget. Defaults to None.
+        """
         super(MasterManager, self).__init__()
         self.core = core
         self.core.parentWindow(self, parent=parent)
@@ -719,15 +1052,31 @@ class MasterManager(QDialog):
         self.setupUi()
 
     @err_catcher(name=__name__)
-    def showEvent(self, event):
+    def showEvent(self, event: Any) -> None:
+        """Handle dialog show event.
+        
+        Refreshes the versions table when dialog is shown.
+        
+        Args:
+            event: Qt show event
+        """
         self.refreshTable()
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Get recommended dialog size.
+        
+        Returns:
+            QSize(700, 500)
+        """
         return QSize(700, 500)
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Set up the master manager dialog UI.
+        
+        Creates table showing outdated versions with update buttons.
+        """
         self.setWindowTitle("Master Version Manager")
         self.lo_main = QVBoxLayout()
         self.setLayout(self.lo_main)
@@ -763,7 +1112,12 @@ class MasterManager(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def refreshTable(self):
+    def refreshTable(self) -> None:
+        """Populate table with outdated version data.
+        
+        Creates table rows for each outdated version showing entity, department,
+        task, identifier, current version, latest version, and path.
+        """
         twSorting = [
             self.tw_versions.horizontalHeader().sortIndicatorSection(),
             self.tw_versions.horizontalHeader().sortIndicatorOrder(),
@@ -829,12 +1183,26 @@ class MasterManager(QDialog):
         self.tw_versions.setSortingEnabled(True)
 
     @err_catcher(name=__name__)
-    def onItemDoubleClicked(self, item):
+    def onItemDoubleClicked(self, item: Any) -> None:
+        """Handle double-click on table item.
+        
+        Opens the version in Project Browser.
+        
+        Args:
+            item: Table widget item that was double-clicked
+        """
         data = self.tw_versions.item(item.row(), 0).data(Qt.UserRole)
         self.openInProjectBrowser(data["latest"]["path"])
 
     @err_catcher(name=__name__)
-    def showContextMenu(self, pos):
+    def showContextMenu(self, pos: Any) -> None:
+        """Show right-click context menu.
+        
+        Provides options to update selected versions, show in Project Browser, or refresh.
+        
+        Args:
+            pos: Mouse position for menu
+        """
         rcmenu = QMenu(self)
 
         if self.tw_versions.selectedItems():
@@ -856,7 +1224,11 @@ class MasterManager(QDialog):
         rcmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def updateSelected(self):
+    def updateSelected(self) -> None:
+        """Update master versions for all selected table rows.
+        
+        Shows wait popup while updating, then refreshes data and UI.
+        """
         text = "Updating versions. Please wait..."
         with self.core.waitPopup(self.core, text):
             for item in self.tw_versions.selectedItems():
@@ -871,7 +1243,14 @@ class MasterManager(QDialog):
         self.refreshProjectBrowserVersions()
 
     @err_catcher(name=__name__)
-    def openInProjectBrowser(self, path):
+    def openInProjectBrowser(self, path: str) -> None:
+        """Open the Project Browser and navigate to the given path.
+        
+        Shows and focuses Project Browser, then navigates to the version.
+        
+        Args:
+            path: Version path to navigate to
+        """
         if self.core.pb:
             self.core.pb.show()
             self.core.pb.activateWindow()
@@ -892,7 +1271,11 @@ class MasterManager(QDialog):
             self.core.pb.mediaBrowser.showRender(identifier=data.get("identifier"), entity=data, version=data.get("version"))
 
     @err_catcher(name=__name__)
-    def refreshData(self):
+    def refreshData(self) -> None:
+        """Get outdated master versions for entities.
+        
+        Shows wait popup while fetching version data.
+        """
         text = "Getting version data. Please wait..."
         with self.core.waitPopup(self.core, text):
             if self.mode == "products":
@@ -903,13 +1286,23 @@ class MasterManager(QDialog):
         self.outdatedVersions = result
 
     @err_catcher(name=__name__)
-    def onUpdateMasterClicked(self, versionData):
+    def onUpdateMasterClicked(self, versionData: Dict[str, Any]) -> None:
+        """Handle update master button click for single version.
+        
+        Args:
+            versionData: Version data dictionary
+        """
         text = "Updating version. Please wait..."
         with self.core.waitPopup(self.core, text):
             self.updateMaster(versionData)
 
     @err_catcher(name=__name__)
-    def updateMaster(self, versionData):
+    def updateMaster(self, versionData: Dict[str, Any]) -> None:
+        """Update master version to latest for single version.
+        
+        Args:
+            versionData: Version data dict with 'latest' and 'master' keys
+        """
         if self.mode == "products":
             filepath = self.core.products.getPreferredFileFromVersion(versionData["latest"])
             self.core.products.updateMasterVersion(filepath)
@@ -917,7 +1310,8 @@ class MasterManager(QDialog):
             self.core.mediaProducts.updateMasterVersion(context=versionData["latest"])
 
     @err_catcher(name=__name__)
-    def refreshProjectBrowserVersions(self):
+    def refreshProjectBrowserVersions(self) -> None:
+        """Refresh version displays in Project Browser after updating."""
         if self.core.pb:
             if self.mode == "products":
                 self.core.pb.productBrowser.updateVersions(restoreSelection=True)
@@ -925,7 +1319,8 @@ class MasterManager(QDialog):
                 self.core.pb.mediaBrowser.updateVersions(restoreSelection=True)
 
     @err_catcher(name=__name__)
-    def onAcceptClicked(self):
+    def onAcceptClicked(self) -> None:
+        """Handle accept button click - update all outdated master versions."""
         text = "Updating versions. Please wait..."
         with self.core.waitPopup(self.core, text):
             for versionData in self.outdatedVersions:

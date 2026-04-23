@@ -32,8 +32,15 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+"""Houdini V-Ray renderer implementation for Prism.
+
+Provides renderer-specific functionality for V-Ray ROP nodes
+including render channel management and parameter configuration.
+"""
+
 import os
 import re
+from typing import Any, List, Optional, Union
 
 import hou
 
@@ -46,24 +53,60 @@ label = "V-Ray"
 ropNames = ["vray_renderer"]
 
 
-def isActive():
+def isActive() -> bool:
+    """Check if V-Ray renderer is available.
+    
+    Returns:
+        True if V-Ray is active (vrayproxy command exists).
+    """
     return "Unknown command" not in hou.hscript("vrayproxy")[1]
 
 
-def getCam(node):
+def getCam(node: Any) -> Any:
+    """Get camera node from renderer ROP.
+    
+    Args:
+        node: V-Ray ROP node.
+    
+    Returns:
+        Camera node object.
+    """
     return hou.node(node.parm("render_camera").eval())
 
 
-def getFormatFromNode(node):
+def getFormatFromNode(node: Any) -> str:
+    """Get output format from renderer node.
+    
+    Args:
+        node: V-Ray ROP node.
+    
+    Returns:
+        File extension string.
+    """
     ext = os.path.splitext(node.parm("SettingsOutput_img_file_path").eval())[1]
     return ext
 
 
-def createROP(origin):
+def createROP(origin: Any) -> None:
+    """Create V-Ray ROP node.
+    
+    Args:
+        origin: State manager origin object.
+    """
     origin.node = origin.core.appPlugin.createRop("vray_renderer")
 
 
-def setAOVData(origin, node, aovNum, item):
+def setAOVData(origin: Any, node: Any, aovNum: str, item: Any) -> None:
+    """Set AOV data on node from table widget item.
+    
+    Manages V-Ray render channel color nodes.
+    
+    Args:
+        origin: State manager origin object.
+        node: V-Ray ROP node.
+        aovNum: AOV number string.
+        item: Table widget item with AOV data.
+    """
     aovNode = node.node(node.parm("render_network_render_channels").eval())
     if aovNode is None:
         refreshAOVs(origin)
@@ -99,7 +142,17 @@ def setAOVData(origin, node, aovNum, item):
         ccNode.setName(re.sub("[^0-9a-zA-Z\\.]+", "_", item.text()))
 
 
-def getDefaultPasses(origin):
+def getDefaultPasses(origin: Any) -> List:
+    """Get default render passes for V-Ray.
+    
+    Retrieves from config or plugin defaults.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        List of default AOV configurations.
+    """
     aovs = origin.core.getConfig(
         "defaultpasses", "houdini_vray", configPath=origin.core.prismIni
     )
@@ -109,7 +162,15 @@ def getDefaultPasses(origin):
     return aovs
 
 
-def addAOV(origin, aovData):
+def addAOV(origin: Any, aovData: List) -> None:
+    """Add AOV to V-Ray renderer.
+    
+    Creates VRayNodeRenderChannelColor nodes in render channels network.
+    
+    Args:
+        origin: State manager origin object.
+        aovData: List containing [alias, name].
+    """
     aovNode = origin.node.node(
         origin.node.parm("render_network_render_channels").eval()
     )
@@ -144,7 +205,14 @@ def addAOV(origin, aovData):
     origin.core.appPlugin.setNodeParm(ccNode, "name", val=aovData[1])
 
 
-def refreshAOVs(origin):
+def refreshAOVs(origin: Any) -> None:
+    """Refresh AOV list in UI table.
+    
+    Reads render channel color nodes and populates table widget.
+    
+    Args:
+        origin: State manager origin object.
+    """
     origin.tw_passes.horizontalHeaderItem(0).setText("Type")
     origin.tw_passes.horizontalHeaderItem(1).setText("Name")
     passNum = 0
@@ -191,7 +259,15 @@ def refreshAOVs(origin):
     origin.setPassDataEnabled = True
 
 
-def deleteAOV(origin, row):
+def deleteAOV(origin: Any, row: int) -> None:
+    """Delete AOV from renderer.
+    
+    Destroys VRayNodeRenderChannelColor node.
+    
+    Args:
+        origin: State manager origin object.
+        row: Row index in table widget.
+    """
     pid = int(origin.tw_passes.item(row, 2).text())
 
     aovNode = origin.node.node(
@@ -211,7 +287,15 @@ def deleteAOV(origin, row):
     ccNode.destroy()
 
 
-def aovDbClick(origin, event):
+def aovDbClick(origin: Any, event: Any) -> None:
+    """Handle AOV double-click event.
+    
+    Opens alias menu for render channel type selection.
+    
+    Args:
+        origin: State manager origin object.
+        event: Mouse event.
+    """
     if origin.node is None or event.button() != Qt.LeftButton:
         origin.tw_passes.mouseDbcEvent(event)
         return
@@ -256,11 +340,32 @@ def aovDbClick(origin, event):
         origin.tw_passes.mouseDbcEvent(event)
 
 
-def setCam(origin, node, val):
+def setCam(origin: Any, node: Any, val: str) -> bool:
+    """Set camera on renderer node.
+    
+    Args:
+        origin: State manager origin object.
+        node: V-Ray ROP node.
+        val: Camera path string.
+    
+    Returns:
+        True if successful.
+    """
     return origin.core.appPlugin.setNodeParm(node, "render_camera", val=val)
 
 
-def executeAOVs(origin, outputName):
+def executeAOVs(origin: Any, outputName: str) -> Union[bool, List[str]]:
+    """Execute AOV setup and configure output paths.
+    
+    Configures primary and render channel output paths.
+    
+    Args:
+        origin: State manager origin object.
+        outputName: Primary render output file path.
+    
+    Returns:
+        True if successful, list of error messages otherwise.
+    """
     if (
         not origin.gb_submit.isHidden()
         and origin.gb_submit.isChecked()
@@ -320,7 +425,15 @@ def executeAOVs(origin, outputName):
     return True
 
 
-def setResolution(origin):
+def setResolution(origin: Any) -> Union[bool, List[str]]:
+    """Set render resolution on node.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful, list of error messages otherwise.
+    """
     if not origin.core.appPlugin.setNodeParm(
         origin.node, "override_camerares", val=True
     ):
@@ -341,16 +454,37 @@ def setResolution(origin):
     return True
 
 
-def executeRender(origin):
+def executeRender(origin: Any) -> bool:
+    """Execute the render.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful.
+    """
     origin.node.parm("execute").pressButton()
     return True
 
 
-def postExecute(origin):
+def postExecute(origin: Any) -> bool:
+    """Post-execution cleanup.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful.
+    """
     return True
 
 
-def getCleanupScript():
+def getCleanupScript() -> str:
+    """Get cleanup script (not used for V-Ray).
+    
+    Returns:
+        Empty string.
+    """
     script = """
 
 import os

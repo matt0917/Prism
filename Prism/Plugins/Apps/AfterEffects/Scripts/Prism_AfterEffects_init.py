@@ -38,6 +38,7 @@ from Prism_AfterEffects_externalAccess_Functions import (
 )
 from Prism_AfterEffects_Functions import Prism_AfterEffects_Functions
 from Prism_AfterEffects_Integration import Prism_AfterEffects_Integration
+from typing import Any
 
 
 class Prism_Plugin_AfterEffects(
@@ -46,7 +47,15 @@ class Prism_Plugin_AfterEffects(
     Prism_AfterEffects_Functions,
     Prism_AfterEffects_Integration,
 ):
-    def __init__(self, core):
+    def __init__(self, core: Any) -> None:
+        """Initialize AfterEffects plugin by combining all component classes.
+        
+        Initializes Variables, external access functions, main functions, and
+        integration components for the After Effects plugin.
+        
+        Args:
+            core: Prism core instance
+        """
         Prism_AfterEffects_Variables.__init__(self, core, self)
         Prism_AfterEffects_externalAccess_Functions.__init__(self, core, self)
         Prism_AfterEffects_Functions.__init__(self, core, self)

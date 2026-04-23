@@ -41,6 +41,7 @@ import glob
 import errno
 import time
 import copy
+from typing import Any, Optional, List, Dict, Tuple, Union
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -53,11 +54,38 @@ logger = logging.getLogger(__name__)
 
 
 class MediaProducts(object):
-    def __init__(self, core):
+    """Manages media product creation and import in the Prism pipeline.
+    
+    Attributes:
+        core: Reference to the Prism core instance.
+    """
+    
+    def __init__(self, core: Any) -> None:
+        """Initialize the MediaProducts manager.
+        
+        Args:
+            core: Reference to the Prism core instance.
+        """
         self.core = core
 
     @err_catcher(name=__name__)
-    def createExternalMedia(self, filepath, entity, identifier, version, action="copy", location="global"):
+    def createExternalMedia(self, filepath: str, entity: Dict, identifier: str, version: str, action: str = "copy", location: str = "global") -> Optional[str]:
+        """Create external media product from external files.
+        
+        Imports external media files into the project structure. Can copy, move, or
+        create redirect links to the original files.
+        
+        Args:
+            filepath: Path(s) to external file(s). Multiple paths separated by os.pathsep.
+            entity: Entity dict containing type ('asset' or 'shot') and other entity data.
+            identifier: Product identifier name.
+            version: Version string for the media.
+            action: Import action - 'copy', 'move', or 'link'. Defaults to 'copy'.
+            location: Storage location - 'global' or custom location. Defaults to 'global'.
+            
+        Returns:
+            Optional[str]: Path to created media folder, or None if creation fails.
+        """
         if entity["type"] == "asset":
             key = "renderFilesAssets"
         elif entity["type"] == "shot":
@@ -107,7 +135,17 @@ class MediaProducts(object):
         return folderpath
 
     @err_catcher(name=__name__)
-    def getExternalPathFromVersion(self, version):
+    def getExternalPathFromVersion(self, version: Dict) -> str:
+        """Get the original external path from a media version.
+        
+        Reads the REDIRECT.txt file if present to find the original external media location.
+        
+        Args:
+            version: Version dict containing type, identifier, and other version data.
+            
+        Returns:
+            str: Original external file path, or empty string if not found.
+        """
         if version["type"] == "asset":
             key = "renderFilesAssets"
         elif version["type"] == "shot":
@@ -121,7 +159,6 @@ class MediaProducts(object):
             key, context=context
         )
         folderpath = os.path.dirname(filepath)
-
         redirectFile = os.path.join(folderpath, "REDIRECT.txt")
         curLoc = ""
         if os.path.exists(redirectFile):
@@ -131,7 +168,16 @@ class MediaProducts(object):
         return curLoc
 
     @err_catcher(name=__name__)
-    def getDisplayNameForIdentifier(self, identifier, mediaType):
+    def getDisplayNameForIdentifier(self, identifier: str, mediaType: str) -> str:
+        """Generate display name for an identifier based on media type.
+        
+        Args:
+            identifier: Base identifier name.
+            mediaType: Type of media ('2drenders', 'playblasts', 'externalMedia', etc.).
+            
+        Returns:
+            str: Display name with type suffix in parentheses.
+        """
         display = identifier
         if mediaType == "2drenders":
             display += " (2d)"
@@ -143,7 +189,17 @@ class MediaProducts(object):
         return display
 
     @err_catcher(name=__name__)
-    def getIdentifiersByType(self, entity, locations=None):
+    def getIdentifiersByType(self, entity: Dict, locations: Optional[List[str]] = None) -> Dict[str, List[Dict]]:
+        """Get all media identifiers for an entity, grouped by type.
+        
+        Args:
+            entity: Entity dict containing type and other entity data.
+            locations: Optional list of storage locations to search. Searches all if None.
+            
+        Returns:
+            Dict[str, List[Dict]]: Dict with keys '3d', '2d', 'playblast', 'external', 
+                each containing a list of identifier dicts.
+        """
         locationData = self.core.paths.getRenderProductBasePaths()
         searchLocations = []
         for locData in locationData:
@@ -190,7 +246,15 @@ class MediaProducts(object):
         return mediaTypes
 
     @err_catcher(name=__name__)
-    def getIdentifierNames(self, entity):
+    def getIdentifierNames(self, entity: Dict) -> List[str]:
+        """Get list of all identifier display names for an entity.
+        
+        Args:
+            entity: Entity dict containing type and other entity data.
+            
+        Returns:
+            List[str]: List of display names for all identifiers.
+        """
         names = []
         idfs = self.getIdentifiersByType(entity)
         for mtype in idfs:
@@ -200,7 +264,15 @@ class MediaProducts(object):
         return names
 
     @err_catcher(name=__name__)
-    def getIdentifiersFromEntity(self, entity):
+    def getIdentifiersFromEntity(self, entity: Dict) -> List[Dict]:
+        """Get all media identifiers from an entity.
+        
+        Args:
+            entity: Entity dict containing type and other entity data.
+            
+        Returns:
+            List[Dict]: List of all identifier dicts across all media types.
+        """
         entityIdfs = []
         idfs = self.getIdentifiersByType(entity)
         for mtype in idfs:
@@ -210,7 +282,15 @@ class MediaProducts(object):
         return entityIdfs
 
     @err_catcher(name=__name__)
-    def getIdentifierPathFromEntity(self, entity):
+    def getIdentifierPathFromEntity(self, entity: Dict) -> str:
+        """Get the base path for identifiers from an entity.
+        
+        Args:
+            entity: Entity dict containing type and other entity data.
+            
+        Returns:
+            str: Path to the identifier directory.
+        """
         key = "3drenders"
         context = entity.copy()
         template = self.core.projects.getResolvedProjectStructurePath(
@@ -220,7 +300,15 @@ class MediaProducts(object):
         return path
 
     @err_catcher(name=__name__)
-    def getVersionPathFromIdentifier(self, entity):
+    def getVersionPathFromIdentifier(self, entity: Dict) -> str:
+        """Get the base path for versions from an identifier entity.
+        
+        Args:
+            entity: Entity dict with identifier data.
+            
+        Returns:
+            str: Path to the version directory.
+        """
         key = "renderVersions"
         context = entity.copy()
         template = self.core.projects.getResolvedProjectStructurePath(
@@ -230,7 +318,18 @@ class MediaProducts(object):
         return path
 
     @err_catcher(name=__name__)
-    def getVersionsFromIdentifier(self, identifier, locations=None):
+    def getVersionsFromIdentifier(self, identifier: Dict[str, Any], locations: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """Get all versions matching the given identifier.
+        
+        Searches render product locations for versions matching the identifier context.
+        
+        Args:
+            identifier: Context dict with entity, department, task, etc.
+            locations: List of location keys to search (default: search all)
+            
+        Returns:
+            List of version dicts with path and metadata
+        """
         if not identifier:
             return
 
@@ -264,7 +363,18 @@ class MediaProducts(object):
         return versions
 
     @err_catcher(name=__name__)
-    def getVersionStackContextFromPath(self, filepath, mediaType=None):
+    def getVersionStackContextFromPath(self, filepath: str, mediaType: Optional[str] = None) -> Dict:
+        """Get context dict for a version stack from a file path.
+        
+        Extracts entity and identifier information from path, removing version-specific fields.
+        
+        Args:
+            filepath: Path to a media file or folder.
+            mediaType: Optional media type hint.
+            
+        Returns:
+            Dict: Context dict suitable for finding other versions in the same stack.
+        """
         context = self.core.paths.getRenderProductData(filepath, mediaType=mediaType)
 
         if mediaType:
@@ -283,7 +393,16 @@ class MediaProducts(object):
         return context
 
     @err_catcher(name=__name__)
-    def getVersionsFromSameVersionStack(self, path, mediaType=None):
+    def getVersionsFromSameVersionStack(self, path: str, mediaType: Optional[str] = None) -> List[Dict]:
+        """Get all versions that belong to the same version stack as the given path.
+        
+        Args:
+            path: Path to a media file or folder.
+            mediaType: Optional media type hint.
+            
+        Returns:
+            List[Dict]: List of version dicts from the same version stack.
+        """
         context = self.getVersionStackContextFromPath(path, mediaType=mediaType)
         if not context:
             return []
@@ -292,7 +411,19 @@ class MediaProducts(object):
         return versionData
 
     @err_catcher(name=__name__)
-    def getVersion(self, entity, identifier, mediaType=None, version=None):
+    def getVersion(self, entity: Dict, identifier: str, mediaType: Optional[str] = None, 
+                   version: Optional[str] = None) -> Optional[Dict]:
+        """Get a specific version from an entity and identifier.
+        
+        Args:
+            entity: Entity dict containing type and other entity data.
+            identifier: Product identifier name.
+            mediaType: Type of media ('3drenders', '2drenders', 'playblasts'). Defaults to '3drenders'.
+            version: Version string, or 'latest' for newest version. Defaults to 'latest'.
+            
+        Returns:
+            Optional[Dict]: Version dict, or None if not found.
+        """
         mediaType = mediaType or "3drenders"
         version = version or "latest"
         idf = entity.copy()
@@ -310,7 +441,18 @@ class MediaProducts(object):
         return versionData
 
     @err_catcher(name=__name__)
-    def getFileFromVersion(self, version, aov=None, findExisting=False):
+    def getFileFromVersion(self, version: Dict, aov: Optional[str] = None, 
+                           findExisting: bool = False) -> Optional[str]:
+        """Get the file path or pattern from a version dict.
+        
+        Args:
+            version: Version dict containing path and metadata.
+            aov: Optional AOV name. If not provided, uses first available AOV for 3D renders.
+            findExisting: Whether to find actual existing files instead of pattern.
+            
+        Returns:
+            Optional[str]: File path pattern, or None if version invalid.
+        """
         if not version:
             return
 
@@ -341,7 +483,20 @@ class MediaProducts(object):
         return file
 
     @err_catcher(name=__name__)
-    def getVersionsFromContext(self, context, keys=None, locations=None):
+    def getVersionsFromContext(self, context: Dict[str, Any], keys: Optional[List[str]] = None, locations: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """Get all versions matching the given context.
+        
+        Searches structured project paths for versions based on context (entity, task, etc.).
+        Can search render or playblast versions depending on mediaType in context.
+        
+        Args:
+            context: Context dict with entity, department, task, mediaType, etc.
+            keys: Project structure keys to use (default: renderVersions or playblastVersions)
+            locations: List of location keys to search (default: search all)
+            
+        Returns:
+            List of version dicts with path and metadata
+        """
         locationData = self.core.paths.getRenderProductBasePaths()
         searchLocations = []
         for locData in locationData:
@@ -385,7 +540,15 @@ class MediaProducts(object):
         return versions
 
     @err_catcher(name=__name__)
-    def isPicklable(self, value):
+    def isPicklable(self, value: Any) -> bool:
+        """Check if a value can be pickled.
+        
+        Args:
+            value: Value to test.
+            
+        Returns:
+            bool: True if the value can be pickled, False otherwise.
+        """
         import pickle
         try:
             pickle.dumps(value)
@@ -394,7 +557,15 @@ class MediaProducts(object):
             return False
 
     @err_catcher(name=__name__)
-    def getDeepCopy(self, context):
+    def getDeepCopy(self, context: Any) -> Any:
+        """Create a deep copy of a context dict, skipping unpicklable values.
+        
+        Args:
+            context: Context dict or other value to copy.
+            
+        Returns:
+            Any: Deep copy of the value, with unpicklable items excluded.
+        """
         if not isinstance(context, dict):
             return context
 
@@ -411,7 +582,15 @@ class MediaProducts(object):
         return newDict
 
     @err_catcher(name=__name__)
-    def getAovPathFromVersion(self, version):
+    def getAovPathFromVersion(self, version: Dict) -> str:
+        """Get the directory path for AOVs from a version dict.
+        
+        Args:
+            version: Version dict containing path information.
+            
+        Returns:
+            str: Path to the AOV directory.
+        """
         key = "aovs"
         context = version.copy()
         template = self.core.projects.getResolvedProjectStructurePath(
@@ -421,7 +600,18 @@ class MediaProducts(object):
         return path
 
     @err_catcher(name=__name__)
-    def getAOVsFromVersion(self, version):
+    def getAOVsFromVersion(self, version: Dict) -> List[Dict]:
+        """Get all AOVs (Arbitrary Output Variables) from a version.
+        
+        Scans the version directory for available render layers/passes.
+        Does not apply to playblasts.
+        
+        Args:
+            version: Version dict containing type, identifier, and version data.
+            
+        Returns:
+            List[Dict]: List of AOV dicts, each containing aov name and path.
+        """
         if version.get("mediaType") == "playblasts":
             return []
 
@@ -461,7 +651,18 @@ class MediaProducts(object):
         return aovs
 
     @err_catcher(name=__name__)
-    def getFilesFromContext(self, context):
+    def getFilesFromContext(self, context: Dict) -> List[str]:
+        """Get all media files from a version context.
+        
+        Resolves file paths from the context, handling redirects and sequences.  
+        Supports both local and redirect-based external media.
+        
+        Args:
+            context: Context dict containing version, identifier, and other metadata.
+            
+        Returns:
+            List[str]: List of absolute file paths.
+        """
         if context.get("mediaType") == "playblasts":
             if context["type"] == "asset":
                 key = "playblastFilesAssets"
@@ -549,7 +750,20 @@ class MediaProducts(object):
         return filepaths
 
     @err_catcher(name=__name__)
-    def getFilePatternFromVersion(self, version):
+    def getFilePatternFromVersion(self, version: Dict) -> str:
+        """Get the filename pattern from a version dict.
+        
+        Generates a pattern with frame padding (#) for sequences.
+        
+        Args:
+            version: Version dict containing identifier, version, and type data.
+            
+        Returns:
+            str: File path pattern with frame padding.
+            
+        Raises:
+            Exception: If version dict is invalid.
+        """
         key = None
         if version.get("mediaType") == "playblasts":
             if version["type"] == "asset":
@@ -580,7 +794,16 @@ class MediaProducts(object):
         return pattern
 
     @err_catcher(name=__name__)
-    def getMediaVersionInfoPathFromFilepath(self, path, mediaType=None):
+    def getMediaVersionInfoPathFromFilepath(self, path: str, mediaType: Optional[str] = None) -> str:
+        """Get the version info file path from a media filepath.
+        
+        Args:
+            path: Path to a media file.
+            mediaType: Optional media type to determine info file location.
+            
+        Returns:
+            str: Path to the versioninfo config file.
+        """
         if mediaType == "playblasts":
             return self.getPlayblastVersionInfoPathFromFilepath(path)
         elif mediaType == "2drenders":
@@ -593,21 +816,45 @@ class MediaProducts(object):
         return infoPath
 
     @err_catcher(name=__name__)
-    def getPlayblastVersionInfoPathFromFilepath(self, path):
+    def getPlayblastVersionInfoPathFromFilepath(self, path: str) -> str:
+        """Get the version info file path from a playblast filepath.
+        
+        Args:
+            path: Path to a playblast file.
+            
+        Returns:
+            str: Path to the versioninfo config file.
+        """
         infoPath = os.path.join(
             os.path.dirname(path), "versioninfo" + self.core.configs.getProjectExtension()
         )
         return infoPath
 
     @err_catcher(name=__name__)
-    def get2dVersionInfoPathFromFilepath(self, path):
+    def get2dVersionInfoPathFromFilepath(self, path: str) -> str:
+        """Get the version info file path from a 2D render filepath.
+        
+        Args:
+            path: Path to a 2D render file.
+            
+        Returns:
+            str: Path to the versioninfo config file.
+        """
         infoPath = os.path.join(
             os.path.dirname(path), "versioninfo" + self.core.configs.getProjectExtension()
         )
         return infoPath
 
     @err_catcher(name=__name__)
-    def getVersionInfoPathFromContext(self, context):
+    def getVersionInfoPathFromContext(self, context: Dict) -> str:
+        """Get the version info file path from a context dict.
+        
+        Args:
+            context: Context dict containing version metadata.
+            
+        Returns:
+            str: Path to the versioninfo config file.
+        """
         if context.get("mediaType") == "playblasts":
             if context["type"] == "asset":
                 key = "playblastFilesAssets"
@@ -631,7 +878,13 @@ class MediaProducts(object):
         return infopath
 
     @err_catcher(name=__name__)
-    def setComment(self, versionPath, comment):
+    def setComment(self, versionPath: str, comment: str) -> None:
+        """Set the comment for a version.
+        
+        Args:
+            versionPath: Path to the version directory.
+            comment: Comment text to save.
+        """
         infoPath = self.getMediaVersionInfoPathFromFilepath(versionPath)
         infoPath = os.path.join(versionPath, os.path.basename(infoPath))
         mediaInfo = {}
@@ -642,7 +895,18 @@ class MediaProducts(object):
         self.core.setConfig(data=mediaInfo, configPath=infoPath)
 
     @err_catcher(name=__name__)
-    def getLatestVersionFromVersions(self, versions, includeMaster=True):
+    def getLatestVersionFromVersions(self, versions: List[Dict], includeMaster: bool = True) -> Optional[Dict]:
+        """Get the latest version from a list of versions.
+        
+        Sorts versions by version string. Master versions are treated as newest if included.
+        
+        Args:
+            versions: List of version dicts.
+            includeMaster: Whether to include 'master' versions. Defaults to True.
+            
+        Returns:
+            Optional[Dict]: Latest version dict, or None if list is empty.
+        """
         if not versions:
             return
 
@@ -665,7 +929,16 @@ class MediaProducts(object):
         return latestVersion
 
     @err_catcher(name=__name__)
-    def getLatestVersionFromIdentifier(self, identifier, includeMaster=True):
+    def getLatestVersionFromIdentifier(self, identifier: Dict, includeMaster: bool = True) -> Optional[Dict]:
+        """Get the latest version from an identifier.
+        
+        Args:
+            identifier: Identifier dict containing identifier name and entity data.
+            includeMaster: Whether to include 'master' versions. Defaults to True.
+            
+        Returns:
+            Optional[Dict]: Latest version dict, or None if no versions exist.
+        """
         versions = self.getVersionsFromIdentifier(identifier)
         if not versions:
             return
@@ -679,7 +952,16 @@ class MediaProducts(object):
         return version
 
     @err_catcher(name=__name__)
-    def getLatestVersionFromFilepath(self, filepath, includeMaster=True):
+    def getLatestVersionFromFilepath(self, filepath: str, includeMaster: bool = True) -> Optional[Dict]:
+        """Get the latest version from the same version stack as a filepath.
+        
+        Args:
+            filepath: Path to a media file.
+            includeMaster: Whether to include 'master' versions. Defaults to True.
+            
+        Returns:
+            Optional[Dict]: Latest version dict, or None if filepath invalid.
+        """
         data = self.getDataFromFilepath(filepath)
         if not data or len(data.keys()) <= 1:
             return
@@ -696,30 +978,61 @@ class MediaProducts(object):
     @err_catcher(name=__name__)
     def generateMediaProductPath(
         self,
-        entity,
-        task,
-        extension,
-        framePadding="",
-        comment=None,
-        version=None,
-        location="global",
-        aov="beauty",
-        returnDetails=False,
-        mediaType=None,
-        singleFrame=False,
-        ignoreEmpty=False,
-        ignoreFolder=False,
-        user=None,
-        additionalContext=None,
-        state=None,
-        filenameTemplate=None,
-    ):
+        entity: Dict[str, Any],
+        task: str,
+        extension: str,
+        framePadding: str = "",
+        comment: Optional[str] = None,
+        version: Optional[str] = None,
+        location: str = "global",
+        aov: str = "beauty",
+        returnDetails: bool = False,
+        mediaType: Optional[str] = None,
+        singleFrame: bool = False,
+        ignoreEmpty: bool = False,
+        ignoreFolder: bool = False,
+        user: Optional[str] = None,
+        additionalContext: Optional[Dict[str, Any]] = None,
+        state: Optional[Any] = None,
+        filenameTemplate: Optional[str] = None,
+    ) -> Union[str, Dict[str, Any]]:
+        """Generate output path for a media product (render).
+        
+        Creates a versioned output path following the project structure template.
+        Can generate paths for different AOVs, locations, and media types.
+        
+        Args:
+            entity: Entity dict with type, asset_path/sequence/shot, etc.
+            task: Task name (e.g., 'Lighting', 'Compositing')
+            extension: File extension (e.g., '.exr', '.jpg')
+            framePadding: Frame padding pattern (e.g., '####')
+            comment: Optional version comment
+            version: Specific version string (default: auto-increment)
+            location: Storage location key (default: 'global')
+            aov: AOV name (default: 'beauty')
+            returnDetails: If True, return context dict instead of string
+            mediaType: Media type key (default: auto-detect from extension)
+            singleFrame: If True, no frame padding in path
+            ignoreEmpty: Skip empty folder checks when determining version
+            ignoreFolder: Skip folder existence checks when determining version
+            user: Username for version (default: current user)
+            additionalContext: Extra context keys to merge
+            state: State manager state object
+            filenameTemplate: Custom filename template
+            
+        Returns:
+            Output file path string, or context dict if returnDetails=True
+        """
         framePadding = framePadding or ""
         comment = comment or ""
         location = location or "global"
 
         versionUser = user or self.core.user
-        basePath = self.core.paths.getRenderProductBasePaths()[location]
+        basePaths = self.core.paths.getRenderProductBasePaths()
+        if location not in basePaths:
+            return
+
+        basePath = basePaths[location]
         context = entity.copy()
         if "version" in context:
             del context["version"]
@@ -770,17 +1083,36 @@ class MediaProducts(object):
     @err_catcher(name=__name__)
     def generatePlayblastPath(
         self,
-        entity,
-        task,
-        extension,
-        framePadding="",
-        comment=None,
-        version=None,
-        location="global",
-        returnDetails=False,
-        user=None,
-        filenameTemplate=None,
-    ):
+        entity: Dict[str, Any],
+        task: str,
+        extension: str,
+        framePadding: str = "",
+        comment: Optional[str] = None,
+        version: Optional[str] = None,
+        location: str = "global",
+        returnDetails: bool = False,
+        user: Optional[str] = None,
+        filenameTemplate: Optional[str] = None,
+    ) -> Union[str, Dict[str, Any]]:
+        """Generate output path for a playblast.
+        
+        Creates a versioned playblast output path following project structure.
+        
+        Args:
+            entity: Entity dict with type, asset_path/sequence/shot, etc.
+            task: Task name
+            extension: File extension (e.g., '.mp4', '.mov')
+            framePadding: Frame padding pattern (e.g., '####')
+            comment: Optional version comment
+            version: Specific version string (default: auto-increment)
+            location: Storage location key (default: 'global')
+            returnDetails: If True, return context dict instead of string
+            user: Username for version (default: current user)
+            filenameTemplate: Custom filename template
+            
+        Returns:
+            Output file path string, or context dict if returnDetails=True
+        """
         versionUser = user or self.core.user
         basePath = self.core.paths.getRenderProductBasePaths()[location]
         context = entity.copy()
@@ -817,7 +1149,21 @@ class MediaProducts(object):
             return outputPath
 
     @err_catcher(name=__name__)
-    def getHighestMediaVersion(self, context, getExisting=False, ignoreEmpty=False, ignoreFolder=False):
+    def getHighestMediaVersion(self, context: Dict[str, Any], getExisting: bool = False, ignoreEmpty: bool = False, ignoreFolder: bool = False) -> str:
+        """Get highest version number for media product.
+        
+        Determines the next or highest existing version number based on context.
+        Can use scene version or search existing versions on disk.
+        
+        Args:
+            context: Context dict with entity, task, mediaType, etc.
+            getExisting: If True, search disk for existing versions
+            ignoreEmpty: Skip empty folder checks
+            ignoreFolder: Skip folder existence checks
+            
+        Returns:
+            Version string (e.g., 'v0001')
+        """
         if not getExisting and not self.core.separateOutputVersionStack and not self.core.appPlugin.pluginName == "Standalone":
             fileName = self.core.getCurrentFileName()
             fnameData = self.core.getScenefileData(fileName)
@@ -899,7 +1245,15 @@ class MediaProducts(object):
                 return self.core.versionFormat % (highversion + 1)
 
     @err_catcher(name=__name__)
-    def getVersionFromFilepath(self, path):
+    def getVersionFromFilepath(self, path: str) -> Optional[str]:
+        """Extract version string from a media filepath.
+        
+        Args:
+            path: Path to media file or folder.
+            
+        Returns:
+            Optional[str]: Version string (e.g., 'v0001'), or None if not found.
+        """
         data = self.getDataFromFilepath(path)
 
         if "version" not in data:
@@ -940,7 +1294,16 @@ class MediaProducts(object):
     #     return data
 
     @err_catcher(name=__name__)
-    def getDataFromFilepath(self, path, isVersionFolder=False):
+    def getDataFromFilepath(self, path: str, isVersionFolder: bool = False) -> Optional[Dict]:
+        """Extract all metadata from a media filepath.
+        
+        Args:
+            path: Path to media file or folder.
+            isVersionFolder: Whether path points to a version folder.
+            
+        Returns:
+            Optional[Dict]: Dict containing extracted entity, identifier, version, and other data.
+        """
         if not path:
             return {}
 
@@ -966,14 +1329,24 @@ class MediaProducts(object):
                             if not isValid:
                                 entity = {}
 
-        entity["type"] = entityType
+        if entityType:
+            entity["type"] = entityType
+
         if "asset_path" in entity:
             entity["asset"] = os.path.basename(entity["asset_path"])
 
         return entity
 
     @err_catcher(name=__name__)
-    def getVersionFromPlayblastFilepath(self, path):
+    def getVersionFromPlayblastFilepath(self, path: str) -> Optional[str]:
+        """Extract version string from a playblast filepath.
+        
+        Args:
+            path: Path to playblast file.
+            
+        Returns:
+            Optional[str]: Version string, or None if not found.
+        """
         entityType = self.core.paths.getEntityTypeFromPath(path)
 
         if entityType == "asset":
@@ -990,7 +1363,16 @@ class MediaProducts(object):
         return version
 
     @err_catcher(name=__name__)
-    def getVersionFromVersionFolder(self, versionFolder, context=None):
+    def getVersionFromVersionFolder(self, versionFolder: str, context: Optional[Dict] = None) -> Optional[str]:
+        """Extract version string from a version folder path.
+        
+        Args:
+            versionFolder: Path to version folder.
+            context: Optional context dict with entity information.
+            
+        Returns:
+            Optional[str]: Version string, or None if not found.
+        """
         path = os.path.normpath(versionFolder)
         key = "renderVersions"
         context = context or {}
@@ -1026,7 +1408,16 @@ class MediaProducts(object):
         return version
 
     @err_catcher(name=__name__)
-    def getRenderProductDataFromFilepath(self, filepath, mediaType="3drenders"):
+    def getRenderProductDataFromFilepath(self, filepath: str, mediaType: str = "3drenders") -> Dict:
+        """Extract metadata from a render product filepath.
+        
+        Args:
+            filepath: Path to render file.
+            mediaType: Type of media. Defaults to '3drenders'.
+            
+        Returns:
+            Dict: Metadata dict with entity, version, identifier, etc.
+        """
         entityType = self.core.paths.getEntityTypeFromPath(filepath)
         if entityType == "asset":
             key = "renderFilesAssets"
@@ -1065,7 +1456,16 @@ class MediaProducts(object):
         return data
 
     @err_catcher(name=__name__)
-    def getMediaDataFromVersionFolder(self, path, mediaType="3drenders"):
+    def getMediaDataFromVersionFolder(self, path: str, mediaType: str = "3drenders") -> Dict:
+        """Extract metadata from a version folder path.
+        
+        Args:
+            path: Path to version folder.
+            mediaType: Type of media. Defaults to '3drenders'.
+            
+        Returns:
+            Dict: Metadata dict with entity, version, identifier, etc.
+        """
         entityType = self.core.paths.getEntityTypeFromPath(path)
         key = "renderVersions"
         context = {"type": entityType, "entityType": entityType}
@@ -1084,7 +1484,15 @@ class MediaProducts(object):
         return data
 
     @err_catcher(name=__name__)
-    def getLocationFromPath(self, path):
+    def getLocationFromPath(self, path: str) -> Optional[str]:
+        """Get the storage location name from a media path.
+        
+        Args:
+            path: Path to check.
+            
+        Returns:
+            Optional[str]: Location name ('global', 'local', or custom), or None if not found.
+        """
         locDict = self.core.paths.getRenderProductBasePaths()
         nPath = os.path.normpath(path)
         validLocs = []
@@ -1099,7 +1507,17 @@ class MediaProducts(object):
         return validLocs[0]
 
     @err_catcher(name=__name__)
-    def getVersionPathFromMediaFilePath(self, path, mediaType, entityType=None):
+    def getVersionPathFromMediaFilePath(self, path: str, mediaType: str, entityType: Optional[str] = None) -> Optional[str]:
+        """Get the version folder path from a media file path.
+        
+        Args:
+            path: Path to media file.
+            mediaType: Type of media.
+            entityType: Optional entity type hint.
+            
+        Returns:
+            Optional[str]: Path to version folder, or None if not found.
+        """
         if not entityType:
             entityType = self.core.paths.getEntityTypeFromPath(path)
             if not entityType:
@@ -1137,7 +1555,21 @@ class MediaProducts(object):
         return versionPath
 
     @err_catcher(name=__name__)
-    def updateMasterVersion(self, path=None, context=None, isFilepath=True, add=False, mediaType=None):
+    def updateMasterVersion(self, path: Optional[str] = None, context: Optional[Dict] = None, isFilepath: bool = True, add: bool = False, mediaType: Optional[str] = None) -> Optional[str]:
+        """Update the master version to point to a specific version.
+        
+        Copies files from the source version to the master version folder.
+        
+        Args:
+            path: Path to source version or file.
+            context: Optional context dict with version metadata.
+            isFilepath: Whether path is a filepath (vs version folder).
+            add: If True, adds to existing master instead of replacing.
+            mediaType: Optional media type hint.
+            
+        Returns:
+            Optional[str]: Path to master version folder, or None if update failed.
+        """
         if context:
             path = context["path"]
             files = self.core.getFilesFromFolder(path)
@@ -1155,6 +1587,9 @@ class MediaProducts(object):
                 context = self.core.paths.getRenderProductData(path, isFilepath=isFilepath, mediaType=mediaType)
             else:
                 context = self.core.paths.getRenderProductData(path, isFilepath=isFilepath)
+
+            if not context.get("extension"):
+                context["extension"] = os.path.splitext(path)[1]
 
         forcedLoc = os.getenv("PRISM_MEDIA_MASTER_LOC")
         if forcedLoc:
@@ -1227,7 +1662,21 @@ class MediaProducts(object):
             if platform.system() == "Windows" and drive == masterDrive and useHL:
                 self.core.createSymlink(masterFile, file)
             else:
-                shutil.copy2(file, masterFile)
+                while True:
+                    try:
+                        shutil.copy2(file, masterFile)
+                    except Exception as e:
+                        logger.warning(e)
+                        msg = "Couldn't copy file to master version:\n\n%s\n\n%s" % (str(e), file)
+                        result = self.core.popupQuestion(
+                            msg,
+                            buttons=["Retry", "Skip file"],
+                            escapeButton="Skip file",
+                        )
+                        if result == "Retry":
+                            continue
+
+                    break
 
         masterVersions.append(originBase)
         ext = self.core.configs.getProjectExtension()
@@ -1239,7 +1688,16 @@ class MediaProducts(object):
         return masterPath
 
     @err_catcher(name=__name__)
-    def getMasterVersionNumber(self, masterPath, allowCache=True):
+    def getMasterVersionNumber(self, masterPath: str, allowCache: bool = True) -> Optional[str]:
+        """Get the version number that a master version points to.
+        
+        Args:
+            masterPath: Path to master version folder.
+            allowCache: Whether to use cached config data.
+            
+        Returns:
+            Optional[str]: Version string, or None if not found.
+        """
         versionData = self.core.paths.getRenderProductData(masterPath, validateModTime=True, allowCache=allowCache)
         if "versionpaths" in versionData:
             context = versionData.copy()
@@ -1257,7 +1715,15 @@ class MediaProducts(object):
                 return versionData["version"]
 
     @err_catcher(name=__name__)
-    def getMasterVersionLabel(self, path):
+    def getMasterVersionLabel(self, path: str) -> str:
+        """Get a display label for a master version showing source versions.
+        
+        Args:
+            path: Path to master version folder.
+            
+        Returns:
+            str: Display label (e.g., 'master' or 'master (v0003, v0005)').
+        """
         versionName = "master"
         versionData = self.core.paths.getRenderProductData(path, validateModTime=True, isVersionFolder=True)
         if "versionpaths" in versionData:
@@ -1278,7 +1744,15 @@ class MediaProducts(object):
         return versionName
 
     @err_catcher(name=__name__)
-    def getMediaTypeFromContext(self, context):
+    def getMediaTypeFromContext(self, context: Dict) -> str:
+        """Determine media type from a context dict.
+        
+        Args:
+            context: Context dict with metadata.
+            
+        Returns:
+            str: Media type string ('3drenders', '2drenders', 'playblasts', or 'externalMedia').
+        """
         mtype = "3drenders"
         if "displayName" in context:
             ndata = context["displayName"].rsplit(" (", 1)
@@ -1295,7 +1769,15 @@ class MediaProducts(object):
         return mtype
 
     @err_catcher(name=__name__)
-    def getMediaTypeFromPath(self, path):
+    def getMediaTypeFromPath(self, path: str) -> Optional[str]:
+        """Determine media type from a file or folder path.
+        
+        Args:
+            path: Path to analyze.
+            
+        Returns:
+            Optional[str]: Media type string, or None if cannot be determined.
+        """
         base, ext = os.path.splitext(path)
         if ext:
             dirpath = os.path.basename(path)
@@ -1365,7 +1847,22 @@ class MediaProducts(object):
         return mediaType
 
     @err_catcher(name=__name__)
-    def deleteMasterVersion(self, path, isFilepath=False, mediaType=None, allowClear=True, allowRename=True):
+    def deleteMasterVersion(self, path: str, isFilepath: bool = False, mediaType: Optional[str] = None,
+                            allowClear: bool = True, allowRename: bool = True) -> bool:
+        """Delete a master version folder.
+        
+        Attempts to remove the master version, with retry logic and fallback to renaming.
+        
+        Args:
+            path: Path to media file or version folder.
+            isFilepath: Whether path is a filepath (vs version folder path).
+            mediaType: Optional media type hint.
+            allowClear: Whether to clear UI selection on retry.
+            allowRename: Whether to rename instead of delete if removal fails.
+            
+        Returns:
+            bool: True if deletion succeeded, False otherwise.
+        """
         if isFilepath:
             vpath = self.getVersionPathFromMediaFilePath(path, mediaType=mediaType)
         else:
@@ -1400,29 +1897,71 @@ class MediaProducts(object):
         return True
 
     @err_catcher(name=__name__)
-    def addToMasterVersion(self, path=None, context=None, isFilepath=True, mediaType=None):
+    def addToMasterVersion(self, path: Optional[str] = None, context: Optional[Dict] = None,
+                           isFilepath: bool = True, mediaType: Optional[str] = None) -> None:
+        """Add a version to the master version.
+        
+        Convenience wrapper for updateMasterVersion with add=True.
+        
+        Args:
+            path: Path to media file or folder.
+            context: Optional context dict.
+            isFilepath: Whether path is a filepath.
+            mediaType: Optional media type hint.
+        """
         self.updateMasterVersion(
             path=path, context=context, isFilepath=isFilepath, add=True, mediaType=mediaType
         )
 
     @err_catcher(name=__name__)
-    def getVersionPathsFromMaster(self, path, isFilepath=True):
+    def getVersionPathsFromMaster(self, path: str, isFilepath: bool = True) -> List[str]:
+        """Get list of version folder paths referenced by a master version.
+        
+        Args:
+            path: Path to master version file or folder.
+            isFilepath: Whether path is a filepath.
+            
+        Returns:
+            List[str]: List of version folder paths.
+        """
         infoPath = self.getMediaVersionInfoPathFromFilepath(path)
         paths = self.core.getConfig("versionpaths", configPath=infoPath) or []
         return paths
 
     @err_catcher(name=__name__)
-    def getUseMaster(self):
+    def getUseMaster(self) -> bool:
+        """Check if master versions are enabled in project settings.
+        
+        Returns:
+            bool: True if master versions enabled, False otherwise.
+        """
         return self.core.getConfig(
             "globals", "useMasterRenderVersion", dft=False, config="project"
         )
 
     @err_catcher(name=__name__)
-    def getLinkedToTasks(self):
+    def getLinkedToTasks(self) -> bool:
+        """Check if products are linked to tasks in project settings.
+        
+        Returns:
+            bool: True if products linked to tasks, False otherwise.
+        """
         return self.core.getConfig("globals", "productTasks", config="project")
 
     @err_catcher(name=__name__)
-    def createIdentifier(self, entity, identifier, identifierType="3drenders", location="global"):
+    def createIdentifier(self, entity: Dict, identifier: str, identifierType: str = "3drenders",
+                         location: str = "global") -> Optional[str]:
+        """Create a new media product identifier folder.
+        
+        Args:
+            entity: Entity dict containing type and other entity data.
+            identifier: Identifier/product name.
+            identifierType: Type of media product. Defaults to '3drenders'.
+            location: Storage location. Defaults to 'global'.
+            
+        Returns:
+            Optional[str]: Path to created identifier folder, or None if creation failed.
+        """
         context = entity.copy()
         context["identifier"] = identifier
         if "task" not in context:
@@ -1454,7 +1993,20 @@ class MediaProducts(object):
         return path
 
     @err_catcher(name=__name__)
-    def createVersion(self, entity, identifier, version, identifierType="3drenders", location="global"):
+    def createVersion(self, entity: Dict, identifier: str, version: str, identifierType: str = "3drenders",
+                      location: str = "global") -> Optional[str]:
+        """Create a new version folder for a media product.
+        
+        Args:
+            entity: Entity dict containing type and other entity data.
+            identifier: Identifier/product name.
+            version: Version string (e.g., 'v0001').
+            identifierType: Type of media product. Defaults to '3drenders'.
+            location: Storage location. Defaults to 'global'.
+            
+        Returns:
+            Optional[str]: Path to created version folder, or None if creation failed.
+        """
         context = entity.copy()
         context["identifier"] = identifier
         context["mediaType"] = identifierType
@@ -1492,7 +2044,20 @@ class MediaProducts(object):
         return path
 
     @err_catcher(name=__name__)
-    def createAov(self, entity, identifier, version, aov, identifierType="3drenders"):
+    def createAov(self, entity: Dict, identifier: str, version: str, aov: str,
+                  identifierType: str = "3drenders") -> Optional[str]:
+        """Create a new AOV folder for a render version.
+        
+        Args:
+            entity: Entity dict containing type and other entity data.
+            identifier: Identifier/product name.
+            version: Version string.
+            aov: AOV/render layer name.
+            identifierType: Type of media product. Defaults to '3drenders'.
+            
+        Returns:
+            Optional[str]: Path to created AOV folder, or None if creation failed.
+        """
         context = entity.copy()
         context["identifier"] = identifier
         context["mediaType"] = identifierType
@@ -1525,7 +2090,24 @@ class MediaProducts(object):
         return path
 
     @err_catcher(name=__name__)
-    def ingestMedia(self, files, entity, identifier, version, aov, mediaType="3drenders", filenameTemplate=None, location="global"):
+    def ingestMedia(self, files: List[str], entity: Dict, identifier: str, version: Optional[str] = None, aov: Optional[str] = None, mediaType: str = "3drenders", filenameTemplate: Optional[str] = None, location: str = "global") -> Dict:
+        """Ingest external media files into the project structure.
+        
+        Copies files into proper version folders with progress tracking.
+        
+        Args:
+            files: List of file paths to ingest.
+            entity: Entity dict containing type and other entity data.
+            identifier: Product identifier name.
+            version: Optional version string. Auto-generates if None.
+            aov: Optional AOV name for 3D renders.
+            mediaType: Type of media. Defaults to '3drenders'.
+            filenameTemplate: Optional template for renaming files.
+            location: Storage location. Defaults to 'global'.
+            
+        Returns:
+            Dict: Result dict with 'result' (list of ingested paths), 'versionAdded' (bool), 'versionPath' (str).
+        """
         if not files:
             return
 
@@ -1635,7 +2217,16 @@ class MediaProducts(object):
         return {"result": self.ingestedFiles, "versionAdded": False, "versionPath": targetPath}
 
     @err_catcher(name=__name__)
-    def onMediaFileIngested(self, thread, targetPath, numFiles):
+    def onMediaFileIngested(self, thread: Any, targetPath: str, numFiles: int) -> None:
+        """Callback when a media file finishes being copied during ingest.
+        
+        Updates progress UI and closes popup when all files complete.
+        
+        Args:
+            thread: The copy thread that finished.
+            targetPath: Destination path of the ingested file.
+            numFiles: Total number of files being ingested.
+        """
         self.ingestedFiles.append(targetPath)
         logger.debug("ingested media: %s" % targetPath)
         baseTxt = "Copying file - please wait..\n\n"
@@ -1649,14 +2240,23 @@ class MediaProducts(object):
             self.copyMsg.close()
 
     @err_catcher(name=__name__)
-    def onIngestCanceled(self):
+    def onIngestCanceled(self) -> None:
+        """Cancel all running ingest operations."""
         self.ingestCanceled = True
         for thread in self.ingestThreads:
             if thread.isRunning():
                 thread.cancel()
 
     @err_catcher(name=__name__)
-    def checkMasterVersions(self, entities, parent=None):
+    def checkMasterVersions(self, entities: List[Dict], parent: Optional[QWidget] = None) -> None:
+        """Check and display outdated master versions for entities.
+        
+        Opens a dialog showing which master versions need updating.
+        
+        Args:
+            entities: List of entity dicts to check.
+            parent: Optional parent widget for the dialog.
+        """
         self.dlg_masterManager = self.core.paths.masterManager(self.core, entities, "media", parent=parent)
         self.dlg_masterManager.refreshData()
         if not self.dlg_masterManager.outdatedVersions:
@@ -1667,7 +2267,15 @@ class MediaProducts(object):
         self.dlg_masterManager.show()
 
     @err_catcher(name=__name__)
-    def getOutdatedMasterVersions(self, entities):
+    def getOutdatedMasterVersions(self, entities: List[Dict]) -> List[Dict]:
+        """Find all outdated master versions for a list of entities.
+        
+        Args:
+            entities: List of entity dicts to check.
+            
+        Returns:
+            List[Dict]: List of dicts with 'master' and 'latest' version info.
+        """
         outdatedVersions = []
         for entity in entities:
             idfs = self.getIdentifiersByType(entity)
@@ -1691,14 +2299,29 @@ class MediaProducts(object):
         return outdatedVersions
 
     @err_catcher(name=__name__)
-    def getGroupFromIdentifier(self, identifier):
+    def getGroupFromIdentifier(self, identifier: Dict) -> Optional[str]:
+        """Get the group name assigned to an identifier.
+        
+        Args:
+            identifier: Identifier dict.
+            
+        Returns:
+            Optional[str]: Group name, or None if not set.
+        """
         identifierPath = self.getIdentifierPathFromEntity(identifier)
         cfgPath = os.path.join(identifierPath, "identifiers" + self.core.configs.getProjectExtension())
         group = self.core.getConfig(identifier.get("displayName"), "group", configPath=cfgPath)
         return group
 
     @err_catcher(name=__name__)
-    def setIdentifiersGroup(self, identifiers, group, projectWide=False):
+    def setIdentifiersGroup(self, identifiers: List[Dict], group: str, projectWide: bool = False) -> None:
+        """Set the group for multiple identifiers.
+        
+        Args:
+            identifiers: List of identifier dicts.
+            group: Group name to assign.
+            projectWide: Whether to apply project-wide (not currently implemented).
+        """
         identifierPath = self.getIdentifierPathFromEntity(identifiers[0])
         cfgPath = os.path.join(identifierPath, "identifiers" + self.core.configs.getProjectExtension())
         data = self.core.getConfig(configPath=cfgPath) or {}

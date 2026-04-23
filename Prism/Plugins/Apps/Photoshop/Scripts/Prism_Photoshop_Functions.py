@@ -37,6 +37,7 @@ import sys
 import platform
 import subprocess
 import logging
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -56,7 +57,15 @@ logger = logging.getLogger(__name__)
 
 
 class Prism_Photoshop_Functions(object):
-    def __init__(self, core, plugin):
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize Photoshop functions module.
+        
+        Registers callbacks for save dialogs and Project Browser.
+        
+        Args:
+            core: Prism core instance
+            plugin: Plugin instance (self)
+        """
         self.core = core
         self.plugin = plugin
         self.win = platform.system() == "Windows"
@@ -71,7 +80,18 @@ class Prism_Photoshop_Functions(object):
         )
 
     @err_catcher(name=__name__)
-    def startup(self, origin):
+    def startup(self, origin: Any) -> Optional[bool]:
+        """Initialize Photoshop connection and UI.
+        
+        Connects to running Photoshop instance via COM (Windows) or AppleScript (macOS).
+        Configures app icon and style sheet.
+        
+        Args:
+            origin: Origin instance with timer attribute
+            
+        Returns:
+            None on success, implicitly False on connection failure
+        """
         origin.timer.stop()
         self.core.setActiveStyleSheet("Photoshop")
         appIcon = QIcon(
@@ -132,7 +152,18 @@ class Prism_Photoshop_Functions(object):
             self.executeAppleScript(scpt, getResponse=False)
 
     @err_catcher(name=__name__)
-    def getPhotoshopDispatchName(self, excludes=None):
+    def getPhotoshopDispatchName(self, excludes: Optional[List[str]] = None) -> Optional[str]:
+        """Get Photoshop COM dispatch name from Windows registry.
+        
+        Searches for Photoshop.Application or versioned variants like Photoshop.Application.140.
+        Uses PRISM_PHOTOSHOP_KEY environment variable if set.
+        
+        Args:
+            excludes: List of dispatch names to skip
+            
+        Returns:
+            COM dispatch name string, or None if not found
+        """
         envkey = os.getenv("PRISM_PHOTOSHOP_KEY")
         if envkey:
             return envkey
@@ -189,11 +220,25 @@ class Prism_Photoshop_Functions(object):
             return name
 
     @err_catcher(name=__name__)
-    def sceneOpen(self, origin):
+    def sceneOpen(self, origin: Any) -> None:
+        """Callback when scene is opened (no-op for Photoshop).
+        
+        Args:
+            origin: Event origin instance
+        """
         pass
 
     @err_catcher(name=__name__)
-    def executeAppleScript(self, script, getResponse=True):
+    def executeAppleScript(self, script: str, getResponse: bool = True) -> Optional[str]:
+        """Execute AppleScript on macOS.
+        
+        Args:
+            script: AppleScript code to execute
+            getResponse: If True, wait for and return script output
+            
+        Returns:
+            Script stdout if getResponse=True, None if error or getResponse=False
+        """
         logger.debug("running applescript: %s" % script)
         if getResponse:
             p = subprocess.Popen(
@@ -212,7 +257,18 @@ class Prism_Photoshop_Functions(object):
             subprocess.Popen(["osascript", "-e", script])
 
     @err_catcher(name=__name__)
-    def getCurrentFileName(self, origin, path=True):
+    def getCurrentFileName(self, origin: Any, path: bool = True) -> str:
+        """Get current Photoshop document filename.
+        
+        Uses COM (Windows) or AppleScript (macOS) to query active document.
+        
+        Args:
+            origin: Calling instance (unused)
+            path: If True, return full path; if False, return basename only
+            
+        Returns:
+            Document file path, or empty string if no document open
+        """
         try:
             if self.win:
                 doc = self.psApp.Application.ActiveDocument
@@ -243,7 +299,15 @@ class Prism_Photoshop_Functions(object):
         return currentFileName
 
     @err_catcher(name=__name__)
-    def getSceneExtension(self, origin):
+    def getSceneExtension(self, origin: Any) -> str:
+        """Get file extension of current document.
+        
+        Args:
+            origin: Calling instance (unused)
+            
+        Returns:
+            File extension (e.g. '.psd'), or first scene format if no document open
+        """
         doc = self.core.getCurrentFileName()
         if doc != "":
             return os.path.splitext(doc)[1]
@@ -251,7 +315,14 @@ class Prism_Photoshop_Functions(object):
         return self.sceneFormats[0]
 
     @err_catcher(name=__name__)
-    def onSaveExtendedOpen(self, origin):
+    def onSaveExtendedOpen(self, origin: Any) -> None:
+        """Add format selector to Save Extended dialog.
+        
+        Adds combo box for choosing .psd or .psb format.
+        
+        Args:
+            origin: Save Extended dialog instance
+        """
         origin.l_format = QLabel("Save as:")
         origin.cb_format = QComboBox()
         origin.cb_format.addItems(self.sceneFormats)
@@ -266,19 +337,56 @@ class Prism_Photoshop_Functions(object):
         origin.w_details.layout().addWidget(origin.cb_format, rowIdx, 1)
 
     @err_catcher(name=__name__)
-    def onGetSaveExtendedDetails(self, origin, details):
+    def onGetSaveExtendedDetails(self, origin: Any, details: Dict[str, Any]) -> None:
+        """Get file format from Save Extended dialog.
+        
+        Args:
+            origin: Save Extended dialog instance
+            details: Dictionary to add 'fileFormat' key to
+        """
         details["fileFormat"] = origin.cb_format.currentText()
 
     @err_catcher(name=__name__)
-    def getCharID(self, s):
+    def getCharID(self, s: str) -> Any:
+        """Convert 4-character string to Photoshop type ID.
+        
+        Args:
+            s: 4-character string (e.g. 'save')
+            
+        Returns:
+            Photoshop type ID
+        """
         return self.psApp.CharIDToTypeID(s)
 
     @err_catcher(name=__name__)
-    def getStringID(self, s):
+    def getStringID(self, s: str) -> Any:
+        """Convert string to Photoshop type ID.
+        
+        Args:
+            s: String identifier (e.g. 'maximizeCompatibility')
+            
+        Returns:
+            Photoshop type ID
+        """
         return self.psApp.StringIDToTypeID(s)
 
     @err_catcher(name=__name__)
-    def saveScene(self, origin, filepath, details={}):
+    def saveScene(self, origin: Optional[Any], filepath: str, details: Optional[Dict[str, Any]] = None) -> Optional[str]:
+        """Save current Photoshop document.
+        
+        Uses COM (Windows) or AppleScript (macOS) to save document.
+        Supports .psd and .psb formats with maximize compatibility option.
+        
+        Args:
+            origin: Calling instance (unused)
+            filepath: Target file path
+            details: Optional dict with 'fileFormat' key to override extension
+            
+        Returns:
+            Empty string on failure, None on success, or False if no active document
+        """
+        if details is None:
+            details = {}
         try:
             if self.win:
                 doc = self.psApp.ActiveDocument
@@ -361,23 +469,58 @@ class Prism_Photoshop_Functions(object):
             return ""
 
     @err_catcher(name=__name__)
-    def getImportPaths(self, origin):
+    def getImportPaths(self, origin: Any) -> bool:
+        """Get import paths (not supported in Photoshop).
+        
+        Args:
+            origin: Calling instance
+            
+        Returns:
+            Always False
+        """
         return False
 
     @err_catcher(name=__name__)
-    def getFrameRange(self, origin):
+    def getFrameRange(self, origin: Any) -> None:
+        """Get frame range (not applicable for Photoshop).
+        
+        Args:
+            origin: Calling instance
+        """
         pass
 
     @err_catcher(name=__name__)
-    def setFrameRange(self, origin, startFrame, endFrame):
+    def setFrameRange(self, origin: Any, startFrame: int, endFrame: int) -> None:
+        """Set frame range (not applicable for Photoshop).
+        
+        Args:
+            origin: Calling instance
+            startFrame: Start frame number
+            endFrame: End frame number
+        """
         pass
 
     @err_catcher(name=__name__)
-    def getFPS(self, origin):
+    def getFPS(self, origin: Any) -> None:
+        """Get FPS (not applicable for Photoshop).
+        
+        Args:
+            origin: Calling instance
+        """
         pass
 
     @err_catcher(name=__name__)
-    def getAppVersion(self, origin):
+    def getAppVersion(self, origin: Any) -> Optional[str]:
+        """Get Photoshop application version.
+        
+        Uses COM (Windows) or AppleScript (macOS) to query version.
+        
+        Args:
+            origin: Calling instance (unused)
+            
+        Returns:
+            Version string (e.g. '25.0'), or None on error
+        """
         if self.win:
             version = self.psApp.Version
         else:
@@ -394,7 +537,14 @@ class Prism_Photoshop_Functions(object):
         return version
 
     @err_catcher(name=__name__)
-    def onProjectBrowserStartup(self, origin):
+    def onProjectBrowserStartup(self, origin: Any) -> None:
+        """Customize Project Browser on startup.
+        
+        Disables State Manager and adds Photoshop tools menu.
+        
+        Args:
+            origin: Project Browser instance
+        """
         origin.actionStateManager.setEnabled(False)
         psMenu = QMenu("Photoshop", origin)
         psAction = QAction("Open tools", origin)
@@ -404,12 +554,35 @@ class Prism_Photoshop_Functions(object):
         origin.menuTools.addMenu(psMenu)
 
     @err_catcher(name=__name__)
-    def openScene(self, origin, filepath, force=False):
+    def openScene(self, origin: Any, filepath: str, force: bool = False) -> bool:
+        """Open a file in Photoshop.
+        
+        Uses COM (Windows) or AppleScript (macOS) to open document.
+        
+        Args:
+            origin: Calling instance (unused)
+            filepath: Path to file to open
+            force: If True, open file regardless of extension
+            
+        Returns:
+            True on success, False if extension not supported and force=False
+        """
         if not force and os.path.splitext(filepath)[1] not in self.sceneFormats:
             return False
 
         if self.win:
-            self.psApp.Open(filepath)
+            while True:
+                try:
+                    self.psApp.Open(filepath)
+                except Exception as e:
+                    msg = "Failed to open file in Photoshop:\n\n%s\n\nError: %s" % (filepath, str(e))
+                    result = self.core.popupQuestion(msg, buttons=["Retry", "Cancel"], escapeButton="Cancel", icon=QMessageBox.Warning)
+                    if result == "Cancel":
+                        return False
+
+                else:
+                    break
+
         else:
             scpt = """
                 tell application "%s"
@@ -424,19 +597,38 @@ class Prism_Photoshop_Functions(object):
         return True
 
     @err_catcher(name=__name__)
-    def importImages(self, filepath=None, mediaBrowser=None, parent=None):
+    def importImages(self, filepath: Optional[str] = None, mediaBrowser: Optional[Any] = None, parent: Optional[Any] = None) -> None:
+        """Import images into Photoshop.
+        
+        Opens image file or media from Media Browser.
+        
+        Args:
+            filepath: Path to image file to open
+            mediaBrowser: Media Browser instance with selected media
+            parent: Parent widget (unused)
+        """
         if mediaBrowser:
             self.photoshopImportSource(mediaBrowser)
         elif filepath:
             self.openScene(None, filepath, force=True)
 
     @err_catcher(name=__name__)
-    def photoshopImportSource(self, origin):
+    def photoshopImportSource(self, origin: Any) -> None:
+        """Import selected media source from Media Browser.
+        
+        Args:
+            origin: Media Browser instance with seq attribute
+        """
         filepath = origin.seq[origin.getCurrentFrame()].replace("\\", "/")
         self.openScene(origin, filepath, force=True)
 
     @err_catcher(name=__name__)
-    def photoshopImportPasses(self, origin):
+    def photoshopImportPasses(self, origin: Any) -> None:
+        """Import render passes from Media Browser (not implemented).
+        
+        Args:
+            origin: Media Browser instance
+        """
         sourceFolder = os.path.dirname(
             os.path.dirname(os.path.join(origin.basepath, origin.seq[0]))
         ).replace("\\", "/")
@@ -487,7 +679,15 @@ class Prism_Photoshop_Functions(object):
             )
 
     @err_catcher(name=__name__)
-    def openPhotoshopTools(self):
+    def openPhotoshopTools(self) -> bool:
+        """Open Prism tools dialog with common actions.
+        
+        Creates dialog with buttons for Save Version, Save with Comment, Export,
+        Project Browser, and Settings.
+        
+        Returns:
+            Always True
+        """
         self.dlg_tools = QDialog()
 
         lo_tools = QVBoxLayout()
@@ -520,7 +720,15 @@ class Prism_Photoshop_Functions(object):
         return True
 
     @err_catcher(name=__name__)
-    def exportImage(self):
+    def exportImage(self) -> Union[bool, None]:
+        """Open export dialog for current Photoshop document.
+        
+        Creates dialog for exporting to Prism project or custom location.
+        Supports task-based export with versioning and master version management.
+        
+        Returns:
+            False if preconditions fail (no project/user/document), True/None otherwise
+        """
         if not self.core.projects.ensureProject():
             return False
 
@@ -661,11 +869,20 @@ class Prism_Photoshop_Functions(object):
         return True
 
     @err_catcher(name=__name__)
-    def exportToggle(self, checked):
+    def exportToggle(self, checked: bool) -> None:
+        """Toggle task export UI enabled state.
+        
+        Args:
+            checked: Whether task export radio button is checked
+        """
         self.w_task.setEnabled(checked)
 
     @err_catcher(name=__name__)
-    def exportGetTasks(self):
+    def exportGetTasks(self) -> None:
+        """Populate task list from project configuration.
+        
+        Gets 2d task names and hides task button if no tasks available.
+        """
         self.taskList = self.core.getTaskNames("2d")
 
         if len(self.taskList) == 0:
@@ -675,7 +892,11 @@ class Prism_Photoshop_Functions(object):
                 self.taskList.remove("_ShotCam")
 
     @err_catcher(name=__name__)
-    def exportShowTasks(self):
+    def exportShowTasks(self) -> None:
+        """Show task selection menu.
+        
+        Displays context menu with available 2d tasks.
+        """
         tmenu = QMenu(self.dlg_export)
 
         for i in sorted(self.taskList, key=lambda x: x.lower()):
@@ -687,7 +908,11 @@ class Prism_Photoshop_Functions(object):
         tmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def exportGetVersions(self):
+    def exportGetVersions(self) -> None:
+        """Populate version combo box with existing versions for current task.
+        
+        Scans output directory for existing version folders (vXXXX).
+        """
         existingVersions = []
         outData = self.exportGetOutputName()
         if outData is not None:
@@ -711,7 +936,17 @@ class Prism_Photoshop_Functions(object):
         self.cb_versions.addItems(existingVersions)
 
     @err_catcher(name=__name__)
-    def exportGetOutputName(self, useVersion="next"):
+    def exportGetOutputName(self, useVersion: str = "next") -> Optional[Tuple[str, str, str]]:
+        """Generate output path for export.
+        
+        Creates versioned output path based on current scene, task, and format.
+        
+        Args:
+            useVersion: Version to use ('next' for auto-increment, or specific version string)
+            
+        Returns:
+            Tuple of (output_path, output_folder, version_string), or None if invalid
+        """
         if self.le_task.text() == "":
             return
 
@@ -742,16 +977,34 @@ class Prism_Photoshop_Functions(object):
         return outputPathData["path"], outputFolder, hVersion
 
     @err_catcher(name=__name__)
-    def exportVersionToggled(self, checked):
+    def exportVersionToggled(self, checked: bool) -> None:
+        """Handle version checkbox toggle.
+        
+        Args:
+            checked: Whether 'Use next version' is checked
+        """
         self.cb_versions.setEnabled(not checked)
         self.w_comment.setEnabled(checked)
 
     @err_catcher(name=__name__)
-    def validateComment(self, text):
+    def validateComment(self, text: str) -> None:
+        """Validate comment text field.
+        
+        Args:
+            text: Comment text to validate
+        """
         self.core.validateLineEdit(self.le_comment)
 
     @err_catcher(name=__name__)
-    def saveExport(self):
+    def saveExport(self) -> Optional[bool]:
+        """Save/export current document to selected location.
+        
+        Handles both task-based export (into project structure) and custom location export.
+        Creates version info file and updates master version if enabled.
+        
+        Returns:
+            False if validation fails, None otherwise
+        """
         if self.rb_task.isChecked():
             taskName = self.le_task.text()
             if taskName is None or taskName == "":
@@ -847,9 +1100,61 @@ class Prism_Photoshop_Functions(object):
             )
 
     @err_catcher(name=__name__)
-    def getBitsPerChannel(self):
+    def _isRpcUnavailableError(self, err: Exception) -> bool:
+        """Return True when COM error indicates lost Photoshop RPC connection."""
+        if not self.win:
+            return False
+
+        msg = str(err).lower()
+        return "rpc server is unavailable" in msg or "-2147023174" in msg
+
+    @err_catcher(name=__name__)
+    def _reconnectPhotoshop(self) -> bool:
+        """Try to reconnect to Photoshop COM and refresh dispatch metadata."""
+        if not self.win:
+            return False
+
+        dname = self.getPhotoshopDispatchName()
+        if not dname:
+            self.psApp = None
+            return False
+
+        self.psApp = win32com.client.Dispatch(dname)
+        self.dispatchSuffix = dname.replace("Photoshop.Application", "")
+        return True
+
+    @err_catcher(name=__name__)
+    def getBitsPerChannel(self) -> Any:
+        """Get bit depth of current Photoshop document.
+        
+        Uses COM (Windows) or AppleScript (macOS) to query bit depth.
+        
+        Returns:
+            Bit depth value (8, 16, 32 on Windows; string on macOS)
+        """
         if self.win:
-            bdepth = self.psApp.Application.ActiveDocument.bitsPerChannel
+            try:
+                bdepth = self.psApp.Application.ActiveDocument.bitsPerChannel
+            except Exception as e:
+                if not self._isRpcUnavailableError(e):
+                    raise
+
+                logger.warning("Photoshop COM connection lost while querying bit depth. Trying reconnect...")
+                self.psApp = None
+                try:
+                    if self._reconnectPhotoshop():
+                        bdepth = self.psApp.Application.ActiveDocument.bitsPerChannel
+                    else:
+                        bdepth = None
+                except Exception:
+                    bdepth = None
+
+                if bdepth is None:
+                    self.core.popup(
+                        "Lost connection to Photoshop. Please make sure Photoshop is running and a document is open, then retry.",
+                        title="Prism",
+                    )
+                    return
         else:
             scpt = (
                 """
@@ -864,7 +1169,22 @@ class Prism_Photoshop_Functions(object):
         return bdepth
 
     @err_catcher(name=__name__)
-    def exportImageToPath(self, outputPath):
+    def exportImageToPath(self, outputPath: str) -> Optional[bool]:
+        """Export current Photoshop document to specified path.
+        
+        Handles format-specific export operations:
+        - .exr: OpenEXR format (requires 32-bit depth)
+        - .psd: Copy current file
+        - .jpg/.png/.tif: Standard image formats via SaveAs or AppleScript
+        
+        Uses COM (Windows) or AppleScript (macOS) for export operations.
+        
+        Args:
+            outputPath: Target file path with extension
+            
+        Returns:
+            None on success, False/None on error
+        """
         ext = os.path.splitext(outputPath)[1].lower()
         bdepth = self.getBitsPerChannel()
         if self.win:
@@ -978,7 +1298,12 @@ class Prism_Photoshop_Functions(object):
             self.executeAppleScript(scpt)
 
     @err_catcher(name=__name__)
-    def isUsingMasterVersion(self):
+    def isUsingMasterVersion(self) -> bool:
+        """Check if master version should be updated.
+        
+        Returns:
+            True if master versioning is enabled and action is not 'Don't update master'
+        """
         useMaster = self.core.mediaProducts.getUseMaster()
         if not useMaster:
             return False
@@ -990,7 +1315,12 @@ class Prism_Photoshop_Functions(object):
         return True
 
     @err_catcher(name=__name__)
-    def handleMasterVersion(self, outputName):
+    def handleMasterVersion(self, outputName: str) -> None:
+        """Update master version based on selected action.
+        
+        Args:
+            outputName: Path to exported file
+        """
         if not self.isUsingMasterVersion():
             return
 
@@ -1001,7 +1331,14 @@ class Prism_Photoshop_Functions(object):
             self.core.mediaProducts.addToMasterVersion(outputName, mediaType="2drenders")
 
     @err_catcher(name=__name__)
-    def captureViewportThumbnail(self):
+    def captureViewportThumbnail(self) -> Optional[Any]:
+        """Capture thumbnail of current Photoshop document.
+        
+        Exports document to temporary JPG and loads as QPixmap.
+        
+        Returns:
+            QPixmap of document, or None on error
+        """
         import tempfile
         path = tempfile.NamedTemporaryFile(suffix=".jpg").name
         self.exportImageToPath(path.replace("\\", "/"))

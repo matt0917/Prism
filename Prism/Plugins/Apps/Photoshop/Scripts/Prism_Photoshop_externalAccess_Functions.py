@@ -39,6 +39,7 @@ import platform
 import threading
 import logging
 import atexit
+from typing import Any, List, Optional, Tuple, Union
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -51,7 +52,16 @@ logger = logging.getLogger(__name__)
 
 
 class Prism_Photoshop_externalAccess_Functions(object):
-    def __init__(self, core, plugin):
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize Photoshop external access functions.
+        
+        Sets up server, callbacks, and process tracking for communication
+        between Prism and Photoshop.
+        
+        Args:
+            core: Prism core instance
+            plugin: Plugin instance (self)
+        """
         self.core = core
         self.plugin = plugin        
         if platform.system() not in self.platforms:
@@ -80,7 +90,15 @@ class Prism_Photoshop_externalAccess_Functions(object):
                 self.startServer()
 
     @err_catcher(name=__name__)
-    def userSettings_loadUI(self, origin, tab):
+    def userSettings_loadUI(self, origin: Any, tab: Any) -> None:
+        """Load Photoshop-specific settings UI in Prism settings dialog.
+        
+        Adds UXP plugin install/remove buttons to the user settings tab.
+        
+        Args:
+            origin: Settings dialog instance
+            tab: Tab widget to add settings to
+        """
         tab.lo_settings = QGridLayout()
         tab.layout().addLayout(tab.lo_settings)
         spacer = QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -100,26 +118,46 @@ class Prism_Photoshop_externalAccess_Functions(object):
         tab.lo_settings.addItem(spacer, 1, 0)
 
     @err_catcher(name=__name__)
-    def getUXPInstalled(self):
+    def getUXPInstalled(self) -> bool:
+        """Check if UXP plugin is installed.
+        
+        Returns:
+            True if UXP plugin is in integration list, False otherwise
+        """
         integrations = self.core.integration.getIntegrations() or {}
         return "UXP" in (integrations.get("Photoshop") or [])
 
     @err_catcher(name=__name__)
-    def getUXPExe(self):
+    def getUXPExe(self) -> str:
+        """Get path to Adobe UPI installer agent executable.
+        
+        Returns:
+            Path to UnifiedPluginInstallerAgent.exe
+        """
         exe = r"C:\Program Files\Common Files\Adobe\Adobe Desktop Common\RemoteComponents\UPI\UnifiedPluginInstallerAgent\UnifiedPluginInstallerAgent.exe"
         return exe
 
     @err_catcher(name=__name__)
-    def createSignalBridge(self):
-        """Create a QObject bridge for cross-thread communication"""
+    def createSignalBridge(self) -> Any:
+        """Create a QObject bridge for cross-thread communication.
+        
+        Returns:
+            SignalBridge instance for executing functions in main Qt thread
+        """
         class SignalBridge(QObject):
             executeInMainThread = Signal(object)
             
-            def __init__(self):
+            def __init__(self) -> None:
+                """Initialize SignalBridge and connect signal to executor."""
                 super(SignalBridge, self).__init__()
                 self.executeInMainThread.connect(self._execute)
                 
-            def _execute(self, func):
+            def _execute(self, func: Any) -> None:
+                """Execute a function in the main thread with error handling.
+                
+                Args:
+                    func: Callable to execute in main thread
+                """
                 try:
                     func()
                 except Exception as e:
@@ -128,7 +166,15 @@ class Prism_Photoshop_externalAccess_Functions(object):
         return SignalBridge()
 
     @err_catcher(name=__name__)
-    def startServer(self, port=None):
+    def startServer(self, port: Optional[int] = None) -> None:
+        """Start Flask server to listen for commands from Photoshop UXP plugin.
+        
+        Creates HTTP server on localhost that receives commands from Photoshop.
+        Uses port 6400 for Standalone, 6401 for Photoshop app mode.
+        
+        Args:
+            port: TCP port number to listen on (auto-selected if None)
+        """
         if getattr(self, "serverApp", None):
             logger.debug("Photoshop server already running")
             return
@@ -209,7 +255,8 @@ class Prism_Photoshop_externalAccess_Functions(object):
             return jsonify({'status': 'running'}), 200
         
         # Start server in background thread
-        def run_server():
+        def run_server() -> None:
+            """Run Flask server in background thread."""
             try:
                 logger.info(f"Starting Prism server on http://localhost:{port}")
                 app.run(host='127.0.0.1', port=port, debug=False, use_reloader=False)
@@ -297,7 +344,15 @@ class Prism_Photoshop_externalAccess_Functions(object):
         return "Settings executed"
 
     @err_catcher(name=__name__)
-    def getAutobackPath(self, origin):
+    def getAutobackPath(self, origin: Any) -> Tuple[str, str]:
+        """Get autoback path and file filter for Photoshop scenes.
+        
+        Args:
+            origin: Calling instance (unused)
+            
+        Returns:
+            Tuple of (autoback_path, file_filter_string)
+        """
         autobackpath = ""
 
         fileStr = "Photoshop Script ("
@@ -309,7 +364,14 @@ class Prism_Photoshop_externalAccess_Functions(object):
         return autobackpath, fileStr
 
     @err_catcher(name=__name__)
-    def projectBrowser_loadUI(self, origin):
+    def projectBrowser_loadUI(self, origin: Any) -> None:
+        """Add Photoshop connection menu to Project Browser.
+        
+        Only adds menu when running in Standalone mode and UXP is not installed.
+        
+        Args:
+            origin: Project Browser instance
+        """
         if self.core.appPlugin.pluginName == "Standalone":
             if self.getUXPInstalled():
                 return
@@ -325,12 +387,34 @@ class Prism_Photoshop_externalAccess_Functions(object):
             origin.menuTools.addMenu(psMenu)
 
     @err_catcher(name=__name__)
-    def customizeExecutable(self, origin, appPath, filepath):
+    def customizeExecutable(self, origin: Any, appPath: str, filepath: str) -> bool:
+        """Customize Photoshop executable launch behavior.
+        
+        Connects to Photoshop instead of launching it directly.
+        
+        Args:
+            origin: Calling instance
+            appPath: Path to Photoshop executable (unused)
+            filepath: Scene file path to open
+            
+        Returns:
+            Always True to indicate custom handling
+        """
         self.connectToPhotoshop(origin, filepath=filepath)
         return True
 
     @err_catcher(name=__name__)
-    def connectToPhotoshop(self, origin=None, filepath="", mode="Tools"):
+    def connectToPhotoshop(self, origin: Optional[Any] = None, filepath: str = "", mode: str = "Tools") -> None:
+        """Start Prism instance for Photoshop integration.
+        
+        Launches Python process running Prism_Photoshop_MenuTools.py to handle
+        communication with Photoshop.
+        
+        Args:
+            origin: Calling instance (unused)
+            filepath: Scene file path to open after connection
+            mode: Launch mode ('Tools' or 'Background')
+        """
         # Check if existing instance is still running
         if self.photoshopInstanceProcess is not None:
             if self.photoshopInstanceProcess.poll() is None:
@@ -375,7 +459,12 @@ class Prism_Photoshop_externalAccess_Functions(object):
                 logger.error(f"Error terminating Photoshop instance: {str(e)}")
 
     @err_catcher(name=__name__)
-    def getPresetScenes(self, presetScenes):
+    def getPresetScenes(self, presetScenes: List[dict]) -> None:
+        """Add Photoshop preset scenes to the scene presets list.
+        
+        Args:
+            presetScenes: List to append preset scene dictionaries to
+        """
         if os.getenv("PRISM_SHOW_DEFAULT_SCENEFILE_PRESETS", "1") != "1":
             return
 

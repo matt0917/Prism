@@ -32,7 +32,14 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+"""Houdini OpenGL renderer implementation for Prism.
+
+Provides renderer-specific functionality for OpenGL rendering node (ROP)
+including node creation, parameter configuration, and execution.
+"""
+
 import os
+from typing import Any, List, Optional, Union
 
 import hou
 
@@ -45,53 +52,136 @@ label = "OpenGL"
 ropNames = ["opengl"]
 
 
-def isActive():
+def isActive() -> bool:
+    """Check if OpenGL renderer is available.
+    
+    Returns:
+        True if renderer is active.
+    """
     return True
 
 
-def getCam(node):
+def getCam(node: Any) -> Any:
+    """Get camera node from renderer ROP.
+    
+    Args:
+        node: OpenGL ROP node.
+    
+    Returns:
+        Camera node object.
+    """
     return hou.node(node.parm("camera").eval())
 
 
-def getFormatFromNode(node):
+def getFormatFromNode(node: Any) -> str:
+    """Get output format from renderer node.
+    
+    Args:
+        node: OpenGL ROP node.
+    
+    Returns:
+        File extension string.
+    """
     ext = os.path.splitext(node.parm("picture").eval())[1]
     return ext
 
 
-def createROP(origin):
+def createROP(origin: Any) -> None:
+    """Create OpenGL ROP node.
+    
+    Args:
+        origin: State manager origin object.
+    """
     origin.node = origin.core.appPlugin.createRop("opengl")
 
 
-def setAOVData(origin, node, aovNum, item):
+def setAOVData(origin: Any, node: Any, aovNum: str, item: Any) -> None:
+    """Set AOV data on node (not supported for OpenGL).
+    
+    Args:
+        origin: State manager origin object.
+        node: OpenGL ROP node.
+        aovNum: AOV number string.
+        item: Table widget item with AOV data.
+    """
     pass
 
 
-def getDefaultPasses(origin):
+def getDefaultPasses(origin: Any) -> None:
+    """Get default render passes (not supported for OpenGL).
+    
+    Args:
+        origin: State manager origin object.
+    """
     pass
 
 
-def addAOV(origin, aovData):
+def addAOV(origin: Any, aovData: List) -> None:
+    """Add AOV to renderer (not supported for OpenGL).
+    
+    Args:
+        origin: State manager origin object.
+        aovData: AOV data list.
+    """
     pass
 
 
-def refreshAOVs(origin):
+def refreshAOVs(origin: Any) -> None:
+    """Refresh AOV list (not supported for OpenGL).
+    
+    Hides the passes group box.
+    
+    Args:
+        origin: State manager origin object.
+    """
     origin.gb_passes.setVisible(False)
     return
 
 
-def deleteAOV(origin, row):
+def deleteAOV(origin: Any, row: int) -> None:
+    """Delete AOV from renderer (not supported for OpenGL).
+    
+    Args:
+        origin: State manager origin object.
+        row: Row index to delete.
+    """
     pass
 
 
-def aovDbClick(origin, event):
+def aovDbClick(origin: Any, event: Any) -> None:
+    """Handle AOV double-click (not supported for OpenGL).
+    
+    Args:
+        origin: State manager origin object.
+        event: Mouse event.
+    """
     pass
 
 
-def setCam(origin, node, val):
+def setCam(origin: Any, node: Any, val: str) -> bool:
+    """Set camera on renderer node.
+    
+    Args:
+        origin: State manager origin object.
+        node: OpenGL ROP node.
+        val: Camera path string.
+    
+    Returns:
+        True if successful.
+    """
     return origin.core.appPlugin.setNodeParm(node, "camera", val=val)
 
 
-def executeAOVs(origin, outputName):
+def executeAOVs(origin: Any, outputName: str) -> Union[bool, List[str]]:
+    """Execute AOV setup and set output path.
+    
+    Args:
+        origin: State manager origin object.
+        outputName: Output file path.
+    
+    Returns:
+        True if successful, list of error messages otherwise.
+    """
     parmPath = origin.core.appPlugin.getPathRelativeToProject(outputName) if origin.core.appPlugin.getUseRelativePath() else outputName
     if not origin.core.appPlugin.setNodeParm(origin.node, "picture", val=parmPath):
         return [origin.state.text(0) + ": error - Publish canceled"]
@@ -99,7 +189,15 @@ def executeAOVs(origin, outputName):
     return True
 
 
-def setResolution(origin):
+def setResolution(origin: Any) -> Union[bool, List[str]]:
+    """Set render resolution on node.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful, list of error messages otherwise.
+    """
     if not origin.core.appPlugin.setNodeParm(
         origin.node, "tres", val=True
     ):
@@ -116,10 +214,26 @@ def setResolution(origin):
     return True
 
 
-def executeRender(origin):
+def executeRender(origin: Any) -> bool:
+    """Execute the render.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful.
+    """
     origin.node.parm("execute").pressButton()
     return True
 
 
-def postExecute(origin):
+def postExecute(origin: Any) -> bool:
+    """Post-execution cleanup.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful.
+    """
     return True

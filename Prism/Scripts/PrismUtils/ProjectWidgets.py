@@ -32,10 +32,13 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from __future__ import annotations
+
 import os
 import sys
 import copy
 import re
+from typing import Optional, Dict, List, Any, Union
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -48,7 +51,38 @@ from UserInterfacesPrism import CreateProject_ui
 
 
 class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
-    def __init__(self, core, name=None, path=None, settings=None, enforcedSettings=None):
+    """Dialog for creating new Prism projects.
+    
+    This dialog guides users through creating a new Prism project,
+    including setting the project name, path, structure, and initial
+    settings. It supports loading settings from presets or existing projects.
+    
+    Attributes:
+        core: PrismCore instance
+        prevName (str): Previous project name for path auto-completion
+        projectSettings (Dict): Current project settings
+        enforcedSettings (Optional[Dict]): Settings that cannot be changed
+        enableCleanup (bool): Whether cleanup is enabled
+        background (QPixmap): Background image for dialog
+    """
+
+    def __init__(
+        self,
+        core: Any,
+        name: Optional[str] = None,
+        path: Optional[str] = None,
+        settings: Optional[Dict] = None,
+        enforcedSettings: Optional[Dict] = None
+    ) -> None:
+        """Initialize CreateProject dialog.
+        
+        Args:
+            core: PrismCore instance
+            name: Initial project name. Defaults to None.
+            path: Initial project path. Defaults to None.
+            settings: Initial project settings. Defaults to None.
+            enforcedSettings: Settings that cannot be changed. Defaults to None.
+        """
         QDialog.__init__(self)
         self.core = core
         self.prevName = ""
@@ -75,14 +109,23 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         path = os.path.join(self.core.prismRoot, "Scripts", "UserInterfacesPrism", "background.png")
         self.background = QPixmap(path)
 
-    def paintEvent(self, event):
+    def paintEvent(self, event: QPaintEvent) -> None:
+        """Paint the transparent background image.
+        
+        Args:
+            event: Paint event.
+        """
         pixmap = self.core.media.scalePixmap(self.background, self.width(), self.height(), fitIntoBounds=False)
         painter = QPainter(self)
         painter.setOpacity(0.3)
         painter.drawPixmap(0, 0, pixmap)
 
     @err_catcher(name=__name__)
-    def loadLayout(self):
+    def loadLayout(self) -> None:
+        """Initialize and setup the dialog UI layout.
+        
+        Creates all widgets, sets up layouts, loads icons, and prepares the dialog.
+        """
         self.setupUi(self)
         self.core.parentWindow(self)
         self.sw_project.setStyleSheet("QStackedWidget { background-color: transparent;}")
@@ -226,11 +269,17 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         self.onSettingsSourceChanged()
 
     @err_catcher(name=__name__)
-    def enterEvent(self, event):
+    def enterEvent(self, event: QEvent) -> None:
+        """Restore cursor when mouse enters the widget.
+        
+        Args:
+            event: Enter event.
+        """
         QApplication.restoreOverrideCursor()
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect all widget signals to their handler slots."""
         self.b_browse.clicked.connect(self.browse)
         self.e_name.textEdited.connect(self.nameChanged)
         self.e_path.textEdited.connect(lambda x: self.validateText(x, self.e_path))
@@ -260,7 +309,12 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         self.b_projectSettings.clicked.connect(self.browseProjectSettings)
 
     @err_catcher(name=__name__)
-    def nameChanged(self, name):
+    def nameChanged(self, name: str) -> None:
+        """Handle project name changes and auto-update path.
+        
+        Args:
+            name: New project name.
+        """
         self.validateText(name, self.e_name)
         name = self.e_name.text()
         path = self.e_path.text()
@@ -276,7 +330,12 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         self.prevName = name
 
     @err_catcher(name=__name__)
-    def mouseClickEvent(self, event):
+    def mouseClickEvent(self, event: QMouseEvent) -> None:
+        """Handle mouse clicks on structure tree to allow deselection.
+        
+        Args:
+            event: Mouse event.
+        """
         if event.type() == QEvent.MouseButtonRelease:
             if event.button() == Qt.LeftButton:
                 index = self.tw_structure.indexAt(event.pos())
@@ -290,7 +349,12 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
             self.tw_structure.mousePrEvent(event)
 
     @err_catcher(name=__name__)
-    def rclPreview(self, pos=None):
+    def rclPreview(self, pos: Optional[QPoint] = None) -> None:
+        """Show context menu for preview image.
+        
+        Args:
+            pos: Optional menu position.
+        """
         rcmenu = QMenu(self)
 
         exp = QAction("Browse...", self)
@@ -307,7 +371,12 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         rcmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def capturePreview(self):
+    def capturePreview(self) -> None:
+        """Capture screen area as project preview image.
+        
+        Shows screen capture tool, scales captured image to preview size,
+        and displays it in the preview label.
+        """
         from PrismUtils import ScreenShot
 
         previewImg = ScreenShot.grabScreenArea(self.core)
@@ -322,7 +391,8 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
             self.l_preview.setPixmap(self.previewMap)
 
     @err_catcher(name=__name__)
-    def pastePreviewFromClipboard(self):
+    def pastePreviewFromClipboard(self) -> None:
+        """Paste an image from clipboard as the project preview."""
         pmap = self.core.media.getPixmapFromClipboard()
         if not pmap:
             self.core.popup("No image in clipboard.")
@@ -335,7 +405,8 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         self.l_preview.setPixmap(self.previewMap)
 
     @err_catcher(name=__name__)
-    def browsePreview(self):
+    def browsePreview(self) -> None:
+        """Browse for an image file to use as project preview."""
         formats = "Image File (*.jpg *.png *.exr)"
 
         imgPath = QFileDialog.getOpenFileName(
@@ -363,7 +434,14 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         self.l_preview.setPixmap(self.previewMap)
 
     @err_catcher(name=__name__)
-    def onSettingsSourceChanged(self, idx=None):
+    def onSettingsSourceChanged(self, idx: Optional[int] = None) -> None:
+        """Handle settings source selection change.
+        
+        Shows/hides preset or project settings widgets based on source selection.
+        
+        Args:
+            idx: Combobox index (optional)
+        """
         source = self.cb_settings.currentText()
         self.l_preset.setHidden(source != "From Preset")
         self.w_preset.setHidden(source != "From Preset")
@@ -373,7 +451,11 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         self.b_projectSettings.setHidden(source != "From Project")
 
     @err_catcher(name=__name__)
-    def reloadSettings(self):
+    def reloadSettings(self) -> None:
+        """Reload project settings from selected source.
+        
+        Loads settings from preset, existing project, or defaults.
+        """
         source = self.cb_settings.currentText()
         self.settingsApplied(None)
         if source == "From Preset":
@@ -407,7 +489,8 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         self.settingsApplied(self.projectSettings)
 
     @err_catcher(name=__name__)
-    def createPresetDlg(self):
+    def createPresetDlg(self) -> None:
+        """Show dialog to create new preset from current settings."""
         self.presetItem = PrismWidgets.CreateItem(
             core=self.core, allowChars=["_"], showType=False
         )
@@ -419,7 +502,8 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         self.presetItem.show()
 
     @err_catcher(name=__name__)
-    def createPresetFromCurrent(self):
+    def createPresetFromCurrent(self) -> None:
+        """Create a new preset with current settings and structure."""
         name = self.presetItem.e_item.text()
         settings = self.projectSettings
         structure = self.getStructureFromTree()
@@ -435,7 +519,12 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
             self.core.popup(msg, severity="info")
 
     @err_catcher(name=__name__)
-    def rclTree(self, pos):
+    def rclTree(self, pos: Any) -> None:
+        """Show right-click context menu for tree.
+        
+        Args:
+            pos: Mouse position
+        """
         rcmenu = QMenu(self)
 
         curItem = self.tw_structure.itemAt(pos)
@@ -455,7 +544,12 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         rcmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def addFolderDlg(self, parent):
+    def addFolderDlg(self, parent: Any) -> None:
+        """Show dialog to add folder to project structure.
+        
+        Args:
+            parent: Parent tree item to add folder to
+        """
         self.folderItem = PrismWidgets.CreateItem(
             core=self.core, allowChars=["_"], showType=False
         )
@@ -467,7 +561,12 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         self.folderItem.show()
 
     @err_catcher(name=__name__)
-    def addFolderToItem(self, parent):
+    def addFolderToItem(self, parent: Any) -> None:
+        """Add folder to project structure tree.
+        
+        Args:
+            parent: Parent tree item
+        """
         name = self.folderItem.e_item.text()
         entity = {"name": name, "children": []}
         item = self.addItemToTree(entity, parent)
@@ -477,7 +576,12 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         self.tw_structure.setCurrentItem(item)
 
     @err_catcher(name=__name__)
-    def renameItemDlg(self, parent):
+    def renameItemDlg(self, parent: Any) -> None:
+        """Show dialog to rename folder in project structure.
+        
+        Args:
+            parent: Tree item to rename
+        """
         self.rnItem = PrismWidgets.CreateItem(
             core=self.core, allowChars=["_"], showType=False
         )
@@ -493,12 +597,22 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         self.rnItem.show()
 
     @err_catcher(name=__name__)
-    def renameItem(self, item):
+    def renameItem(self, item: Any) -> None:
+        """Apply renamed text to tree item.
+        
+        Args:
+            item: Tree widget item to rename
+        """
         name = self.rnItem.e_item.text()
         item.setText(0, name)
 
     @err_catcher(name=__name__)
-    def removeItem(self, item):
+    def removeItem(self, item: Any) -> None:
+        """Remove folder from project structure tree.
+        
+        Args:
+            item: Tree item to remove
+        """
         if item.parent():
             idx = item.parent().indexOfChild(item)
             item.parent().takeChild(idx)
@@ -507,7 +621,12 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
             self.tw_structure.takeTopLevelItem(idx)
 
     @err_catcher(name=__name__)
-    def getStructureFromTree(self):
+    def getStructureFromTree(self) -> Dict[str, Any]:
+        """Extract project folder structure from tree widget.
+        
+        Returns:
+            Dictionary with 'name' and 'children' keys representing folder hierarchy
+        """
         rootEntity = {
             "name": "root",
             "children": [],
@@ -521,7 +640,15 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         return rootEntity
 
     @err_catcher(name=__name__)
-    def getStructureFromTreeItem(self, item):
+    def getStructureFromTreeItem(self, item: Any) -> Dict[str, Any]:
+        """Recursively extract folder structure from tree item.
+        
+        Args:
+            item: Tree widget item
+            
+        Returns:
+            Dictionary with folder name and children
+        """
         entity = item.data(0, Qt.UserRole)
         entity["name"] = item.text(0)
         if "children" in entity:
@@ -534,7 +661,11 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         return entity
 
     @err_catcher(name=__name__)
-    def customizeSettings(self):
+    def customizeSettings(self) -> None:
+        """Open project settings dialog for customization.
+        
+        Populates settings with project name/path and opens settings editor.
+        """
         if "globals" not in self.projectSettings:
             self.projectSettings["globals"] = {}
 
@@ -546,7 +677,12 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         self.dlg_settings.signalSaved.connect(self.settingsApplied)
 
     @err_catcher(name=__name__)
-    def settingsApplied(self, settings):
+    def settingsApplied(self, settings: Optional[Dict] = None) -> None:
+        """Apply project settings from dialog.
+        
+        Args:
+            settings: Project settings dictionary (optional)
+        """
         if settings:
             settings = copy.deepcopy(settings)
 
@@ -555,22 +691,37 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
             self.projectSettings.update(copy.deepcopy(self.enforcedSettings))
 
     @err_catcher(name=__name__)
-    def getProjectName(self):
+    def getProjectName(self) -> str:
+        """Get project name from input field.
+        
+        Returns:
+            Project name string
+        """
         return self.e_name.text()
 
     @err_catcher(name=__name__)
-    def getProjectPath(self):
+    def getProjectPath(self) -> str:
+        """Get project path from input field.
+        
+        Returns:
+            Project path string
+        """
         return self.e_path.text()
 
     @err_catcher(name=__name__)
-    def managePresets(self):
+    def managePresets(self) -> None:
+        """Open preset management dialog."""
         self.dlg_managePresets = ManagePresets(self)
         self.core.parentWindow(self.dlg_managePresets, parent=self)
         self.dlg_managePresets.signalPresetsChanged.connect(self.refreshPresets)
         self.dlg_managePresets.show()
 
     @err_catcher(name=__name__)
-    def refreshPresets(self):
+    def refreshPresets(self) -> None:
+        """Refresh preset dropdown with available presets.
+        
+        Reloads preset list and attempts to restore previous selection.
+        """
         self.cb_preset.blockSignals(True)
         cur = self.cb_preset.currentText()
 
@@ -586,13 +737,26 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         self.cb_preset.blockSignals(False)
 
     @err_catcher(name=__name__)
-    def refreshStructureTree(self):
+    def refreshStructureTree(self) -> None:
+        """Refresh project structure tree widget.
+        
+        Clears tree and repopulates with folder structure.
+        """
         self.tw_structure.clear()
         for entity in self.projectStructure["children"]:
             self.addItemToTree(entity)
 
     @err_catcher(name=__name__)
-    def addItemToTree(self, entity, parent=None):
+    def addItemToTree(self, entity: Dict[str, Any], parent: Optional[Any] = None) -> Any:
+        """Add folder entity to structure tree.
+        
+        Args:
+            entity: Entity dictionary with 'name' and optional 'children'
+            parent: Parent tree item (optional)
+            
+        Returns:
+            Created QTreeWidgetItem
+        """
         item = QTreeWidgetItem([entity["name"]])
         item.setData(0, Qt.UserRole, entity)
         if parent:
@@ -612,7 +776,13 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         return item
 
     @err_catcher(name=__name__)
-    def validateText(self, origText, pathUi):
+    def validateText(self, origText: str, pathUi: QLineEdit) -> None:
+        """Validate text input with allowed characters.
+        
+        Args:
+            origText: Original text value
+            pathUi: Line edit widget to validate
+        """
         if pathUi == self.e_name:
             allowChars = ["_", " "]
         else:
@@ -621,7 +791,8 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         self.core.validateLineEdit(pathUi, allowChars=allowChars)
 
     @err_catcher(name=__name__)
-    def browse(self):
+    def browse(self) -> None:
+        """Browse for project folder location."""
         startpath = self.getProjectPath()
         if not startpath or not os.path.exists(startpath):
             startpath = self.core.prismRoot
@@ -639,7 +810,8 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
             self.validateText(path, self.e_path)
 
     @err_catcher(name=__name__)
-    def browseProjectSettings(self):
+    def browseProjectSettings(self) -> None:
+        """Browse for existing project to load settings from."""
         startpath = getattr(self.core, "projectPath", "")
         if not startpath or not os.path.exists(startpath):
             startpath = self.getProjectPath()
@@ -658,7 +830,11 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
             self.reloadSettings()
 
     @err_catcher(name=__name__)
-    def createClicked(self):
+    def createClicked(self) -> None:
+        """Handle Create button click.
+        
+        Validates inputs, creates project, and shows completion message.
+        """
         result = self.runSanityChecks()
         if result:
             msg = "\n".join(result)
@@ -709,7 +885,8 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
             # self.close()
 
     @err_catcher(name=__name__)
-    def backClicked(self):
+    def backClicked(self) -> None:
+        """Handle Back button click to previous page."""
         curIdx = self.sw_project.currentIndex()
         if curIdx == 0:
             return
@@ -724,7 +901,8 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
             self.b_back.setVisible(False)
 
     @err_catcher(name=__name__)
-    def nextClicked(self):
+    def nextClicked(self) -> None:
+        """Handle Next button click to next page."""
         curIdx = self.sw_project.currentIndex()
         if curIdx == (self.sw_project.count() - 1):
             return
@@ -735,7 +913,12 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
             self.b_next.setVisible(False)
 
     @err_catcher(name=__name__)
-    def runSanityChecks(self):
+    def runSanityChecks(self) -> List[str]:
+        """Validate project inputs before creation.
+        
+        Returns:
+            List of error messages (empty if valid)
+        """
         result = []
         prjName = self.getProjectName()
         if not prjName:
@@ -748,15 +931,34 @@ class CreateProject(QDialog, CreateProject_ui.Ui_dlg_createProject):
         return result
 
     @err_catcher(name=__name__)
-    def closeEvent(self, event):
+    def closeEvent(self, event: Any) -> None:
+        """Handle dialog close event.
+        
+        Args:
+            event: Qt close event
+        """
         self.setParent(None)
 
 
 class ManagePresets(QDialog):
+    """Dialog for managing project presets.
+    
+    Allows users to add presets from existing projects, delete presets,
+    and view available presets.
+    
+    Attributes:
+        core: PrismCore instance
+        signalPresetsChanged (Signal): Emitted when presets are changed
+    """
 
     signalPresetsChanged = Signal()
 
-    def __init__(self, parent):
+    def __init__(self, parent: "CreateProject") -> None:
+        """Initialize ManagePresets dialog.
+        
+        Args:
+            parent: Parent CreateProject dialog.
+        """
         super(ManagePresets, self).__init__()
         self.core = parent.core
         self.core.parentWindow(self, parent=parent)
@@ -765,7 +967,8 @@ class ManagePresets(QDialog):
         self.connectEvents()
 
     @err_catcher(name=__name__)
-    def loadLayout(self):
+    def loadLayout(self) -> None:
+        """Setup the dialog UI layout and widgets."""
         self.setWindowTitle("Manage Project Presets")
         self.lo_main = QVBoxLayout()
         self.setLayout(self.lo_main)
@@ -799,13 +1002,15 @@ class ManagePresets(QDialog):
         self.lw_presets.setContextMenuPolicy(Qt.CustomContextMenu)
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect widget signals to their handler slots."""
         self.b_addFolder.clicked.connect(self.addPresetFromFolder)
         self.b_delete.clicked.connect(self.deletePreset)
         self.lw_presets.customContextMenuRequested.connect(self.presetRightClicked)
 
     @err_catcher(name=__name__)
-    def refreshPresets(self):
+    def refreshPresets(self) -> None:
+        """Reload and display all available presets in the list."""
         self.lw_presets.clear()
         presets = self.core.projects.getPresets()
         for preset in presets:
@@ -815,7 +1020,8 @@ class ManagePresets(QDialog):
             self.lw_presets.addItem(item)
 
     @err_catcher(name=__name__)
-    def addPresetFromFolder(self):
+    def addPresetFromFolder(self) -> None:
+        """Browse for an existing project folder to create a preset from."""
         path = QFileDialog.getExistingDirectory(
             self.core.messageParent, "Select project folder"
         )
@@ -831,14 +1037,23 @@ class ManagePresets(QDialog):
             self.newItem.show()
 
     @err_catcher(name=__name__)
-    def createPreset(self, path):
+    def createPreset(self, path: str) -> None:
+        """Create a new project preset from the specified folder.
+        
+        Args:
+            path: Path to the project folder to create preset from.
+        """
         name = self.newItem.e_item.text()
         self.core.projects.createPresetFromFolder(name, path)
         self.signalPresetsChanged.emit()
         self.refreshPresets()
 
     @err_catcher(name=__name__)
-    def deletePreset(self):
+    def deletePreset(self) -> None:
+        """Delete the currently selected preset after user confirmation.
+        
+        The default preset cannot be deleted.
+        """
         items = self.lw_presets.selectedItems()
         if not items:
             return
@@ -859,7 +1074,12 @@ class ManagePresets(QDialog):
             self.refreshPresets()
 
     @err_catcher(name=__name__)
-    def presetRightClicked(self, pos):
+    def presetRightClicked(self, pos: QPoint) -> None:
+        """Show context menu for preset item.
+        
+        Args:
+            pos: Position of the right-click.
+        """
         item = self.lw_presets.itemAt(pos)
         if not item:
             return
@@ -879,7 +1099,24 @@ class ManagePresets(QDialog):
 
 
 class ProjectCreated(QDialog):
-    def __init__(self, prjname, core, basepath):
+    """Dialog shown after successful project creation.
+    
+    Provides options to open the project browser or explore the project folder.
+    
+    Attributes:
+        core: PrismCore instance
+        basepath (str): Base path of the created project
+        prjname (str): Name of the created project
+    """
+
+    def __init__(self, prjname: str, core: Any, basepath: str) -> None:
+        """Initialize ProjectCreated dialog.
+        
+        Args:
+            prjname: Name of the created project.
+            core: PrismCore instance.
+            basepath: Base path of the created project.
+        """
         QDialog.__init__(self)
         self.core = core
         self.basepath = basepath
@@ -888,7 +1125,8 @@ class ProjectCreated(QDialog):
         self.connectEvents()
 
     @err_catcher(name=__name__)
-    def loadLayout(self):
+    def loadLayout(self) -> None:
+        """Setup the dialog UI layout and widgets with success message."""
         self.setWindowTitle("Project Created")
         self.lo_main = QVBoxLayout()
         self.lo_main.setSpacing(50)
@@ -917,7 +1155,8 @@ class ProjectCreated(QDialog):
         self.setFocus()
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect button signals to open project browser or explorer."""
         self.b_browser.clicked.connect(self.core.projectBrowser)
         self.b_browser.clicked.connect(self.accept)
         self.b_explorer.clicked.connect(lambda: self.core.openFolder(self.core.projectPath))
@@ -925,7 +1164,26 @@ class ProjectCreated(QDialog):
 
 
 class SetProject(QDialog):
-    def __init__(self, core, openUi=""):
+    """Frameless dialog wrapper for project selection.
+    
+    Provides a custom themed window with a close button for the
+    SetProjectClass widget.
+    
+    Attributes:
+        core: PrismCore instance
+        openUi (str): UI to open after project selection
+        projectsUi: SetProjectClass widget instance
+        w_header: Draggable header widget
+        b_close: Close button
+    """
+
+    def __init__(self, core: Any, openUi: str = "") -> None:
+        """Initialize SetProject dialog.
+        
+        Args:
+            core: PrismCore instance.
+            openUi: UI to open after project selection. Defaults to "".
+        """
         QDialog.__init__(self)
         self.core = core
         self.core.parentWindow(self)
@@ -938,7 +1196,8 @@ class SetProject(QDialog):
         self.setFocus()
 
     @err_catcher(name=__name__)
-    def loadLayout(self):
+    def loadLayout(self) -> None:
+        """Setup the frameless dialog layout with header and close button."""
         grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
         grid.addWidget(self.projectsUi)
@@ -979,17 +1238,44 @@ class SetProject(QDialog):
         )
 
     @err_catcher(name=__name__)
-    def resizeEvent(self, event):
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """Reposition header and close button on window resize.
+        
+        Args:
+            event: Resize event.
+        """
         self.b_close.move((self.width() - self.b_close.geometry().width() - 10), 10)
         self.w_header.setGeometry(0, 0, self.width(), 40)
 
 
 class SetProjectClass(QDialog):
+    """Project selection interface with available projects display.
+    
+    Shows a grid of available projects with options to create new or
+    open existing projects. Includes startup checkbox and settings access.
+    
+    Attributes:
+        core: PrismCore instance
+        pdialog: Parent SetProject dialog
+        openUi (str): UI to open after project selection
+        allowDeselect (bool): Whether projects can be deselected
+        projectWidgets (List): List of project widget instances
+        _projects: Cached list of available projects
+        signalShowing (Signal): Emitted when dialog is shown
+    """
 
     signalShowing = Signal()
 
-    def __init__(self, core, pdialog, openUi="", refresh=True):
-        QDialog.__init__(self)
+    def __init__(self, core: Any, pdialog: "SetProject", openUi: str = "", refresh: bool = True) -> None:
+        """Initialize SetProjectClass.
+        
+        Args:
+            core: PrismCore instance.
+            pdialog: Parent SetProject dialog.
+            openUi: UI to open after project selection. Defaults to "".
+            refresh: Whether to refresh UI on init. Defaults to True.
+        """
+        super(SetProjectClass, self).__init__()
         self.core = core
         self.pdialog = pdialog
         self.openUi = openUi
@@ -1003,25 +1289,37 @@ class SetProjectClass(QDialog):
         self.core.callback(name="onSetProjectStartup", args=[self])
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect widget signals to their handler slots."""
         self.chb_startup.stateChanged.connect(self.startupChanged)
 
     @err_catcher(name=__name__)
-    def enterEvent(self, event):
+    def enterEvent(self, event: QEvent) -> None:
+        """Restore cursor when mouse enters the widget.
+        
+        Args:
+            event: Enter event.
+        """
         try:
             QApplication.restoreOverrideCursor()
         except:
             pass
 
     @err_catcher(name=__name__)
-    def preCreate(self):
+    def preCreate(self) -> None:
+        """Open create project dialog and close current dialogs."""
         self.core.projects.createProjectDialog()
         self.pdialog.close()
         if getattr(self.core, "pb", None) and self.core.pb.isVisible():
             self.core.pb.close()
 
     @err_catcher(name=__name__)
-    def openProject(self, widget):
+    def openProject(self, widget: Any) -> None:
+        """Open the selected project.
+        
+        Args:
+            widget: Project widget containing project data.
+        """
         path = widget.data["configPath"]
         if path == self.core.prismIni:
             msg = "This project is already active."
@@ -1031,11 +1329,17 @@ class SetProjectClass(QDialog):
         self.core.changeProject(path, self.openUi)
 
     @err_catcher(name=__name__)
-    def getProjectWidgetClass(self):
+    def getProjectWidgetClass(self) -> type:
+        """Get the project widget class for displaying projects.
+        
+        Returns:
+            Project widget class.
+        """
         return self.core.projects.ProjectWidget
 
     @err_catcher(name=__name__)
-    def loadLayout(self):
+    def loadLayout(self) -> None:
+        """Setup the dialog UI layout with project grid and controls."""
         self.l_header = QLabel()
         headerPath = os.path.join(
             self.core.prismRoot, "Scripts", "UserInterfacesPrism", "prism_title.png"
@@ -1131,13 +1435,19 @@ class SetProjectClass(QDialog):
         self.chb_startup.setChecked(ssu)
 
     @err_catcher(name=__name__)
-    def resizeEvent(self, event):
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """Reposition header widget on window resize.
+        
+        Args:
+            event: Resize event.
+        """
         self.w_newProjectV.setGeometry(
             0, 0, self.l_header.width(), self.l_header.height()
         )
 
     @err_catcher(name=__name__)
-    def refreshUi(self):
+    def refreshUi(self) -> None:
+        """Reload and display all available projects in the grid."""
         self._projects = None
         self.projectWidgets = []
         for idx in reversed(range(self.lo_projects.count())):
@@ -1184,7 +1494,13 @@ class SetProjectClass(QDialog):
                 widget.select()
 
     @err_catcher(name=__name__)
-    def itemSelected(self, item, event=None):
+    def itemSelected(self, item: Any, event: Optional[QMouseEvent] = None) -> None:
+        """Handle project item selection with multi-select support.
+        
+        Args:
+            item: Selected project widget.
+            event: Optional mouse event. Defaults to None.
+        """
         if not self.allowDeselect:
             return
 
@@ -1197,7 +1513,12 @@ class SetProjectClass(QDialog):
                 self.deselectItems(ignore=[item])
 
     @err_catcher(name=__name__)
-    def deselectItems(self, ignore=None):
+    def deselectItems(self, ignore: Optional[List] = None) -> None:
+        """Deselect all project widgets except those in ignore list.
+        
+        Args:
+            ignore: Optional list of widgets to skip. Defaults to None.
+        """
         for item in self.projectWidgets:
             if ignore and item in ignore:
                 continue
@@ -1205,21 +1526,36 @@ class SetProjectClass(QDialog):
             item.deselect()
 
     @err_catcher(name=__name__)
-    def startupChanged(self, state):
+    def startupChanged(self, state: int) -> None:
+        """Handle "open on startup" checkbox state change.
+        
+        Args:
+            state: Checkbox state (0=unchecked, 2=checked).
+        """
         if state == 0:
             self.core.setConfig("globals", "showonstartup", False)
         elif state == 2:
             self.core.setConfig("globals", "showonstartup", True)
 
     @err_catcher(name=__name__)
-    def getProjects(self):
+    def getProjects(self) -> List[Dict]:
+        """Get list of available projects with caching.
+        
+        Returns:
+            List of project dictionaries.
+        """
         if not hasattr(self, "_projects") or self._projects is None:
             self._projects = self.core.projects.getAvailableProjects(includeCurrent=True)
 
         return self._projects
 
     @err_catcher(name=__name__)
-    def getSelectedItems(self):
+    def getSelectedItems(self) -> List[Any]:
+        """Get list of currently selected project widgets.
+        
+        Returns:
+            List of selected project widgets.
+        """
         items = []
         for item in self.projectWidgets:
             if item.isSelected():
@@ -1228,17 +1564,40 @@ class SetProjectClass(QDialog):
         return items
 
     @err_catcher(name=__name__)
-    def showEvent(self, event):
+    def showEvent(self, event: QShowEvent) -> None:
+        """Emit signal when dialog is shown.
+        
+        Args:
+            event: Show event.
+        """
         self.signalShowing.emit()
 
 
 class DragWidget(QWidget):
+    """Widget that allows parent window to be dragged by mouse.
+    
+    Used as draggable header for frameless dialogs.
+    
+    Attributes:
+        startPos (QPoint): Starting position of drag operation
+    """
+
     @err_catcher(name=__name__)
-    def mousePressEvent(self, event):
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        """Record starting position when mouse is pressed.
+        
+        Args:
+            event: Mouse press event.
+        """
         self.startPos = event.pos()
 
     @err_catcher(name=__name__)
-    def mouseMoveEvent(self, event):
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        """Move parent window as mouse is dragged.
+        
+        Args:
+            event: Mouse move event.
+        """
         if event.buttons() == Qt.LeftButton:
             diff = event.pos() - self.startPos
             newpos = self.parent().pos() + diff
@@ -1246,7 +1605,28 @@ class DragWidget(QWidget):
 
 
 class CreateAssetDlg(PrismWidgets.CreateItem):
-    def __init__(self, core, parent=None, startText=None):
+    """Dialog for creating new assets with optional thumbnail and metadata.
+    
+    Extends CreateItem to add thumbnail, description, and metadata fields
+    for asset creation.
+    
+    Attributes:
+        core: PrismCore instance
+        parentDlg: Parent dialog
+        thumbXres (int): Thumbnail width in pixels
+        thumbYres (int): Thumbnail height in pixels
+        imgPath (str): Path to thumbnail image
+        pmap (QPixmap): Thumbnail pixmap
+    """
+
+    def __init__(self, core: Any, parent: Optional[QWidget] = None, startText: Optional[str] = None) -> None:
+        """Initialize CreateAssetDlg.
+        
+        Args:
+            core: PrismCore instance.
+            parent: Parent widget. Defaults to None.
+            startText: Initial text for asset name. Defaults to None.
+        """
         startText = startText or ""
         super(CreateAssetDlg, self).__init__(startText=startText.lstrip("/"), core=core, mode="assetHierarchy", allowChars=["/"])
         self.parentDlg = parent
@@ -1258,7 +1638,8 @@ class CreateAssetDlg(PrismWidgets.CreateItem):
         self.setupUi_()
 
     @err_catcher(name=__name__)
-    def setupUi_(self):
+    def setupUi_(self) -> None:
+        """Setup the dialog UI with thumbnail, description, and metadata fields."""
         self.setWindowTitle("Create Asset...")
         self.core.parentWindow(self, parent=self.parentDlg)
 
@@ -1347,17 +1728,32 @@ class CreateAssetDlg(PrismWidgets.CreateItem):
         self.resize(450, 550)
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Get preferred size for dialog.
+        
+        Returns:
+            Preferred dialog size.
+        """
         return QSize(450, 450)
 
     @err_catcher(name=__name__)
-    def previewMouseReleaseEvent(self, event):
+    def previewMouseReleaseEvent(self, event: QMouseEvent) -> None:
+        """Handle mouse click on thumbnail to show context menu.
+        
+        Args:
+            event: Mouse release event.
+        """
         if event.type() == QEvent.MouseButtonRelease:
             if event.button() == Qt.LeftButton:
                 self.rclThumbnail()
 
     @err_catcher(name=__name__)
-    def rclThumbnail(self, pos=None):
+    def rclThumbnail(self, pos: Optional[QPoint] = None) -> None:
+        """Show context menu for thumbnail with capture/browse/paste options.
+        
+        Args:
+            pos: Optional menu position. Defaults to None.
+        """
         rcmenu = QMenu(self)
 
         copAct = QAction("Capture thumbnail", self)
@@ -1375,7 +1771,11 @@ class CreateAssetDlg(PrismWidgets.CreateItem):
         rcmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def capturePreview(self):
+    def capturePreview(self) -> None:
+        """Capture screen area as thumbnail preview.
+        
+        Shows screen capture tool, scales to thumbnail size, and sets as pixmap.
+        """
         from PrismUtils import ScreenShot
 
         previewImg = ScreenShot.grabScreenArea(self.core)
@@ -1389,7 +1789,8 @@ class CreateAssetDlg(PrismWidgets.CreateItem):
             self.setPixmap(previewImg)
 
     @err_catcher(name=__name__)
-    def pastePreviewFromClipboard(self):
+    def pastePreviewFromClipboard(self) -> None:
+        """Paste image from clipboard as thumbnail."""
         pmap = self.core.media.getPixmapFromClipboard()
         if not pmap:
             self.core.popup("No image in clipboard.", parent=self)
@@ -1403,7 +1804,8 @@ class CreateAssetDlg(PrismWidgets.CreateItem):
         self.setPixmap(pmap)
 
     @err_catcher(name=__name__)
-    def browsePreview(self):
+    def browsePreview(self) -> None:
+        """Browse for image file to use as thumbnail."""
         formats = "Image File (*.jpg *.png *.exr)"
 
         imgPath = QFileDialog.getOpenFileName(
@@ -1435,22 +1837,53 @@ class CreateAssetDlg(PrismWidgets.CreateItem):
         self.setPixmap(pmsmall)
 
     @err_catcher(name=__name__)
-    def setPixmap(self, pmsmall):
+    def setPixmap(self, pmsmall: QPixmap) -> None:
+        """Set the thumbnail pixmap.
+        
+        Args:
+            pmsmall: Pixmap to use as thumbnail.
+        """
         self.pmap = pmsmall
         self.l_thumbnail.setMinimumSize(self.pmap.width(), self.pmap.height())
         self.l_thumbnail.setPixmap(self.pmap)
 
     @err_catcher(name=__name__)
-    def getDescription(self):
+    def getDescription(self) -> str:
+        """Get the asset description text.
+        
+        Returns:
+            Asset description.
+        """
         return self.te_text.toPlainText()
     
     @err_catcher(name=__name__)
-    def getThumbnail(self):
+    def getThumbnail(self) -> Optional[QPixmap]:
+        """Get the thumbnail pixmap.
+        
+        Returns:
+            Thumbnail pixmap or None.
+        """
         return self.pmap
 
 
 class CreateFolderDlg(PrismWidgets.CreateItem):
-    def __init__(self, core, parent=None, startText=None):
+    """Dialog for creating new asset folders.
+    
+    Allows creating folder hierarchy within assets using slash separators.
+    
+    Attributes:
+        core: PrismCore instance
+        parentDlg: Parent dialog
+    """
+
+    def __init__(self, core: Any, parent: Optional[QWidget] = None, startText: Optional[str] = None) -> None:
+        """Initialize CreateFolderDlg.
+        
+        Args:
+            core: PrismCore instance.
+            parent: Parent widget. Defaults to None.
+            startText: Initial text for folder name. Defaults to None.
+        """
         startText = startText or ""
         super(CreateFolderDlg, self).__init__(startText=startText.lstrip("/"), core=core, mode="assetHierarchy", allowChars=["/"])
         self.parentDlg = parent
@@ -1458,7 +1891,8 @@ class CreateFolderDlg(PrismWidgets.CreateItem):
         self.setupUi_()
 
     @err_catcher(name=__name__)
-    def setupUi_(self):
+    def setupUi_(self) -> None:
+        """Setup the dialog UI with folder name field."""
         iconPath = os.path.join(
             self.core.prismRoot, "Scripts", "UserInterfacesPrism", "create.png"
         )
@@ -1479,7 +1913,24 @@ class CreateFolderDlg(PrismWidgets.CreateItem):
 
 
 class CreateProductDlg(QDialog):
-    def __init__(self, origin, entity=None):
+    """Dialog for creating new products for entities.
+    
+    Allows selecting department, task, product name, and location for
+    new export products.
+    
+    Attributes:
+        core: PrismCore instance
+        parentDlg: Parent dialog
+        entity (Dict): Entity to create product for
+    """
+
+    def __init__(self, origin: Any, entity: Optional[Dict] = None) -> None:
+        """Initialize CreateProductDlg.
+        
+        Args:
+            origin: Parent dialog or widget.
+            entity: Entity dictionary. Defaults to None.
+        """
         super(CreateProductDlg, self).__init__()
         self.parentDlg = origin
         self.core = self.parentDlg.core
@@ -1488,11 +1939,17 @@ class CreateProductDlg(QDialog):
         self.setupUi_()
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Get preferred dialog size.
+        
+        Returns:
+            Preferred dialog size.
+        """
         return QSize(300, 150)
 
     @err_catcher(name=__name__)
-    def setupUi_(self):
+    def setupUi_(self) -> None:
+        """Setup the dialog UI with department, task, product, and location fields."""
         self.setWindowTitle("Create Product")
         self.lo_main = QVBoxLayout(self)
 
@@ -1585,7 +2042,11 @@ class CreateProductDlg(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def onDepartmentClicked(self):
+    def onDepartmentClicked(self) -> None:
+        """Show department selection menu (CreateProductDlg).
+        
+        Creates context menu with available asset or shot departments.
+        """
         tmenu = QMenu(self)
 
         if self.entity.get("type") == "asset":
@@ -1604,7 +2065,8 @@ class CreateProductDlg(QDialog):
             tmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def onTaskClicked(self):
+    def onTaskClicked(self) -> None:
+        """Show task menu for product version creation."""
         tmenu = QMenu(self)
 
         tasks = self.core.entities.getCategories(self.entity, self.e_department.text())
@@ -1622,7 +2084,8 @@ class CreateProductDlg(QDialog):
             tmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def createClicked(self):
+    def createClicked(self) -> None:
+        """Validate all inputs and accept dialog to create product version."""
         if self.core.mediaProducts.getLinkedToTasks():
             depText = self.core.validateLineEdit(self.e_department)
             if not depText:
@@ -1642,7 +2105,8 @@ class CreateProductDlg(QDialog):
         self.accept()
 
     @err_catcher(name=__name__)
-    def enableOk(self):
+    def enableOk(self) -> None:
+        """Enable/disable OK button based on input validation."""
         prdText = self.core.validateLineEdit(self.e_product)
         if self.core.mediaProducts.getLinkedToTasks():
             depText = self.core.validateLineEdit(self.e_department)
@@ -1655,7 +2119,24 @@ class CreateProductDlg(QDialog):
 
 
 class CreateProductVersionDlg(QDialog):
-    def __init__(self, origin, entity=None):
+    """Dialog for creating new product versions with file/folder selection.
+    
+    Allows creating product versions with version number, location, and
+    file/folder path selection via drag & drop or browse.
+    
+    Attributes:
+        core: PrismCore instance
+        parentDlg: Parent dialog
+        entity (Dict): Entity to create version for
+    """
+
+    def __init__(self, origin: Any, entity: Optional[Dict] = None) -> None:
+        """Initialize CreateProductVersionDlg.
+        
+        Args:
+            origin: Parent dialog or widget.
+            entity: Entity dictionary. Defaults to None.
+        """
         super(CreateProductVersionDlg, self).__init__()
         self.parentDlg = origin
         self.core = self.parentDlg.core
@@ -1664,11 +2145,17 @@ class CreateProductVersionDlg(QDialog):
         self.setupUi_()
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Return size hint for CreateProductVersionDlg.
+        
+        Returns:
+            QSize(500, 150)
+        """
         return QSize(500, 150)
 
     @err_catcher(name=__name__)
-    def setupUi_(self):
+    def setupUi_(self) -> None:
+        """Set up the create product version dialog UI."""
         self.setWindowTitle("Create Version")
         self.lo_main = QVBoxLayout(self)
 
@@ -1732,7 +2219,12 @@ class CreateProductVersionDlg(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def fileMouseClickEvent(self, event):
+    def fileMouseClickEvent(self, event: QMouseEvent) -> None:
+        """Show context menu with file/folder options on click.
+        
+        Args:
+            event: Mouse event.
+        """
         if event.type() == QEvent.MouseButtonRelease:
             tmenu = QMenu(self)
 
@@ -1759,14 +2251,24 @@ class CreateProductVersionDlg(QDialog):
             tmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def fileDragEnterEvent(self, e):
+    def fileDragEnterEvent(self, e: QDrag) -> None:
+        """Accept drag events with URLs.
+        
+        Args:
+            e: Drag enter event.
+        """
         if e.mimeData().hasUrls():
             e.accept()
         else:
             e.ignore()
 
     @err_catcher(name=__name__)
-    def fileDragMoveEvent(self, e):
+    def fileDragMoveEvent(self, e: QDrag) -> None:
+        """Update visual feedback during drag operation.
+        
+        Args:
+            e: Drag move event.
+        """
         if e.mimeData().hasUrls():
             e.accept()
             self.w_filePath.setStyleSheet(
@@ -1776,11 +2278,21 @@ class CreateProductVersionDlg(QDialog):
             e.ignore()
 
     @err_catcher(name=__name__)
-    def fileDragLeaveEvent(self, e):
+    def fileDragLeaveEvent(self, e: QDrag) -> None:
+        """Reset visual feedback when drag leaves widget.
+        
+        Args:
+            e: Drag leave event.
+        """
         self.w_filePath.setStyleSheet("")
 
     @err_catcher(name=__name__)
-    def fileDropEvent(self, e):
+    def fileDropEvent(self, e: QDrop) -> None:
+        """Handle dropped files/folders.
+        
+        Args:
+            e: Drop event.
+        """
         if e.mimeData().hasUrls():
             self.w_filePath.setStyleSheet("")
             e.setDropAction(Qt.LinkAction)
@@ -1794,7 +2306,8 @@ class CreateProductVersionDlg(QDialog):
             e.ignore()
 
     @err_catcher(name=__name__)
-    def browseFolder(self):
+    def browseFolder(self) -> None:
+        """Browse for folder to use as product version source."""
         startpath = self.l_filePath.text() or self.core.projectPath
         selectedPath = QFileDialog.getExistingDirectory(
             self, "Select folder", startpath
@@ -1804,7 +2317,8 @@ class CreateProductVersionDlg(QDialog):
             self.l_filePath.setText(selectedPath.replace("\\", "/"))
 
     @err_catcher(name=__name__)
-    def browseFile(self):
+    def browseFile(self) -> None:
+        """Browse for file to use as product version source."""
         startpath = self.l_filePath.text() or self.core.projectPath
         selectedFile = QFileDialog.getOpenFileName(
             self, "Select file", startpath
@@ -1814,21 +2328,41 @@ class CreateProductVersionDlg(QDialog):
             self.l_filePath.setText(selectedFile.replace("\\", "/"))
 
     @err_catcher(name=__name__)
-    def openFolder(self):
+    def openFolder(self) -> None:
+        """Open the selected path in file explorer."""
         path = self.l_filePath.text()
         self.core.openFolder(path)
 
     @err_catcher(name=__name__)
-    def clearFiles(self):
+    def clearFiles(self) -> None:
+        """Clear the file path selection."""
         self.l_filePath.setText("< Click or Drag & Drop files >")
 
     @err_catcher(name=__name__)
-    def createClicked(self):
+    def createClicked(self) -> None:
+        """Accept dialog to create product version."""
         self.accept()
 
 
 class CreateIdentifierDlg(QDialog):
-    def __init__(self, origin, entity=None):
+    """Dialog for creating new render product identifiers.
+    
+    Allows creating identifiers for render products with department, task,
+    identifier name, media type, and location.
+    
+    Attributes:
+        core: PrismCore instance
+        parentDlg: Parent dialog
+        entity (Dict): Entity to create identifier for
+    """
+
+    def __init__(self, origin: Any, entity: Optional[Dict] = None) -> None:
+        """Initialize CreateIdentifierDlg.
+        
+        Args:
+            origin: Parent dialog or widget.
+            entity: Entity dictionary. Defaults to None.
+        """
         super(CreateIdentifierDlg, self).__init__()
         self.parentDlg = origin
         self.core = self.parentDlg.core
@@ -1837,11 +2371,17 @@ class CreateIdentifierDlg(QDialog):
         self.setupUi_()
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Get preferred dialog size.
+        
+        Returns:
+            QSize with width 300, height 150
+        """
         return QSize(300, 150)
 
     @err_catcher(name=__name__)
-    def setupUi_(self):
+    def setupUi_(self) -> None:
+        """Set up CreateIdentifierDlg UI with department, task, identifier, type, and location fields."""
         self.setWindowTitle("Create Identifier")
         self.lo_main = QVBoxLayout(self)
 
@@ -1941,7 +2481,8 @@ class CreateIdentifierDlg(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def onDepartmentClicked(self):
+    def onDepartmentClicked(self) -> None:
+        """Show department menu for identifier creation (CreateIdentifierDlg)."""
         tmenu = QMenu(self)
 
         if self.entity.get("type") == "asset":
@@ -1960,7 +2501,8 @@ class CreateIdentifierDlg(QDialog):
             tmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def onTaskClicked(self):
+    def onTaskClicked(self) -> None:
+        """Show task menu for identifier creation."""
         tmenu = QMenu(self)
 
         tasks = self.core.entities.getCategories(self.entity, self.e_department.text())
@@ -1978,7 +2520,8 @@ class CreateIdentifierDlg(QDialog):
             tmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def createClicked(self):
+    def createClicked(self) -> None:
+        """Validate inputs and accept dialog to create identifier."""
         if self.core.mediaProducts.getLinkedToTasks():
             depText = self.core.validateLineEdit(self.e_department)
             if not depText:
@@ -1998,7 +2541,8 @@ class CreateIdentifierDlg(QDialog):
         self.accept()
 
     @err_catcher(name=__name__)
-    def enableOk(self):
+    def enableOk(self) -> None:
+        """Enable/disable Create button based on input validation."""
         idfText = self.core.validateLineEdit(self.e_identifier)
         if self.core.mediaProducts.getLinkedToTasks():
             depText = self.core.validateLineEdit(self.e_department)
@@ -2011,7 +2555,24 @@ class CreateIdentifierDlg(QDialog):
 
 
 class CreateMediaVersionDlg(QDialog):
-    def __init__(self, origin, entity=None):
+    """Dialog for creating new media product versions.
+    
+    Simplified version dialog for media products with version number
+    and location selection.
+    
+    Attributes:
+        core: PrismCore instance
+        parentDlg: Parent dialog
+        entity (Dict): Entity to create version for
+    """
+
+    def __init__(self, origin: Any, entity: Optional[Dict] = None) -> None:
+        """Initialize CreateMediaVersionDlg.
+        
+        Args:
+            origin: Parent dialog or widget.
+            entity: Entity dictionary. Defaults to None.
+        """
         super(CreateMediaVersionDlg, self).__init__()
         self.parentDlg = origin
         self.core = self.parentDlg.core
@@ -2020,11 +2581,17 @@ class CreateMediaVersionDlg(QDialog):
         self.setupUi_()
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Get preferred dialog size.
+        
+        Returns:
+            QSize with width 300, height 150
+        """
         return QSize(300, 150)
 
     @err_catcher(name=__name__)
-    def setupUi_(self):
+    def setupUi_(self) -> None:
+        """Set up CreateMediaVersionDlg UI with version spinner and location selector."""
         self.setWindowTitle("Create Version")
         self.lo_main = QVBoxLayout(self)
 
@@ -2066,12 +2633,32 @@ class CreateMediaVersionDlg(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def createClicked(self):
+    def createClicked(self) -> None:
+        """Accept dialog to create media version."""
         self.accept()
 
 
 class IngestMediaDlg(QDialog):
-    def __init__(self, core, startText="", entity=None, parent=None):
+    """Dialog for ingesting media files into the project.
+    
+    Comprehensive dialog for importing external media with entity selection,
+    department/task assignment, version control, and metadata.
+    
+    Attributes:
+        core: PrismCore instance
+        entity (Dict): Target entity for media
+        parentDlg: Parent dialog
+    """
+
+    def __init__(self, core: Any, startText: str = "", entity: Optional[Dict] = None, parent: Optional[QWidget] = None) -> None:
+        """Initialize IngestMediaDlg.
+        
+        Args:
+            core: PrismCore instance.
+            startText: Initial media path(s). Defaults to "".
+            entity: Target entity dictionary. Defaults to None.
+            parent: Parent widget. Defaults to None.
+        """
         QDialog.__init__(self)
         self.core = core
         self.entity = entity
@@ -2089,11 +2676,17 @@ class IngestMediaDlg(QDialog):
         self.connectEvents()
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Get preferred dialog size.
+        
+        Returns:
+            QSize with width 800, height 200
+        """
         return QSize(800, 200)
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Setup the comprehensive dialog UI with all media ingest fields."""
         self.setWindowTitle("Ingest Media")
 
         self.lo_main = QVBoxLayout(self)
@@ -2282,7 +2875,12 @@ class IngestMediaDlg(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def entityMouseClickEvent(self, event):
+    def entityMouseClickEvent(self, event: QMouseEvent) -> None:
+        """Show entity selection dialog when entity widget is clicked.
+        
+        Args:
+            event: Mouse event.
+        """
         if event.type() == QEvent.MouseButtonRelease:
             if event.button() == Qt.LeftButton:
                 if getattr(self, "dlg_entity", None):
@@ -2295,7 +2893,15 @@ class IngestMediaDlg(QDialog):
                 self.dlg_entity.show()
 
     @err_catcher(name=__name__)
-    def setEntity(self, entity):
+    def setEntity(self, entity: Dict[str, Any]) -> None:
+        """Set and display target entity.
+        
+        Updates entity reference and displays entity preview thumbnail
+        and formatted name.
+        
+        Args:
+            entity: Entity dictionary with type and identification info
+        """
         self.entity = entity
         pmap = self.core.entities.getEntityPreview(self.entity)
         if not pmap:
@@ -2307,7 +2913,15 @@ class IngestMediaDlg(QDialog):
         self.l_entityName.setText(entityName)
 
     @err_catcher(name=__name__)
-    def setMediaPaths(self, paths):
+    def setMediaPaths(self, paths: str) -> None:
+        """Set media file path(s) to ingest.
+        
+        If given a directory path, automatically expands to all files in directory
+        (unless Ctrl key is held). Supports multiple paths separated by newlines.
+        
+        Args:
+            paths: File path or newline-separated list of paths
+        """
         pathList = paths.split("\n")
         if len(pathList) == 1 and os.path.isdir(pathList[0]):
             mods = QApplication.keyboardModifiers()
@@ -2319,7 +2933,12 @@ class IngestMediaDlg(QDialog):
         self.enableOk()
 
     @err_catcher(name=__name__)
-    def mediaMouseClickEvent(self, event):
+    def mediaMouseClickEvent(self, event: QMouseEvent) -> None:
+        """Show context menu for media path selection.
+        
+        Args:
+            event: Mouse event.
+        """
         if event.type() == QEvent.MouseButtonRelease:
             tmenu = QMenu(self)
 
@@ -2346,14 +2965,24 @@ class IngestMediaDlg(QDialog):
             tmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def mediaDragEnterEvent(self, e):
+    def mediaDragEnterEvent(self, e: QDrag) -> None:
+        """Accept drag events with URLs to media widget.
+        
+        Args:
+            e: Drag enter event.
+        """
         if e.mimeData().hasUrls():
             e.accept()
         else:
             e.ignore()
 
     @err_catcher(name=__name__)
-    def mediaDragMoveEvent(self, e):
+    def mediaDragMoveEvent(self, e: QDrag) -> None:
+        """Accept drag move events and apply visual feedback.
+        
+        Args:
+            e: Drag move event.
+        """
         if e.mimeData().hasUrls():
             e.accept()
             self.w_mediaPath.setStyleSheet(
@@ -2363,11 +2992,21 @@ class IngestMediaDlg(QDialog):
             e.ignore()
 
     @err_catcher(name=__name__)
-    def mediaDragLeaveEvent(self, e):
+    def mediaDragLeaveEvent(self, e: QDrag) -> None:
+        """Remove visual feedback when drag exits media widget.
+        
+        Args:
+            e: Drag leave event.
+        """
         self.w_mediaPath.setStyleSheet("")
 
     @err_catcher(name=__name__)
-    def mediaDropEvent(self, e):
+    def mediaDropEvent(self, e: QDrag) -> None:
+        """Handle dropped media files and set media paths.
+        
+        Args:
+            e: Drop event.
+        """
         if e.mimeData().hasUrls():
             self.w_mediaPath.setStyleSheet("")
             e.setDropAction(Qt.LinkAction)
@@ -2382,7 +3021,12 @@ class IngestMediaDlg(QDialog):
             e.ignore()
 
     @err_catcher(name=__name__)
-    def onMediaTypeChanged(self, idx=None):
+    def onMediaTypeChanged(self, idx: Optional[int] = None) -> None:
+        """Handle media type change, show/hide relevant fields.
+        
+        Args:
+            idx: Combobox index (optional).
+        """
         curType = self.cb_identifierType.currentData()
         self.l_aov.setHidden(curType != "3drenders")
         self.e_aov.setHidden(curType != "3drenders")
@@ -2392,7 +3036,11 @@ class IngestMediaDlg(QDialog):
         self.enableOk()
 
     @err_catcher(name=__name__)
-    def onDepartmentClicked(self):
+    def onDepartmentClicked(self) -> None:
+        """Show department selection menu (IngestMediaDlg).
+        
+        Displays context menu with available departments for the entity type.
+        """
         tmenu = QMenu(self)
 
         if self.entity.get("type") == "asset":
@@ -2411,7 +3059,12 @@ class IngestMediaDlg(QDialog):
             tmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def onTaskClicked(self):
+    def onTaskClicked(self) -> None:
+        """Show task selection menu.
+        
+        Displays context menu with available tasks/categories for the
+        current entity and department.
+        """
         tmenu = QMenu(self)
 
         tasks = self.core.entities.getCategories(self.entity, self.e_department.text())
@@ -2432,7 +3085,12 @@ class IngestMediaDlg(QDialog):
             tmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def onIdentifierClicked(self):
+    def onIdentifierClicked(self) -> None:
+        """Show identifier selection menu.
+        
+        Displays context menu with existing identifiers/products that match
+        the current entity, department, and task selection.
+        """
         tmenu = QMenu(self)
 
         entity = self.entity.copy()
@@ -2456,7 +3114,12 @@ class IngestMediaDlg(QDialog):
             tmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def onVersionClicked(self):
+    def onVersionClicked(self) -> None:
+        """Show version selection menu.
+        
+        Displays context menu with existing versions for the selected
+        identifier/product, sorted by version number (newest first).
+        """
         tmenu = QMenu(self)
 
         entity = self.entity.copy()
@@ -2481,7 +3144,12 @@ class IngestMediaDlg(QDialog):
             tmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def onAovClicked(self):
+    def onAovClicked(self) -> None:
+        """Show AOV selection menu for 3D renders.
+        
+        Displays context menu with available AOV passes from the selected
+        version of a 3D render identifier.
+        """
         tmenu = QMenu(self)
 
         entity = self.entity.copy()
@@ -2503,11 +3171,17 @@ class IngestMediaDlg(QDialog):
             tmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect UI signals to their handlers."""
         self.e_identifier.textChanged.connect(lambda x: self.enableOk())
 
     @err_catcher(name=__name__)
-    def browseFolder(self):
+    def browseFolder(self) -> None:
+        """Open folder browser dialog for media selection.
+        
+        Launches file dialog to select a folder. Selected folder path
+        is set as the media path.
+        """
         curText = self.l_mediaPath.text()
         startpath = curText if curText and not curText.startswith("<") else self.core.projectPath
         selectedPath = QFileDialog.getExistingDirectory(
@@ -2518,7 +3192,12 @@ class IngestMediaDlg(QDialog):
             self.setMediaPaths(selectedPath.replace("\\", "/"))
 
     @err_catcher(name=__name__)
-    def browseFile(self):
+    def browseFile(self) -> None:
+        """Open file browser dialog for media selection.
+        
+        Launches file dialog to select a single file. Selected file path
+        is set as the media path.
+        """
         curText = self.l_mediaPath.text()
         startpath = curText if curText and not curText.startswith("<") else self.core.projectPath
         selectedFile = QFileDialog.getOpenFileName(
@@ -2529,16 +3208,23 @@ class IngestMediaDlg(QDialog):
             self.setMediaPaths(selectedFile.replace("\\", "/"))
 
     @err_catcher(name=__name__)
-    def openFolder(self):
+    def openFolder(self) -> None:
+        """Open current media path in system file explorer."""
         path = self.l_mediaPath.text()
         self.core.openFolder(path)
 
     @err_catcher(name=__name__)
-    def clearMedia(self):
+    def clearMedia(self) -> None:
+        """Clear media path, resetting to placeholder text."""
         self.setMediaPaths("< Click or Drag & Drop media >")
 
     @err_catcher(name=__name__)
-    def enableOk(self):
+    def enableOk(self) -> None:
+        """Enable or disable Create button based on field validation.
+        
+        Checks that required fields (identifier, media path, and optionally
+        department/task and AOV) are filled before enabling the Create button.
+        """
         idfText = self.e_identifier.text()
         mediaText = self.l_mediaPath.text()
         mediaTextValid = bool(mediaText) and mediaText != "< Click or Drag & Drop media >"
@@ -2555,7 +3241,12 @@ class IngestMediaDlg(QDialog):
         self.b_create.setEnabled(valid)
 
     @err_catcher(name=__name__)
-    def createClicked(self):
+    def createClicked(self) -> None:
+        """Handle Create button click to validate and accept dialog.
+        
+        Validates required fields (department, task, identifier) and checks
+        for invalid characters or existing versions before accepting the dialog.
+        """
         if self.core.mediaProducts.getLinkedToTasks():
             depText = self.core.validateLineEdit(self.e_department)
             if not depText:
@@ -2587,12 +3278,101 @@ class IngestMediaDlg(QDialog):
 
 
 class VersionSpinBox(QSpinBox):
-    def textFromValue(self, value):
+    """Spin box that displays version numbers with leading zeros.
+    
+    Formats version numbers as v0001, v0002, etc.
+    
+    Attributes:
+        core: PrismCore instance
+    """
+
+    def textFromValue(self, value: int) -> str:
+        """Convert numeric value to version string with padding.
+        
+        Args:
+            value: Version number.
+        
+        Returns:
+            Formatted version string (e.g., "v0001").
+        """
         return self.core.versionFormat % value
+
+    def valueFromText(self, text: str) -> int:
+        """Convert version string back to numeric value.
+        
+        Args:
+            text: Version string (e.g., "v0001" or "V0001").
+        
+        Returns:
+            Numeric version value (e.g., 1).
+        """
+        try:
+            # Remove 'v' or 'V' prefix (case-insensitive) and convert to int
+            cleaned = text.replace("v", "").replace("V", "")
+            return int(cleaned)
+        except ValueError:
+            return self.minimum()
+
+    def validate(self, text: str, pos: int) -> Tuple[Any, str, int]:
+        """Validate input text to allow version format (v####).
+        
+        Args:
+            text: Current input text.
+            pos: Cursor position.
+        
+        Returns:
+            Tuple of (QValidator.State, text, pos).
+        """
+        from qtpy.QtGui import QValidator
+        
+        if not text:
+            return (QValidator.Intermediate, text, pos)
+        
+        # Allow partial input like "v", "v0", "v00", etc.
+        if text.startswith("v") or text.startswith("V"):
+            numPart = text[1:]
+            if not numPart:
+                return (QValidator.Intermediate, text, pos)
+            
+            if numPart.isdigit():
+                value = int(numPart)
+                if self.minimum() <= value <= self.maximum():
+                    return (QValidator.Acceptable, text, pos)
+                else:
+                    return (QValidator.Intermediate, text, pos)
+            else:
+                return (QValidator.Invalid, text, pos)
+        
+        # Allow typing just digits (without "v")
+        if text.isdigit():
+            value = int(text)
+            if self.minimum() <= value <= self.maximum():
+                return (QValidator.Acceptable, text, pos)
+            else:
+                return (QValidator.Intermediate, text, pos)
+        
+        return (QValidator.Invalid, text, pos)
 
 
 class StateDefaults(QGroupBox):
-    def __init__(self, origin, data=None):
+    """Group box for managing default state manager state configurations.
+    
+    Allows creating default state configurations for different entity/department/task
+    combinations to automatically set up state manager when creating new scenefiles.
+    
+    Attributes:
+        origin: Parent widget
+        core: PrismCore instance
+        items (List): List of StateDefaultItem widgets
+    """
+
+    def __init__(self, origin: Any, data: Optional[List] = None) -> None:
+        """Initialize StateDefaults group box.
+        
+        Args:
+            origin: Parent widget.
+            data: Optional list of default state configurations. Defaults to None.
+        """
         super(StateDefaults, self).__init__()
         self.origin = origin
         self.core = self.origin.core
@@ -2605,7 +3385,8 @@ class StateDefaults(QGroupBox):
             self.loadStateData(data)
 
     @err_catcher(name=__name__)
-    def loadLayout(self):
+    def loadLayout(self) -> None:
+        """Set up the layout with add button and items container."""
         self.w_add = QWidget()
         self.b_add = QToolButton()
         self.lo_add = QHBoxLayout()
@@ -2638,11 +3419,16 @@ class StateDefaults(QGroupBox):
         self.setTitle("State Defaults")
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect add button signal."""
         self.b_add.clicked.connect(self.onAddClicked)
 
     @err_catcher(name=__name__)
-    def onAddClicked(self):
+    def onAddClicked(self) -> None:
+        """Handle add button click - show state type menu.
+        
+        Displays menu with available state types that can be added as defaults.
+        """
         pos = QCursor.pos()
         sm = self.core.getStateManager()
         if not sm:
@@ -2663,7 +3449,12 @@ class StateDefaults(QGroupBox):
             menu.exec_(pos)
 
     @err_catcher(name=__name__)
-    def loadStateData(self, data):
+    def loadStateData(self, data: List[Dict[str, Any]]) -> None:
+        """Load state default items from data list.
+        
+        Args:
+            data: List of state default dictionaries with name, dftTasks, stateData keys
+        """
         self.clearItems()
         for data in data:
             self.addItem(
@@ -2673,7 +3464,17 @@ class StateDefaults(QGroupBox):
             )
 
     @err_catcher(name=__name__)
-    def addItem(self, name=None, dftTasks=None, stateData=None):
+    def addItem(self, name: Optional[str] = None, dftTasks: Optional[Dict] = None, stateData: Optional[Dict] = None) -> "StateDefaultItem":
+        """Add a new state default item.
+        
+        Args:
+            name: State name. Defaults to None.
+            dftTasks: Default tasks configuration. Defaults to None.
+            stateData: State configuration data. Defaults to None.
+        
+        Returns:
+            Created StateDefaultItem widget.
+        """
         item = StateDefaultItem(self.origin, name)
         self.items.append(item)
         item.removed.connect(self.removeItem)
@@ -2692,7 +3493,12 @@ class StateDefaults(QGroupBox):
         return item
 
     @err_catcher(name=__name__)
-    def itemDropped(self, item):
+    def itemDropped(self, item: Any) -> None:
+        """Handle item drop event for reordering.
+        
+        Args:
+            item: StateDefaultItem being dropped
+        """
         pos = QCursor.pos()
         targetItem = None
         for sitem in self.items:
@@ -2720,7 +3526,12 @@ class StateDefaults(QGroupBox):
                 lo.insertWidget(idx, widget)
 
     @err_catcher(name=__name__)
-    def removeItem(self, item):
+    def removeItem(self, item: Any) -> None:
+        """Remove item from list and layout.
+        
+        Args:
+            item: StateDefaultItem to remove
+        """
         self.items.remove(item)
         idx = self.lo_items.indexOf(item)
         if idx != -1:
@@ -2729,7 +3540,8 @@ class StateDefaults(QGroupBox):
                 w.widget().deleteLater()
 
     @err_catcher(name=__name__)
-    def clearItems(self):
+    def clearItems(self) -> None:
+        """Clear all items from the layout."""
         for idx in reversed(range(self.lo_items.count())):
             item = self.lo_items.takeAt(idx)
             w = item.widget()
@@ -2740,7 +3552,12 @@ class StateDefaults(QGroupBox):
         self.items = []
 
     @err_catcher(name=__name__)
-    def getItemData(self):
+    def getItemData(self) -> List[Dict[str, Any]]:
+        """Get data from all state default items.
+        
+        Returns:
+            List of dictionaries with name, dftTasks, stateData keys
+        """
         itemData = []
         for idx in range(self.lo_items.count()):
             w = self.lo_items.itemAt(idx)
@@ -2762,7 +3579,13 @@ class StateDefaultItem(QWidget):
     removed = Signal(object)
     signalItemDropped = Signal(object)
 
-    def __init__(self, origin, typename):
+    def __init__(self, origin: Any, typename: str) -> None:
+        """Initialize StateDefaultItem.
+        
+        Args:
+            origin: Parent widget
+            typename: State type name (e.g., "ImportFile", "Playblast")
+        """
         super(StateDefaultItem, self).__init__()
         self.origin = origin
         self.core = self.origin.core
@@ -2778,7 +3601,8 @@ class StateDefaultItem(QWidget):
         })
 
     @err_catcher(name=__name__)
-    def loadLayout(self):
+    def loadLayout(self) -> None:
+        """Set up the item layout with reorder handle, type label, edit buttons."""
         self.l_reorder = QLabel()
         self.l_reorder.setToolTip("Reorder")
         self.l_typeName = QLabel(self.typename)
@@ -2843,17 +3667,40 @@ class StateDefaultItem(QWidget):
             )
 
     @err_catcher(name=__name__)
-    def editDefaultsClicked(self):
+    def editDefaultsClicked(self) -> None:
+        """Open dialog to edit default task settings.
+        
+        Creates and displays DefaultTasksWindow dialog allowing users to configure
+        which entities, departments, and tasks this preset applies to by default.
+        """
         self.dlg_defaults = DefaultTasksWindow(self)
         self.dlg_defaults.signalSaved.connect(self.setDftTasks)
         self.dlg_defaults.show()
 
     @err_catcher(name=__name__)
-    def configureStates(self):
+    def configureStates(self) -> None:
+        """Open state manager to configure preset states.
+        
+        Launches a standalone state manager instance allowing users to configure
+        which states should be included in this preset. Any existing state manager
+        window for this preset is closed first. Loads existing states if available.
+        """
         stateType = self.name()
+        if self.core.appPlugin.pluginName == "Standalone":
+            showPopup = self.core.getConfig("globals", "showStandaloneStateDefaultsPopup", config="user")
+            if showPopup is not False:
+                msg = "DCC specific state settings are not visible in Prism Standalone.\n\nTo configure the defaults for all state settings, please open this window inside of your DCC."
+                result = self.core.popup(msg, severity="info", notShowAgain=True)
+                if result and result.get("notShowAgain"):
+                    self.core.setConfig("globals", "showStandaloneStateDefaultsPopup", val=False, config="user")
+
         import StateManager
         settings = self.stateData()
         dlg = StateManager.getStateWindow(self.core, stateType, settings=settings, connectBBox=False, parent=self)
+        if not dlg:
+            self.core.popup("Failed to create state. Check logs for details.")
+            return
+
         dlg.setWindowTitle("Default State Settings - %s" % stateType)
         dlg.bb_settings.buttons()[0].setText("Save")
         dlg.adjustSize()
@@ -2863,24 +3710,49 @@ class StateDefaultItem(QWidget):
         dlg.show()
 
     @err_catcher(name=__name__)
-    def onStateSaveClicked(self, dlg):
+    def onStateSaveClicked(self, dlg: Any) -> None:
+        """Handle state settings save - update state data and close dialog.
+        
+        Args:
+            dlg: State settings dialog
+        """
         self.setStateData(dlg.stateItem.ui.getStateProps())
         dlg.close()
 
     @err_catcher(name=__name__)
-    def name(self):
+    def name(self) -> str:
+        """Get the state type name.
+        
+        Returns:
+            State type name
+        """
         return self.l_typeName.text()
 
     @err_catcher(name=__name__)
-    def setName(self, name):
+    def setName(self, name: str) -> None:
+        """Set the state type name.
+        
+        Args:
+            name: State type name
+        """
         return self.l_typeName.setText(name)
 
     @err_catcher(name=__name__)
-    def dftTasks(self):
+    def dftTasks(self) -> Dict[str, Any]:
+        """Get default task configuration.
+        
+        Returns:
+            Dictionary with entities, departments, tasks, useExpression, expression keys
+        """
         return self._dftTasks
 
     @err_catcher(name=__name__)
-    def setDftTasks(self, tasks):
+    def setDftTasks(self, tasks: Dict[str, Any]) -> None:
+        """Set default task configuration and update display label.
+        
+        Args:
+            tasks: Dictionary with entities, departments, tasks, useExpression, expression keys
+        """
         self._dftTasks = tasks
         entities = ", ".join(self._dftTasks["entities"])
         departments = ", ".join(self._dftTasks["departments"])
@@ -2899,20 +3771,40 @@ class StateDefaultItem(QWidget):
         self.l_defaultEntity.setText(dataStr)
 
     @err_catcher(name=__name__)
-    def stateData(self):
+    def stateData(self) -> Optional[Dict[str, Any]]:
+        """Get the stored state configuration data.
+        
+        Returns:
+            State configuration dictionary or None
+        """
         return getattr(self, "_stateData", None)
 
     @err_catcher(name=__name__)
-    def setStateData(self, stateData):
+    def setStateData(self, stateData: Dict[str, Any]) -> None:
+        """Set the state configuration data.
+        
+        Args:
+            stateData: State configuration dictionary
+        """
         self._stateData = stateData
 
-    def mouseMoveEvent(self, event):
+    def mouseMoveEvent(self, event: Any) -> None:
+        """Handle mouse move for drag operation.
+        
+        Args:
+            event: Mouse event
+        """
         if self.drag_start_pos is not None:
             # While left button is clicked the widget will move along with the mouse
             self.move(self.pos() + event.pos() - self.drag_start_pos)
         super(StateDefaultItem, self).mouseMoveEvent(event)
 
-    def mouseReleaseEvent(self, event):
+    def mouseReleaseEvent(self, event: Any) -> None:
+        """Handle mouse release - complete drag operation.
+        
+        Args:
+            event: Mouse event
+        """
         if self.drag_start_pos is None:
             return
 
@@ -2923,7 +3815,12 @@ class StateDefaultItem(QWidget):
         self.drag_start_pos = None
 
     @err_catcher(name=__name__)
-    def mousePressEvent(self, event):
+    def mousePressEvent(self, event: Any) -> None:
+        """Handle mouse press - start drag operation.
+        
+        Args:
+            event: Mouse event
+        """
         if event.button() == Qt.LeftButton:
             self.setCursor(Qt.ClosedHandCursor)
             self.drag_start_pos = event.pos()
@@ -2933,7 +3830,24 @@ class StateDefaultItem(QWidget):
 
 
 class StatePresets(QGroupBox):
-    def __init__(self, origin, data=None):
+    """Group box for managing state manager presets.
+    
+    Allows creating and managing reusable state presets that can be
+    automatically applied to state managers based on entity/department/task criteria.
+    
+    Attributes:
+        origin: Parent widget
+        core: PrismCore instance
+        items (List): List of PresetItem widgets
+    """
+
+    def __init__(self, origin: Any, data: Optional[List] = None) -> None:
+        """Initialize StatePresets group box.
+        
+        Args:
+            origin: Parent widget.
+            data: Optional list of preset configurations. Defaults to None.
+        """
         super(StatePresets, self).__init__()
         self.origin = origin
         self.core = self.origin.core
@@ -2946,7 +3860,8 @@ class StatePresets(QGroupBox):
             self.loadPresetData(data)
 
     @err_catcher(name=__name__)
-    def loadLayout(self):
+    def loadLayout(self) -> None:
+        """Setup the UI layout with add button and preset items container."""
         self.w_add = QWidget()
         self.b_add = QToolButton()
         self.lo_add = QHBoxLayout()
@@ -2979,11 +3894,17 @@ class StatePresets(QGroupBox):
         self.setTitle("State Presets")
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect UI signals to handlers."""
         self.b_add.clicked.connect(self.addItem)
 
     @err_catcher(name=__name__)
-    def loadPresetData(self, data):
+    def loadPresetData(self, data: List[Dict]) -> None:
+        """Load preset data and create preset items.
+        
+        Args:
+            data: List of preset configuration dictionaries.
+        """
         self.clearItems()
         for data in data:
             self.addItem(
@@ -2993,7 +3914,17 @@ class StatePresets(QGroupBox):
             )
 
     @err_catcher(name=__name__)
-    def addItem(self, name=None, dftTasks=None, states=None):
+    def addItem(self, name: Optional[str] = None, dftTasks: Optional[Dict] = None, states: Optional[Dict] = None) -> "PresetItem":
+        """Add a new preset item to the list.
+        
+        Args:
+            name: Preset name. Defaults to None.
+            dftTasks: Default task configuration. Defaults to None.
+            states: State manager configuration. Defaults to None.
+        
+        Returns:
+            The created PresetItem widget.
+        """
         item = PresetItem(self.origin)
         self.items.append(item)
         item.removed.connect(self.removeItem)
@@ -3012,7 +3943,12 @@ class StatePresets(QGroupBox):
         return item
 
     @err_catcher(name=__name__)
-    def itemDropped(self, item):
+    def itemDropped(self, item: "PresetItem") -> None:
+        """Handle preset item drag and drop reordering.
+        
+        Args:
+            item: The preset item that was dropped.
+        """
         pos = QCursor.pos()
         targetItem = None
         for sitem in self.items:
@@ -3040,7 +3976,12 @@ class StatePresets(QGroupBox):
                 lo.insertWidget(idx, widget)
 
     @err_catcher(name=__name__)
-    def removeItem(self, item):
+    def removeItem(self, item: "PresetItem") -> None:
+        """Remove a preset item from the list.
+        
+        Args:
+            item: The preset item to remove.
+        """
         self.items.remove(item)
         idx = self.lo_items.indexOf(item)
         if idx != -1:
@@ -3049,7 +3990,8 @@ class StatePresets(QGroupBox):
                 w.widget().deleteLater()
 
     @err_catcher(name=__name__)
-    def clearItems(self):
+    def clearItems(self) -> None:
+        """Remove all preset items from the list."""
         for idx in reversed(range(self.lo_items.count())):
             item = self.lo_items.takeAt(idx)
             w = item.widget()
@@ -3060,7 +4002,12 @@ class StatePresets(QGroupBox):
         self.items = []
 
     @err_catcher(name=__name__)
-    def getItemData(self):
+    def getItemData(self) -> List[Dict]:
+        """Get data from all preset items.
+        
+        Returns:
+            List of preset configuration dictionaries.
+        """
         itemData = []
         for idx in range(self.lo_items.count()):
             w = self.lo_items.itemAt(idx)
@@ -3078,11 +4025,28 @@ class StatePresets(QGroupBox):
 
 
 class PresetItem(QWidget):
+    """Widget representing a single state manager preset.
+    
+    Allows configuring preset name, default tasks, and state manager states
+    that can be automatically applied when creating new scenefiles.
+    
+    Attributes:
+        origin: Parent widget
+        core: PrismCore instance
+        drag_start_pos: Starting position for drag operations
+        removed (Signal): Emitted when item is removed
+        signalItemDropped (Signal): Emitted when item is dropped for reordering
+    """
 
     removed = Signal(object)
     signalItemDropped = Signal(object)
 
-    def __init__(self, origin):
+    def __init__(self, origin: Any) -> None:
+        """Initialize PresetItem widget.
+        
+        Args:
+            origin: Parent widget.
+        """
         super(PresetItem, self).__init__()
         self.origin = origin
         self.core = self.origin.core
@@ -3097,7 +4061,12 @@ class PresetItem(QWidget):
         })
 
     @err_catcher(name=__name__)
-    def loadLayout(self):
+    def loadLayout(self) -> None:
+        """Create and arrange UI layout for preset item.
+        
+        Initializes all widgets including name input, state configuration button,
+        default task selector, and removal button. Sets up icons and tooltips.
+        """
         self.l_reorder = QLabel()
         self.l_reorder.setToolTip("Reorder")
         self.l_name = QLabel("    Name:")
@@ -3167,13 +4136,24 @@ class PresetItem(QWidget):
             )
 
     @err_catcher(name=__name__)
-    def editDefaultsClicked(self):
+    def editDefaultsClicked(self) -> None:
+        """Open dialog to edit default task settings.
+        
+        Creates and displays DefaultTasksWindow dialog allowing users to configure
+        which entities, departments, and tasks this preset applies to by default.
+        """
         self.dlg_defaults = DefaultTasksWindow(self)
         self.dlg_defaults.signalSaved.connect(self.setDftTasks)
         self.dlg_defaults.show()
 
     @err_catcher(name=__name__)
-    def configureStates(self):
+    def configureStates(self) -> None:
+        """Open state manager to configure preset states.
+        
+        Launches a standalone state manager instance allowing users to configure
+        which states should be included in this preset. Any existing state manager
+        window for this preset is closed first. Loads existing states if available.
+        """
         if hasattr(self, "smPreset") and self.smPreset.isVisible():
             self.smPreset.close()
 
@@ -3194,24 +4174,54 @@ class PresetItem(QWidget):
         self.smPreset.show()
 
     @err_catcher(name=__name__)
-    def onStateManagerSaveClicked(self, sm):
+    def onStateManagerSaveClicked(self, sm: Any) -> None:
+        """Save state manager configuration and close dialog.
+        
+        Args:
+            sm: State manager instance to save from.
+        """
         self.setStates(sm.getStateSettings())
         sm.close()
 
     @err_catcher(name=__name__)
-    def name(self):
+    def name(self) -> str:
+        """Get the preset name.
+        
+        Returns:
+            Preset name.
+        """
         return self.e_name.text()
 
     @err_catcher(name=__name__)
-    def setName(self, name):
+    def setName(self, name: str) -> None:
+        """Set the preset name.
+        
+        Args:
+            name: Name to set for the preset.
+        """
         return self.e_name.setText(name)
 
     @err_catcher(name=__name__)
-    def dftTasks(self):
+    def dftTasks(self) -> Dict[str, Any]:
+        """Get default task configuration.
+        
+        Returns:
+            Dictionary containing entities, departments, tasks lists,
+            and optional expression settings.
+        """
         return self._dftTasks
 
     @err_catcher(name=__name__)
-    def setDftTasks(self, tasks):
+    def setDftTasks(self, tasks: Dict[str, Any]) -> None:
+        """Set default task configuration and update display.
+        
+        Updates the internal task configuration and refreshes the display label
+        to show which entities, departments, and tasks this preset applies to.
+        
+        Args:
+            tasks: Dictionary containing 'entities', 'departments', 'tasks' lists,
+                and optional 'useExpression' and 'expression' fields.
+        """
         self._dftTasks = tasks
         entities = ", ".join(self._dftTasks["entities"])
         departments = ", ".join(self._dftTasks["departments"])
@@ -3230,20 +4240,40 @@ class PresetItem(QWidget):
         self.l_defaultEntity.setText(dataStr)
 
     @err_catcher(name=__name__)
-    def states(self):
+    def states(self) -> Optional[Dict]:
+        """Get the state manager configuration.
+        
+        Returns:
+            State manager settings dictionary or None.
+        """
         return getattr(self, "_states", None)
 
     @err_catcher(name=__name__)
-    def setStates(self, states):
+    def setStates(self, states: Dict) -> None:
+        """Set the state manager configuration.
+        
+        Args:
+            states: State manager settings dictionary.
+        """
         self._states = states
 
-    def mouseMoveEvent(self, event):
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        """Handle mouse move for drag operation.
+        
+        Args:
+            event: Mouse move event.
+        """
         if self.drag_start_pos is not None:
             # While left button is clicked the widget will move along with the mouse
             self.move(self.pos() + event.pos() - self.drag_start_pos)
         super(PresetItem, self).mouseMoveEvent(event)
 
-    def mouseReleaseEvent(self, event):
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        """Handle mouse release to complete drag operation.
+        
+        Args:
+            event: Mouse release event.
+        """
         if self.drag_start_pos is None:
             return
 
@@ -3254,7 +4284,15 @@ class PresetItem(QWidget):
         self.drag_start_pos = None
 
     @err_catcher(name=__name__)
-    def mousePressEvent(self, event):
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        """Handle mouse press to initiate drag operation.
+        
+        When left button is pressed, changes cursor to closed hand and records
+        starting position for drag-and-drop reordering of preset items.
+        
+        Args:
+            event: Mouse press event.
+        """
         if event.button() == Qt.LeftButton:
             self.setCursor(Qt.ClosedHandCursor)
             self.drag_start_pos = event.pos()
@@ -3264,7 +4302,24 @@ class PresetItem(QWidget):
 
 
 class DefaultPresetScenes(QGroupBox):
-    def __init__(self, origin, data=None):
+    """Widget for managing default preset scenefiles.
+    
+    Provides interface for adding, removing, and configuring default preset
+    scenefiles that can be applied based on entity/department/task rules.
+    
+    Attributes:
+        origin: Parent widget
+        core: PrismCore instance
+        items (List): List of DefaultPresetScenesItem widgets
+    """
+
+    def __init__(self, origin: Any, data: Optional[List[Dict]] = None) -> None:
+        """Initialize DefaultPresetScenes widget.
+        
+        Args:
+            origin: Parent widget.
+            data: Optional initial preset data to load. Defaults to None.
+        """
         super(DefaultPresetScenes, self).__init__()
         self.origin = origin
         self.core = self.origin.core
@@ -3277,7 +4332,12 @@ class DefaultPresetScenes(QGroupBox):
             self.loadPresetData(data)
 
     @err_catcher(name=__name__)
-    def loadLayout(self):
+    def loadLayout(self) -> None:
+        """Create and arrange UI layout.
+        
+        Initializes all widgets including the add button, items layout,
+        and main group box structure.
+        """
         self.w_add = QWidget()
         self.b_add = QToolButton()
         self.lo_add = QHBoxLayout()
@@ -3310,11 +4370,23 @@ class DefaultPresetScenes(QGroupBox):
         self.setTitle("Default Preset Scenefiles")
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect UI event handlers.
+        
+        Sets up signal connections for add button and other UI interactions.
+        """
         self.b_add.clicked.connect(self.addItem)
 
     @err_catcher(name=__name__)
-    def loadPresetData(self, data):
+    def loadPresetData(self, data: List[Dict]) -> None:
+        """Load preset data and populate items.
+        
+        Clears existing items and creates new items from the provided data.
+        
+        Args:
+            data: List of dictionaries containing preset scenefile configurations,
+                each with 'name' and 'dftTasks' keys.
+        """
         self.clearItems()
         for data in data:
             self.addItem(
@@ -3323,7 +4395,18 @@ class DefaultPresetScenes(QGroupBox):
             )
 
     @err_catcher(name=__name__)
-    def addItem(self, name=None, dftTasks=None):
+    def addItem(self, name: Optional[str] = None, dftTasks: Optional[Dict] = None) -> Any:
+        """Add new preset scenefile item.
+        
+        Creates a new DefaultPresetScenesItem widget and adds it to the layout.
+        
+        Args:
+            name: Optional preset scenefile name. Defaults to None.
+            dftTasks: Optional default task configuration. Defaults to None.
+            
+        Returns:
+            The created DefaultPresetScenesItem widget.
+        """
         item = DefaultPresetScenesItem(self.origin)
         self.items.append(item)
         item.removed.connect(self.removeItem)
@@ -3339,7 +4422,12 @@ class DefaultPresetScenes(QGroupBox):
         return item
 
     @err_catcher(name=__name__)
-    def itemDropped(self, item):
+    def itemDropped(self, item: Any) -> None:
+        """Handle preset item drop for reordering.
+        
+        Args:
+            item: PresetItem being dropped
+        """
         pos = QCursor.pos()
         targetItem = None
         for sitem in self.items:
@@ -3367,7 +4455,14 @@ class DefaultPresetScenes(QGroupBox):
                 lo.insertWidget(idx, widget)
 
     @err_catcher(name=__name__)
-    def removeItem(self, item):
+    def removeItem(self, item: Any) -> None:
+        """Remove preset scenefile item.
+        
+        Removes the specified item from the items list and UI layout.
+        
+        Args:
+            item: DefaultPresetScenesItem to remove.
+        """
         self.items.remove(item)
         idx = self.lo_items.indexOf(item)
         if idx != -1:
@@ -3376,7 +4471,12 @@ class DefaultPresetScenes(QGroupBox):
                 w.widget().deleteLater()
 
     @err_catcher(name=__name__)
-    def clearItems(self):
+    def clearItems(self) -> None:
+        """Clear all preset scenefile items.
+        
+        Removes and deletes all DefaultPresetScenesItem widgets from the layout
+        and clears the items list.
+        """
         for idx in reversed(range(self.lo_items.count())):
             item = self.lo_items.takeAt(idx)
             w = item.widget()
@@ -3387,7 +4487,14 @@ class DefaultPresetScenes(QGroupBox):
         self.items = []
 
     @err_catcher(name=__name__)
-    def getItemData(self):
+    def getItemData(self) -> List[Dict]:
+        """Get data from all preset scenefile items.
+        
+        Collects name and default task configuration from all items.
+        
+        Returns:
+            List of dictionaries containing 'name' and 'dftTasks' for each item.
+        """
         itemData = []
         for idx in range(self.lo_items.count()):
             w = self.lo_items.itemAt(idx)
@@ -3404,11 +4511,28 @@ class DefaultPresetScenes(QGroupBox):
 
 
 class DefaultPresetScenesItem(QWidget):
+    """Widget representing a single default preset scenefile item.
+    
+    Allows configuring which preset scenefile should be used as default
+    based on entity/department/task rules.
+    
+    Attributes:
+        origin: Parent widget
+        core: PrismCore instance
+        drag_start_pos: Starting position for drag operations
+        removed (Signal): Emitted when item is removed
+        signalItemDropped (Signal): Emitted when item is dropped for reordering
+    """
 
     removed = Signal(object)
     signalItemDropped = Signal(object)
 
-    def __init__(self, origin):
+    def __init__(self, origin: Any) -> None:
+        """Initialize DefaultPresetScenesItem widget.
+        
+        Args:
+            origin: Parent widget.
+        """
         super(DefaultPresetScenesItem, self).__init__()
         self.origin = origin
         self.core = self.origin.core
@@ -3423,7 +4547,12 @@ class DefaultPresetScenesItem(QWidget):
         })
 
     @err_catcher(name=__name__)
-    def loadLayout(self):
+    def loadLayout(self) -> None:
+        """Create and arrange UI layout.
+        
+        Initializes all widgets including name input, preset selector,
+        default task configuration, and removal button.
+        """
         self.l_reorder = QLabel()
         self.l_reorder.setToolTip("Reorder")
         self.e_name = QLineEdit()
@@ -3484,13 +4613,24 @@ class DefaultPresetScenesItem(QWidget):
             )
 
     @err_catcher(name=__name__)
-    def editDefaultsClicked(self):
+    def editDefaultsClicked(self) -> None:
+        """Open dialog to edit default task settings.
+        
+        Creates and displays DefaultTasksWindow dialog for configuring
+        which entities, departments, and tasks this preset applies to.
+        """
         self.dlg_defaults = DefaultTasksWindow(self)
         self.dlg_defaults.signalSaved.connect(self.setDftTasks)
         self.dlg_defaults.show()
 
     @err_catcher(name=__name__)
-    def showPresets(self):
+    def showPresets(self) -> None:
+        """Display menu of available preset scenefiles.
+        
+        Queries core for available preset scenefiles and shows them in a
+        hierarchical menu organized by folders. Selecting a preset sets
+        it as this item's name.
+        """
         pos = QCursor.pos()
         emp = QMenu(self)
         scenes = self.core.entities.getPresetScenes()
@@ -3516,19 +4656,44 @@ class DefaultPresetScenesItem(QWidget):
             emp.exec_(pos)
 
     @err_catcher(name=__name__)
-    def name(self):
+    def name(self) -> str:
+        """Get the preset scenefile name.
+        
+        Returns:
+            Preset scenefile name.
+        """
         return self.e_name.text()
 
     @err_catcher(name=__name__)
-    def setName(self, name):
+    def setName(self, name: str) -> None:
+        """Set the preset scenefile name.
+        
+        Args:
+            name: Name to set for the preset scenefile.
+        """
         return self.e_name.setText(name)
 
     @err_catcher(name=__name__)
-    def dftTasks(self):
+    def dftTasks(self) -> Dict[str, Any]:
+        """Get default task configuration.
+        
+        Returns:
+            Dictionary containing entities, departments, tasks lists,
+            and optional expression settings.
+        """
         return self._dftTasks
 
     @err_catcher(name=__name__)
-    def setDftTasks(self, tasks):
+    def setDftTasks(self, tasks: Dict[str, Any]) -> None:
+        """Set default task configuration and update display.
+        
+        Updates the internal task configuration and refreshes the display label
+        to show which entities, departments, and tasks this preset applies to.
+        
+        Args:
+            tasks: Dictionary containing 'entities', 'departments', 'tasks' lists,
+                and optional 'useExpression' and 'expression' fields.
+        """
         self._dftTasks = tasks
         entities = ", ".join(self._dftTasks["entities"])
         departments = ", ".join(self._dftTasks["departments"])
@@ -3546,13 +4711,23 @@ class DefaultPresetScenesItem(QWidget):
 
         self.l_defaultEntity.setText(dataStr)
 
-    def mouseMoveEvent(self, event):
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        """Handle mouse move for drag operation.
+        
+        Args:
+            event: Mouse move event.
+        """
         if self.drag_start_pos is not None:
             # While left button is clicked the widget will move along with the mouse
             self.move(self.pos() + event.pos() - self.drag_start_pos)
         super(DefaultPresetScenesItem, self).mouseMoveEvent(event)
 
-    def mouseReleaseEvent(self, event):
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        """Handle mouse release to complete drag operation.
+        
+        Args:
+            event: Mouse release event.
+        """
         if self.drag_start_pos is None:
             return
 
@@ -3563,7 +4738,15 @@ class DefaultPresetScenesItem(QWidget):
         self.drag_start_pos = None
 
     @err_catcher(name=__name__)
-    def mousePressEvent(self, event):
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        """Handle mouse press to initiate drag operation.
+        
+        When left button is pressed, changes cursor to closed hand and records
+        starting position for drag-and-drop reordering.
+        
+        Args:
+            event: Mouse press event.
+        """
         if event.button() == Qt.LeftButton:
             self.setCursor(Qt.ClosedHandCursor)
             self.drag_start_pos = event.pos()
@@ -3576,7 +4759,12 @@ class DefaultTasksWindow(QDialog):
 
     signalSaved = Signal(object)
 
-    def __init__(self, origin):
+    def __init__(self, origin: Any) -> None:
+        """Initialize DefaultTasksWindow.
+        
+        Args:
+            origin: Parent widget
+        """
         super(DefaultTasksWindow, self).__init__()
         self.origin = origin
         self.core = self.origin.core
@@ -3586,11 +4774,17 @@ class DefaultTasksWindow(QDialog):
         self.loadData()
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Return size hint for dialog.
+        
+        Returns:
+            QSize(800, 200)
+        """
         return QSize(800, 200)
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Set up the EditTasksDlg UI with entity, department, task fields and expression."""
         self.setWindowTitle("Edit Tasks - %s" % self.origin.name())
         self.lo_main = QVBoxLayout()
         self.setLayout(self.lo_main)
@@ -3669,7 +4863,12 @@ class DefaultTasksWindow(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def expressionToggled(self, state):
+    def expressionToggled(self, state: bool) -> None:
+        """Toggle expression text editor visibility and resize dialog.
+        
+        Args:
+            state: Whether expression editor should be visible
+        """
         self.te_expression.setVisible(state)
         if state:
             self.resize(self.width(), self.height()+200)
@@ -3677,7 +4876,12 @@ class DefaultTasksWindow(QDialog):
             self.resize(self.width(), 0)
 
     @property
-    def projectEntities(self):
+    def projectEntities(self) -> List[Dict[str, Any]]:
+        """Get cached list of all project entities (assets and shots).
+        
+        Returns:
+            List of entity dictionaries
+        """
         if not hasattr(self, "_prjEntities"):
             assets = self.core.entities.getAssets()
             shots = self.core.entities.getShots()
@@ -3686,7 +4890,14 @@ class DefaultTasksWindow(QDialog):
         return self._prjEntities
 
     @err_catcher(name=__name__)
-    def getValidEntities(self):
+    def getValidEntities(self) -> List[Dict[str, Any]]:
+        """Parse entity text with wildcards and return matching entities.
+        
+        Supports format: "type:name" where type can be asset/shot/* and name supports wildcards.
+        
+        Returns:
+            List of matching entity dictionaries
+        """
         entities = [x.strip() for x in self.e_entities.text().split(",")]
         validEntities = []
         prjEntities = self.projectEntities
@@ -3715,7 +4926,12 @@ class DefaultTasksWindow(QDialog):
         return validEntities
 
     @err_catcher(name=__name__)
-    def getEntityToolTip(self):
+    def getEntityToolTip(self) -> str:
+        """Generate tooltip showing valid asset and shot names.
+        
+        Returns:
+            Formatted tooltip string with asset and shot lists
+        """
         entities = self.getValidEntities()
         tooltip = ""
         entityNames = {"assets": [], "shots": []}
@@ -3738,7 +4954,8 @@ class DefaultTasksWindow(QDialog):
         return tooltip
 
     @err_catcher(name=__name__)
-    def onEntitiesClicked(self):
+    def onEntitiesClicked(self) -> None:
+        """Open entity selection dialog."""
         dlg = EntityDlg(self)
         dlg.entitiesSelected.connect(self.setEntities)
         validEntities = self.getValidEntities()
@@ -3748,7 +4965,12 @@ class DefaultTasksWindow(QDialog):
         dlg.exec_()
 
     @err_catcher(name=__name__)
-    def setEntities(self, entities):
+    def setEntities(self, entities: List[Dict[str, Any]]) -> None:
+        """Set entity field from selected entities.
+        
+        Args:
+            entities: List of selected entity dictionaries
+        """
         entityNames = []
         for entity in entities:
             if entity["type"] == "asset":
@@ -3768,7 +4990,12 @@ class DefaultTasksWindow(QDialog):
         self.e_entities.setText(entityStr)
 
     @err_catcher(name=__name__)
-    def getAvailableDepartments(self):
+    def getAvailableDepartments(self) -> List[str]:
+        """Get all departments from valid entities.
+        
+        Returns:
+            Sorted list of unique department names
+        """
         validEntities = self.getValidEntities()
         departments = []
         for entity in validEntities:
@@ -3778,7 +5005,12 @@ class DefaultTasksWindow(QDialog):
         return departments
 
     @err_catcher(name=__name__)
-    def getValidDepartments(self):
+    def getValidDepartments(self) -> List[str]:
+        """Parse department text and return valid matching departments.
+        
+        Returns:
+            List of matching department names
+        """
         validDeps = []
         deps = [p.strip() for p in self.e_departments.text().split(",") if p]
         prjDeps = self.getAvailableDepartments()
@@ -3795,7 +5027,12 @@ class DefaultTasksWindow(QDialog):
         return validDeps
 
     @err_catcher(name=__name__)
-    def getDepartmentToolTip(self):
+    def getDepartmentToolTip(self) -> str:
+        """Generate tooltip showing valid department names.
+        
+        Returns:
+            Formatted tooltip string with department list
+        """
         deps = self.getValidDepartments()
         tooltip = ""
         for dep in deps:
@@ -3804,7 +5041,8 @@ class DefaultTasksWindow(QDialog):
         return tooltip
 
     @err_catcher(name=__name__)
-    def onDepartmentsClicked(self):
+    def onDepartmentsClicked(self) -> None:
+        """Show department selection menu."""
         pos = QCursor.pos()
         menu = QMenu(self)
 
@@ -3818,7 +5056,12 @@ class DefaultTasksWindow(QDialog):
             menu.exec_(pos)
 
     @err_catcher(name=__name__)
-    def toggleDepartment(self, dep):
+    def toggleDepartment(self, dep: str) -> None:
+        """Toggle department selection.
+        
+        Args:
+            dep: Department name to add/remove
+        """
         deps = self.getValidDepartments()
         if dep in deps:
             deps.remove(dep)
@@ -3828,7 +5071,12 @@ class DefaultTasksWindow(QDialog):
         self.e_departments.setText(", ".join(deps))
 
     @err_catcher(name=__name__)
-    def getAvailableTasks(self):
+    def getAvailableTasks(self) -> List[str]:
+        """Get all tasks/categories from valid entities and departments.
+        
+        Returns:
+            Sorted list of unique task names
+        """
         validEntities = self.getValidEntities()
         departments = self.getValidDepartments()
         tasks = []
@@ -3840,7 +5088,12 @@ class DefaultTasksWindow(QDialog):
         return tasks
 
     @err_catcher(name=__name__)
-    def getValidTasks(self):
+    def getValidTasks(self) -> List[str]:
+        """Parse task text and return valid matching tasks.
+        
+        Returns:
+            List of matching task names
+        """
         validTasks = []
         tasks = [p.strip() for p in self.e_tasks.text().split(",") if p]
         prjTasks = self.getAvailableTasks()
@@ -3857,7 +5110,12 @@ class DefaultTasksWindow(QDialog):
         return validTasks
 
     @err_catcher(name=__name__)
-    def getTaskToolTip(self):
+    def getTaskToolTip(self) -> str:
+        """Generate tooltip showing valid task names.
+        
+        Returns:
+            Formatted tooltip string with task list
+        """
         tasks = self.getValidTasks()
         tooltip = ""
         for task in tasks:
@@ -3866,7 +5124,8 @@ class DefaultTasksWindow(QDialog):
         return tooltip
 
     @err_catcher(name=__name__)
-    def onTasksClicked(self):
+    def onTasksClicked(self) -> None:
+        """Show task selection menu."""
         pos = QCursor.pos()
         menu = QMenu(self)
 
@@ -3880,7 +5139,12 @@ class DefaultTasksWindow(QDialog):
             menu.exec_(pos)
 
     @err_catcher(name=__name__)
-    def toggleTasks(self, task):
+    def toggleTasks(self, task: str) -> None:
+        """Toggle task selection.
+        
+        Args:
+            task: Task name to add/remove
+        """
         tasks = [t.strip() for t in self.e_tasks.text().split(",") if t]
         if task in tasks:
             tasks.remove(task)
@@ -3890,7 +5154,8 @@ class DefaultTasksWindow(QDialog):
         self.e_tasks.setText(", ".join(tasks))
 
     @err_catcher(name=__name__)
-    def loadData(self):
+    def loadData(self) -> None:
+        """Load current task configuration into dialog fields."""
         entities = ", ".join(self.origin.dftTasks()["entities"])
         departments = ", ".join(self.origin.dftTasks()["departments"])
         tasks = ", ".join(self.origin.dftTasks()["tasks"])
@@ -3904,7 +5169,12 @@ class DefaultTasksWindow(QDialog):
         self.te_expression.setPlainText(expression)
 
     @err_catcher(name=__name__)
-    def getData(self):
+    def getData(self) -> Dict[str, Any]:
+        """Get task configuration from dialog fields.
+        
+        Returns:
+            Dictionary with entities, departments, tasks, useExpression, expression keys
+        """
         data = {}
         data["entities"] = [x.strip() for x in self.e_entities.text().split(",")]
         data["departments"] = [x.strip() for x in self.e_departments.text().split(",")]
@@ -3914,7 +5184,8 @@ class DefaultTasksWindow(QDialog):
         return data
 
     @err_catcher(name=__name__)
-    def onSaveClicked(self):
+    def onSaveClicked(self) -> None:
+        """Validate and save task configuration."""
         data = self.getData()
         if data["useExpression"]:
             result = self.core.entities.validateExpression(data["expression"])
@@ -3934,14 +5205,29 @@ class HelpLabel(QLabel):
 
     signalEntered = Signal(object)
 
-    def __init__(self, parent):
+    def __init__(self, parent: Any) -> None:
+        """Initialize HelpLabel.
+        
+        Args:
+            parent: Parent widget
+        """
         super(HelpLabel, self).__init__()
         self.parent = parent
 
-    def enterEvent(self, event):
+    def enterEvent(self, event: Any) -> None:
+        """Emit signal on mouse enter.
+        
+        Args:
+            event: Enter event
+        """
         self.signalEntered.emit(self)
 
-    def mouseMoveEvent(self, event):
+    def mouseMoveEvent(self, event: Any) -> None:
+        """Show tooltip on mouse move.
+        
+        Args:
+            event: Mouse event
+        """
         QToolTip.showText(QCursor.pos(), self.getToolTip())
 
 
@@ -3949,7 +5235,13 @@ class EntityDlg(QDialog):
 
     entitiesSelected = Signal(object)
 
-    def __init__(self, origin, parent=None):
+    def __init__(self, origin: Any, parent: Optional[QWidget] = None) -> None:
+        """Initialize EntityDlg.
+        
+        Args:
+            origin: Origin widget
+            parent: Parent dialog. Defaults to None.
+        """
         super(EntityDlg, self).__init__()
         self.origin = origin
         self.parentDlg = parent
@@ -3957,7 +5249,8 @@ class EntityDlg(QDialog):
         self.setupUi()
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Set up entity selection dialog UI with entity widget and buttons."""
         title = "Select entity"
 
         self.setWindowTitle(title)
@@ -3984,11 +5277,22 @@ class EntityDlg(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def itemDoubleClicked(self, item, column):
+    def itemDoubleClicked(self, item: Any, column: int) -> None:
+        """Handle entity item double click - trigger selection.
+        
+        Args:
+            item: Tree widget item
+            column: Column index
+        """
         self.buttonClicked("select")
 
     @err_catcher(name=__name__)
-    def buttonClicked(self, button):
+    def buttonClicked(self, button: Union[str, Any]) -> None:
+        """Handle button click - validate and emit selected entities.
+        
+        Args:
+            button: Button object or "select" string
+        """
         if button == "select" or button.text() == "Select":
             entities = self.w_entities.getCurrentData(returnOne=False)
             if isinstance(entities, dict):
@@ -4011,23 +5315,46 @@ class EntityDlg(QDialog):
         self.close()
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Return size hint for entity dialog.
+        
+        Returns:
+            QSize(400, 400)
+        """
         return QSize(400, 400)
 
 
 class DefaultSettingItem(QWidget):
+    """Widget representing a default setting with task-based application rules.
+    
+    Displays a named setting and allows configuring which tasks it applies to.
+    
+    Attributes:
+        core: PrismCore instance
+        drag_start_pos: Starting position for drag operations
+    """
 
-    def __init__(self, origin, name=None, dftTasks=None):
+    def __init__(self, origin: Any, name: Optional[str] = None, dftTasks: Optional[Dict] = None) -> None:
+        """Initialize DefaultSettingItem widget.
+        
+        Args:
+            origin: Parent widget containing core reference.
+            name: Optional setting name. Defaults to None.
+            dftTasks: Optional default task configuration. Defaults to None.
+        """
         super(DefaultSettingItem, self).__init__()
         self.core = origin.core
         self.drag_start_pos = None
         self.loadLayout()
-        self.setName(name)
         self.setDftTasks(dftTasks)
 
     @err_catcher(name=__name__)
-    def loadLayout(self):
-        self.l_name = QLabel()
+    def loadLayout(self) -> None:
+        """Create and arrange UI layout.
+        
+        Initializes label for setting name and controls for configuring
+        which tasks the setting applies to.
+        """
         self.l_default = QLabel("Apply to tasks:")
         self.l_defaultEntity = QLabel()
         self.b_editDft = QToolButton()
@@ -4040,8 +5367,9 @@ class DefaultSettingItem(QWidget):
         self.b_editDft.setIcon(icon)
 
         self.lo_dft = QHBoxLayout()
-        self.lo_dft.addStretch()
+        
         self.lo_dft.addWidget(self.l_default)
+        self.lo_dft.addStretch()
         self.lo_dft.addWidget(self.l_defaultEntity)
         self.lo_dft.addWidget(self.b_editDft)
         self.lo_dft.setContentsMargins(0, 0, 0, 0)
@@ -4050,29 +5378,49 @@ class DefaultSettingItem(QWidget):
         self.lo_main.setContentsMargins(0, 0, 0, 0)
         self.setLayout(self.lo_main)
 
-        self.lo_main.addWidget(self.l_name, 10)
         self.lo_main.addLayout(self.lo_dft, 20)
 
     @err_catcher(name=__name__)
-    def editDefaultsClicked(self):
+    def editDefaultsClicked(self) -> None:
+        """Open dialog to edit default task settings.
+        
+        Creates and displays DefaultTasksWindow dialog for configuring
+        which entities, departments, and tasks this setting applies to.
+        """
         self.dlg_defaults = DefaultTasksWindow(self)
         self.dlg_defaults.signalSaved.connect(self.setDftTasks)
         self.dlg_defaults.show()
 
     @err_catcher(name=__name__)
-    def name(self):
-        return self.l_name.text()
+    def name(self) -> str:
+        """Get the setting name.
+        
+        Returns:
+            Setting name.
+        """
+        return "Apply to tasks"
 
     @err_catcher(name=__name__)
-    def setName(self, name):
-        return self.l_name.setText(name or "")
-
-    @err_catcher(name=__name__)
-    def dftTasks(self):
+    def dftTasks(self) -> Dict[str, Any]:
+        """Get default task configuration.
+        
+        Returns:
+            Dictionary containing entities, departments, tasks lists,
+            and optional expression settings.
+        """
         return self._dftTasks
 
     @err_catcher(name=__name__)
-    def setDftTasks(self, tasks):
+    def setDftTasks(self, tasks: Optional[Dict[str, Any]]) -> None:
+        """Set default task configuration and update display.
+        
+        Updates the internal task configuration and refreshes the display label
+        to show which entities, departments, and tasks this setting applies to.
+        
+        Args:
+            tasks: Dictionary containing 'entities', 'departments', 'tasks' lists,
+                and optional 'useExpression' and 'expression' fields. None uses defaults.
+        """
         newDftTasks = {
             "entities": ["*"],
             "departments": ["*"],
@@ -4104,13 +5452,19 @@ class ProductTagItem(QWidget):
 
     removed = Signal(object)
 
-    def __init__(self, core):
+    def __init__(self, core: Any) -> None:
+        """Initialize ProductTagItem.
+        
+        Args:
+            core: PrismCore instance
+        """
         super(ProductTagItem, self).__init__()
         self.core = core
         self.loadLayout()
 
     @err_catcher(name=__name__)
-    def loadLayout(self):
+    def loadLayout(self) -> None:
+        """Set up the product tag item layout with product, tags fields and remove button."""
         self.l_product = QLabel("Product:")
         self.e_product = QLineEdit()
         self.e_product.setPlaceholderText("Product name")
@@ -4120,7 +5474,17 @@ class ProductTagItem(QWidget):
         self.e_tags = QLineEdit()
         self.e_tags.setPlaceholderText("Comma separated tags")
         self.e_tags.setToolTip("Comma separated tags")
-        
+
+        self.b_editTags = QToolButton()
+        self.b_editTags.setFocusPolicy(Qt.NoFocus)
+        self.b_editTags.setArrowType(Qt.DownArrow)
+        self.b_editTags.setToolTip("Recommended Tags")
+        self.b_editTags.clicked.connect(self.showRecommendedTags)
+        if self.core.appPlugin.pluginName != "Standalone":
+            self.b_editTags.setStyleSheet(
+                "QWidget{padding: 0; border-width: 0px;background-color: transparent} QWidget:hover{border-width: 1px; }"
+            )
+
         self.b_remove = QToolButton()
         self.b_remove.clicked.connect(lambda: self.removed.emit(self))
         
@@ -4144,27 +5508,97 @@ class ProductTagItem(QWidget):
         self.lo_main.addWidget(self.e_product, 10)
         self.lo_main.addWidget(self.l_tags)
         self.lo_main.addWidget(self.e_tags, 10)
+        self.lo_main.addWidget(self.b_editTags)
         self.lo_main.addWidget(self.b_remove)
 
     @err_catcher(name=__name__)
-    def getProduct(self):
+    def showRecommendedTags(self) -> None:
+        """Show menu with recommended product tags.
+        
+        Displays context menu with tags appropriate for the current context.
+        """
+        tmenu = QMenu(self)
+
+        tags = self.core.products.getRecommendedTags()
+        for tag in tags:
+            tAct = QAction(tag, self)
+            tAct.triggered.connect(lambda x=None, t=tag: self.toggleTag(t))
+            tmenu.addAction(tAct)
+
+        tmenu.exec_(QCursor.pos())
+
+    @err_catcher(name=__name__)
+    def toggleTag(self, tag: str) -> None:
+        """Toggle a tag in the tag list.
+        
+        Args:
+            tag: Tag string to add or remove
+        """
+        tags = [t.strip() for t in self.e_tags.text().split(",")]
+        if tag in tags:
+            tags = [t for t in tags if t != tag]
+        else:
+            tags.append(tag)
+
+        tags = [t for t in tags if t]
+        self.e_tags.setText(", ".join(tags))
+
+    @err_catcher(name=__name__)
+    def getProduct(self) -> str:
+        """Get product name.
+        
+        Returns:
+            Product name string (stripped)
+        """
         return self.e_product.text().strip()
 
     @err_catcher(name=__name__)
-    def setProduct(self, product):
+    def setProduct(self, product: str) -> None:
+        """Set product name.
+        
+        Args:
+            product: Product name
+        """
         self.e_product.setText(product)
 
     @err_catcher(name=__name__)
-    def getTags(self):
+    def getTags(self) -> str:
+        """Get comma-separated tags.
+        
+        Returns:
+            Tags string (stripped)
+        """
         return self.e_tags.text().strip()
 
     @err_catcher(name=__name__)
-    def setTags(self, tags):
+    def setTags(self, tags: str) -> None:
+        """Set comma-separated tags.
+        
+        Args:
+            tags: Comma-separated tags string
+        """
         self.e_tags.setText(tags)
 
 
 class ProductTagsDlg(QDialog):
-    def __init__(self, core, parent=None):
+    """Dialog for managing project-wide product tags.
+    
+    Allows users to define tags for different product types that can be used
+    for organization and filtering throughout the project.
+    
+    Attributes:
+        parentDlg: Parent dialog
+        core: PrismCore instance
+        items (List): List of ProductTagItem widgets
+    """
+
+    def __init__(self, core: Any, parent: Optional[QWidget] = None) -> None:
+        """Initialize ProductTagsDlg dialog.
+        
+        Args:
+            core: PrismCore instance.
+            parent: Optional parent widget. Defaults to None.
+        """
         super(ProductTagsDlg, self).__init__()
         self.parentDlg = parent
         self.core = core
@@ -4173,7 +5607,12 @@ class ProductTagsDlg(QDialog):
         self.loadTags()
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Create and arrange UI layout.
+        
+        Initializes all widgets including header label, add button,
+        items layout, and dialog buttons.
+        """
         title = "Product Tags"
 
         self.setWindowTitle(title)
@@ -4222,7 +5661,12 @@ class ProductTagsDlg(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def loadTags(self):
+    def loadTags(self) -> None:
+        """Load and display project product tags.
+        
+        Retrieves product tags from core and creates ProductTagItem
+        widgets for each product-tag combination.
+        """
         tags = self.core.products.getProjectProductTags()
         self.clearItems()
         if tags:
@@ -4231,7 +5675,18 @@ class ProductTagsDlg(QDialog):
                 self.addItem(product=product, tags=tagsStr)
 
     @err_catcher(name=__name__)
-    def addItem(self, product=None, tags=None):
+    def addItem(self, product: Optional[str] = None, tags: Optional[str] = None) -> Any:
+        """Add new product tag item.
+        
+        Creates a new ProductTagItem widget and adds it to the layout.
+        
+        Args:
+            product: Optional product name. Defaults to None.
+            tags: Optional comma-separated tag string. Defaults to None.
+            
+        Returns:
+            The created ProductTagItem widget.
+        """
         item = ProductTagItem(self.core)
         self.items.append(item)
         item.removed.connect(self.removeItem)
@@ -4246,7 +5701,14 @@ class ProductTagsDlg(QDialog):
         return item
 
     @err_catcher(name=__name__)
-    def removeItem(self, item):
+    def removeItem(self, item: Any) -> None:
+        """Remove product tag item.
+        
+        Removes the specified item from the items list and UI layout.
+        
+        Args:
+            item: ProductTagItem to remove.
+        """
         self.items.remove(item)
         idx = self.lo_items.indexOf(item)
         if idx != -1:
@@ -4255,7 +5717,12 @@ class ProductTagsDlg(QDialog):
                 w.widget().deleteLater()
 
     @err_catcher(name=__name__)
-    def clearItems(self):
+    def clearItems(self) -> None:
+        """Clear all product tag items.
+        
+        Removes and deletes all ProductTagItem widgets from the layout
+        and clears the items list.
+        """
         for idx in reversed(range(self.lo_items.count())):
             item = self.lo_items.takeAt(idx)
             w = item.widget()
@@ -4266,7 +5733,14 @@ class ProductTagsDlg(QDialog):
         self.items = []
 
     @err_catcher(name=__name__)
-    def getTags(self):
+    def getTags(self) -> Dict[str, List[str]]:
+        """Get all product tags from items.
+        
+        Collects product names and their associated tags from all items.
+        
+        Returns:
+            Dictionary mapping product names to lists of tag strings.
+        """
         tagsDict = {}
         for item in self.items:
             product = item.getProduct()
@@ -4277,7 +5751,14 @@ class ProductTagsDlg(QDialog):
         return tagsDict
 
     @err_catcher(name=__name__)
-    def buttonClicked(self, button):
+    def buttonClicked(self, button: Any) -> None:
+        """Handle dialog button clicks.
+        
+        Saves product tags to core when Save is clicked, then closes dialog.
+        
+        Args:
+            button: The button that was clicked.
+        """
         if button == "save" or button.text() == "Save":
             productTags = self.getTags()
             self.core.products.setProjectProductTags(productTags)
@@ -4285,5 +5766,10 @@ class ProductTagsDlg(QDialog):
         self.close()
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Provide preferred dialog size.
+        
+        Returns:
+            Preferred size of 600x400 pixels.
+        """
         return QSize(600, 400)

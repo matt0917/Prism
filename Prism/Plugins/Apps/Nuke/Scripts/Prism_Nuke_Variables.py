@@ -33,11 +33,21 @@
 
 
 import os
+from typing import Any
 
 
 class Prism_Nuke_Variables(object):
-    def __init__(self, core, plugin):
-        self.version = "v2.1.1"
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize Nuke plugin variables.
+        
+        Sets up plugin metadata, supported file formats, and visual properties
+        for Prism's Nuke integration.
+        
+        Args:
+            core: The Prism core instance
+            plugin: The plugin instance
+        """
+        self.version = "v2.1.2"
         self.pluginName = "Nuke"
         self.pluginType = "App"
         self.appShortName = "Nuke"

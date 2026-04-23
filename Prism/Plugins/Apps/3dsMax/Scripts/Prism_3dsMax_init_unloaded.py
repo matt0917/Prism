@@ -32,6 +32,8 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from typing import Any
+
 from Prism_3dsMax_Variables import Prism_3dsMax_Variables
 from Prism_3dsMax_externalAccess_Functions import Prism_3dsMax_externalAccess_Functions
 from Prism_3dsMax_Integration import Prism_3dsMax_Integration
@@ -42,7 +44,18 @@ class Prism_3dsMax_unloaded(
     Prism_3dsMax_externalAccess_Functions,
     Prism_3dsMax_Integration,
 ):
-    def __init__(self, core):
+    """Unloaded version of 3ds Max plugin.
+    
+    Used when 3ds Max is not actively loaded but plugin needs to be available.
+    Excludes core functions that require active DCC connection.
+    """
+
+    def __init__(self, core: Any) -> None:
+        """Initialize unloaded 3ds Max plugin.
+        
+        Args:
+            core: PrismCore instance.
+        """
         Prism_3dsMax_Variables.__init__(self, core, self)
         Prism_3dsMax_externalAccess_Functions.__init__(self, core, self)
         Prism_3dsMax_Integration.__init__(self, core, self)

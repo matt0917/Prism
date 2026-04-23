@@ -33,6 +33,7 @@
 
 
 import os
+from typing import Any, Dict, List, Optional
 
 import bpy
 
@@ -44,7 +45,28 @@ from PrismUtils.Decorators import err_catcher as err_catcher
 
 
 class Import_SceneData(QDialog):
-    def __init__(self, core, plugin):
+    """Dialog for importing Blender scene data.
+    
+    Provides UI for selecting collections and objects to import from
+    a Blender file with options for append or link operations.
+    
+    Attributes:
+        core: PrismCore instance.
+        plugin: Blender plugin instance.
+        mode: Import mode ('append' or 'link').
+        importedNodes: List of imported node handles.
+        scenepath: Path to scene file being imported.
+        state: Import state instance.
+        updated: Whether existing nodes were updated.
+    """
+    
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize import scene data dialog.
+        
+        Args:
+            core: PrismCore instance.
+            plugin: Blender plugin instance.
+        """
         super(Import_SceneData, self).__init__()
         self.core = core
         self.plugin = plugin
@@ -52,7 +74,17 @@ class Import_SceneData(QDialog):
         self.importedNodes = []
 
     @err_catcher(name=__name__)
-    def importScene(self, scenepath, update, state):
+    def importScene(self, scenepath: str, update: bool, state: Any) -> Optional[Dict]:
+        """Import scene data from Blender file.
+        
+        Args:
+            scenepath: Path to scene file to import.
+            update: Whether to update existing nodes.
+            state: Import state instance.
+        
+        Returns:
+            Dictionary with result, mode, and importedNodes, or None if updated.
+        """
         self.scenepath = scenepath
         self.state = state
         self.updated = False
@@ -72,7 +104,12 @@ class Import_SceneData(QDialog):
         return {"result": action, "mode": self.mode, "importedNodes": self.importedNodes}
 
     @err_catcher(name=__name__)
-    def setupUI(self):
+    def setupUI(self) -> None:
+        """Setup import dialog UI elements.
+        
+        Creates tree widget for scene data selection and radio buttons
+        for append/link mode selection.
+        """
         self.core.parentWindow(self)
         self.setWindowTitle(os.path.basename(self.scenepath))
         self.lo_main = QVBoxLayout()
@@ -121,21 +158,41 @@ class Import_SceneData(QDialog):
         self.resize(800 * self.core.uiScaleFactor, 600 * self.core.uiScaleFactor)
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect UI event signals to handlers."""
         self.tw_scenedata.doubleClicked.connect(self.accept)
         self.tw_scenedata.doubleClicked.connect(lambda: self.importData())
 
     @err_catcher(name=__name__)
-    def onModeChanged(self, state=None):
+    def onModeChanged(self, state: Optional[bool] = None) -> None:
+        """Handle import mode change.
+        
+        Enables/disables override checkbox based on link mode.
+        
+        Args:
+            state: Radio button state. Defaults to None.
+        """
         self.chb_override.setEnabled(self.rb_link.isChecked())
 
     @err_catcher(name=__name__)
-    def selectionChanged(self, item, column):
+    def selectionChanged(self, item: Any, column: int) -> None:
+        """Handle tree item selection change.
+        
+        Selects/deselects child items when parent is selected.
+        
+        Args:
+            item: Selected tree widget item.
+            column: Column index.
+        """
         for cIdx in range(item.childCount()):
             item.child(cIdx).setSelected(item.isSelected())
 
     @err_catcher(name=__name__)
-    def refreshTree(self):
+    def refreshTree(self) -> None:
+        """Refresh tree widget with scene data.
+        
+        Loads collections and objects from scene file and populates tree.
+        """
         with bpy.data.libraries.load(self.scenepath, link=False) as (
             data_from,
             data_to,
@@ -156,7 +213,12 @@ class Import_SceneData(QDialog):
                 parentItem.addChild(item)
 
     @err_catcher(name=__name__)
-    def getSelectedData(self):
+    def getSelectedData(self) -> Dict[str, List[Dict]]:
+        """Get selected scene data from tree.
+        
+        Returns:
+            Dictionary mapping data types to lists of selected items.
+        """
         data = {}
         for iIdx in range(self.tw_scenedata.topLevelItemCount()):
             tItem = self.tw_scenedata.topLevelItem(iIdx)
@@ -171,7 +233,15 @@ class Import_SceneData(QDialog):
         return data
 
     @err_catcher(name=__name__)
-    def updateData(self, validNodes):
+    def updateData(self, validNodes: List) -> bool:
+        """Update library references for existing nodes.
+        
+        Args:
+            validNodes: List of valid node handles.
+        
+        Returns:
+            True if nodes were updated, False otherwise.
+        """
         updated = False
         libs = []
         if validNodes:
@@ -203,7 +273,12 @@ class Import_SceneData(QDialog):
         return updated
 
     @err_catcher(name=__name__)
-    def importData(self):
+    def importData(self) -> None:
+        """Import selected scene data.
+        
+        Performs append or link operation based on selected mode,
+        with optional library override creation.
+        """
         link = self.rb_link.isChecked()
         self.state.preDelete(
             baseText="Do you want to delete the currently connected objects?\n\n"

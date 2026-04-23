@@ -38,6 +38,7 @@ import socket
 import glob
 import logging
 import copy
+from typing import Any, Dict, List, Optional, Tuple, Union
 try:
     import psutil
 except:
@@ -54,7 +55,15 @@ logger = logging.getLogger(__name__)
 
 
 class Prism_AfterEffects_Functions(object):
-    def __init__(self, core, plugin):
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize AfterEffects main functions component.
+        
+        Registers callbacks for project browser startup and media player context menus.
+        
+        Args:
+            core: Prism core instance
+            plugin: Plugin instance
+        """
         self.core = core
         self.plugin = plugin
         self.core.registerCallback(
@@ -65,7 +74,15 @@ class Prism_AfterEffects_Functions(object):
         )
 
     @err_catcher(name=__name__)
-    def startup(self, origin):
+    def startup(self, origin: Any) -> None:
+        """Initialize After Effects integration on Prism startup.
+        
+        Sets up window icon, message parent widget, stylesheet, and starts process
+        monitoring timer for After Effects.
+        
+        Args:
+            origin: Prism origin object (typically PrismCore instance)
+        """
         origin.timer.stop()
         appIcon = QIcon(self.appIcon)
         qapp = QApplication.instance()
@@ -87,7 +104,12 @@ class Prism_AfterEffects_Functions(object):
         origin.startAutosaveTimer()
 
     @err_catcher(name=__name__)
-    def checkAeAlive(self):
+    def checkAeAlive(self) -> None:
+        """Check if After Effects process is running and quit if not.
+        
+        Monitors After Effects PID and schedules next check if alive, quits
+        Prism if After Effects was closed.
+        """
         if "psutil" not in globals():
             return
 
@@ -97,7 +119,18 @@ class Prism_AfterEffects_Functions(object):
             QApplication.instance().quit()
 
     @err_catcher(name=__name__)
-    def sendCmd(self, cmd):
+    def sendCmd(self, cmd: str) -> Optional[bytes]:
+        """Send command to After Effects via socket connection.
+        
+        Connects to After Effects CEP extension socket server, sends ExtendScript
+        command, and receives result.
+        
+        Args:
+            cmd: ExtendScript command string to execute in After Effects
+            
+        Returns:
+            Response data as bytes, or None on error
+        """
         HOST = '127.0.0.1'
         PORT = 9888
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -110,29 +143,71 @@ class Prism_AfterEffects_Functions(object):
 
             data = (cmd).encode("utf-8")
             s.sendall(data)
-            data = s.recv(1024)
+            
+            # Receive data in chunks until complete
+            received_data = b""
+            while True:
+                chunk = s.recv(4096)
+                if not chunk:
+                    break
 
-        return data
+                received_data += chunk
+                # Check if we've received what appears to be a complete response
+                if received_data.startswith(b'{') and not received_data.endswith(b'}'):
+                    continue
+
+                break
+
+        return received_data
 
     @err_catcher(name=__name__)
-    def getAePid(self):
+    def getAePid(self) -> str:
+        """Get After Effects process ID.
+        
+        Returns:
+            Process ID as string
+        """
         cmd = "pid"
         pid = (self.sendCmd(cmd) or "".encode()).decode("utf-8")
         return pid
 
     @err_catcher(name=__name__)
-    def autosaveEnabled(self, origin):
+    def autosaveEnabled(self, origin: Any) -> bool:
+        """Check if After Effects autosave is enabled.
+        
+        Args:
+            origin: Calling origin object
+            
+        Returns:
+            True if autosave enabled, False otherwise
+        """
         cmd = "app.preferences.getPrefAsLong(\"Auto Save\", \"Enable Auto Save3\", PREFType.PREF_Type_MACHINE_INDEPENDENT);"
         enabled = (self.sendCmd(cmd) or "".encode()).decode("utf-8")
         return enabled == "1"
 
     @err_catcher(name=__name__)
-    def sceneOpen(self, origin):
+    def sceneOpen(self, origin: Any) -> None:
+        """Handle scene open event.
+        
+        Starts autosave timer if autosave is enabled.
+        
+        Args:
+            origin: Prism origin object
+        """
         if self.core.shouldAutosaveTimerRun():
             origin.startAutosaveTimer()
 
     @err_catcher(name=__name__)
-    def getCurrentFileName(self, origin, path=True):
+    def getCurrentFileName(self, origin: Any, path: bool = True) -> str:
+        """Get current After Effects project file name.
+        
+        Args:
+            origin: Calling origin object
+            path: If True return full path, if False return basename only
+            
+        Returns:
+            Project file path or basename
+        """
         cmd = "app.project.file.fsName;"
         filename = (self.sendCmd(cmd) or "".encode()).decode("utf-8")
         if path:
@@ -141,21 +216,52 @@ class Prism_AfterEffects_Functions(object):
             return os.path.basename(filename)
 
     @err_catcher(name=__name__)
-    def getSceneExtension(self, origin):
+    def getSceneExtension(self, origin: Any) -> str:
+        """Get After Effects scene file extension.
+        
+        Args:
+            origin: Calling origin object
+            
+        Returns:
+            Scene file extension (.aep)
+        """
         return self.sceneFormats[0]
 
     @err_catcher(name=__name__)
-    def saveScene(self, origin, filepath, details={}):
+    def saveScene(self, origin: Any, filepath: str, details: Optional[dict] = None) -> bool:
+        """Save After Effects project to specified path.
+        
+        Args:
+            origin: Calling origin object
+            filepath: Destination file path
+            details: Optional dict with save details (unused)
+            
+        Returns:
+            True if successful
+        """
         cmd = "app.project.save(File(\"%s\"));" % filepath
         self.sendCmd(cmd)
         return True
 
     @err_catcher(name=__name__)
-    def getImportPaths(self, origin):
+    def getImportPaths(self, origin: Any) -> bool:
+        """Get import paths (not implemented for After Effects).
+        
+        Args:
+            origin: Calling origin object
+            
+        Returns:
+            False (not implemented)
+        """
         return False
 
     @err_catcher(name=__name__)
-    def hasActiveComp(self):
+    def hasActiveComp(self) -> Optional[bool]:
+        """Check if After Effects has an active composition.
+        
+        Returns:
+            True if active composition exists, False or None otherwise
+        """
         cmd = """
         if (app.project && app.project.activeItem && app.project.activeItem instanceof CompItem) {
             "{\\"result\\": True}";
@@ -175,7 +281,12 @@ class Prism_AfterEffects_Functions(object):
         return result["result"]
 
     @err_catcher(name=__name__)
-    def getCompositionNames(self):
+    def getCompositionNames(self) -> Optional[List[str]]:
+        """Get names of all compositions in current After Effects project.
+        
+        Returns:
+            List of composition names, or None if failed
+        """
         cmd = """
         function getAllCompositions() {
             var project = app.project;
@@ -210,7 +321,15 @@ class Prism_AfterEffects_Functions(object):
         return [x for x in result["compositions"].split(",") if x]
 
     @err_catcher(name=__name__)
-    def getFrameRange(self, origin):
+    def getFrameRange(self, origin: Any) -> List[Optional[float]]:
+        """Get frame range from active After Effects composition.
+        
+        Args:
+            origin: Calling origin object
+            
+        Returns:
+            List of [start_frame, end_frame], both None if no composition active
+        """
         startframe = None
         endframe = None
 
@@ -242,7 +361,16 @@ class Prism_AfterEffects_Functions(object):
         return [startframe, endframe]
 
     @err_catcher(name=__name__)
-    def setFrameRange(self, origin, startFrame, endFrame):
+    def setFrameRange(self, origin: Any, startFrame: float, endFrame: float) -> None:
+        """Set frame range for active After Effects composition.
+        
+        Updates composition displayStartFrame, duration, and work area.
+        
+        Args:
+            origin: Calling origin object
+            startFrame: New start frame number
+            endFrame: New end frame number
+        """
         cmd = """
         if (app.project && app.project.activeItem && app.project.activeItem instanceof CompItem) {
             var comp = app.project.activeItem;
@@ -259,7 +387,15 @@ class Prism_AfterEffects_Functions(object):
         self.sendCmd(cmd)
     
     @err_catcher(name=__name__)
-    def getFPS(self, origin):
+    def getFPS(self, origin: Any) -> Optional[float]:
+        """Get frame rate from active After Effects composition.
+        
+        Args:
+            origin: Calling origin object
+            
+        Returns:
+            Frame rate as float, or None if no composition active
+        """
         cmd = """
         if (app.project && app.project.activeItem && app.project.activeItem instanceof CompItem) {
             var comp = app.project.activeItem;
@@ -284,7 +420,13 @@ class Prism_AfterEffects_Functions(object):
             return None
 
     @err_catcher(name=__name__)
-    def setFPS(self, origin, fps):
+    def setFPS(self, origin: Any, fps: float) -> None:
+        """Set frame rate for active After Effects composition.
+        
+        Args:
+            origin: Calling origin object
+            fps: New frame rate value
+        """
         cmd = """
         if (app.project && app.project.activeItem && app.project.activeItem instanceof CompItem) {
             var comp = app.project.activeItem;
@@ -297,7 +439,15 @@ class Prism_AfterEffects_Functions(object):
         self.sendCmd(cmd)
 
     @err_catcher(name=__name__)
-    def getAppVersion(self, origin):
+    def getAppVersion(self, origin: Any) -> Optional[str]:
+        """Get After Effects application version.
+        
+        Args:
+            origin: Calling origin object
+            
+        Returns:
+            Version string, or None if failed
+        """
         cmd = """
         if (app) {
             var version = app.version;
@@ -321,37 +471,84 @@ class Prism_AfterEffects_Functions(object):
             return None
 
     @err_catcher(name=__name__)
-    def openScene(self, origin, filepath, force=False):
+    def openScene(self, origin: Any, filepath: str, force: bool = False) -> bool:
+        """Open After Effects project file.
+        
+        Args:
+            origin: Calling origin object
+            filepath: Project file path to open
+            force: Unused parameter
+            
+        Returns:
+            True if successful
+        """
         cmd = "app.open(File(\"%s\"));" % filepath
         self.sendCmd(cmd)
         return True
 
     @err_catcher(name=__name__)
-    def getCurrentSceneFiles(self, origin):
+    def getCurrentSceneFiles(self, origin: Any) -> List[str]:
+        """Get list of current scene files.
+        
+        Args:
+            origin: Calling origin object
+            
+        Returns:
+            List containing current project file path
+        """
         curFileName = self.core.getCurrentFileName()
         scenefiles = [curFileName]
         return scenefiles
 
     @err_catcher(name=__name__)
-    def onProjectBrowserStartup(self, origin):
+    def onProjectBrowserStartup(self, origin: Any) -> None:
+        """Handle project browser startup event.
+        
+        Disables State Manager action as it's not used in After Effects.
+        
+        Args:
+            origin: Project browser instance
+        """
         origin.actionStateManager.setEnabled(False)
     
     @err_catcher(name=__name__)
-    def mediaPlayerContextMenuRequested(self, origin, menu):
+    def mediaPlayerContextMenuRequested(self, origin: Any, menu: Any) -> None:
+        """Add custom context menu items to media player.
+        
+        Adds "Replace Active Item" action to media player context menu.
+        
+        Args:
+            origin: Media player instance
+            menu: QMenu to add actions to
+        """
         if len(origin.seq) > 0 and type(origin).__name__ == "MediaPlayer":
             actReplace = QAction("Replace Active Item...", origin)
             actReplace.triggered.connect(lambda: self.replaceActiveItemFromMediaBrowser(origin))
             menu.addAction(actReplace)
 
     @err_catcher(name=__name__)
-    def replaceActiveItemFromMediaBrowser(self, origin):
+    def replaceActiveItemFromMediaBrowser(self, origin: Any) -> None:
+        """Replace active After Effects footage item from media browser.
+        
+        Args:
+            origin: Media browser instance
+        """
         sourceData = origin.compGetImportSource()
         for sourceDat in sourceData:
             filepath = sourceDat[0]
             self.replaceActiveItem(filepath)
 
     @err_catcher(name=__name__)
-    def importImages(self, filepath=None, mediaBrowser=None, parent=None):
+    def importImages(self, filepath: Optional[str] = None, mediaBrowser: Optional[Any] = None, parent: Optional[Any] = None) -> None:
+        """Import images from media browser into After Effects.
+        
+        Prompts user to import current AOV or all AOVs when multiple layers available.
+        
+        Args:
+            filepath: Optional file path to import
+            mediaBrowser: Media browser instance
+            parent: Optional parent widget
+        """
         if mediaBrowser:
             if mediaBrowser.origin.getCurrentAOV() and mediaBrowser.origin.w_preview.cb_layer.count() > 1:
                 fString = "Please select an import option:"
@@ -368,21 +565,39 @@ class Prism_AfterEffects_Functions(object):
                 return
 
     @err_catcher(name=__name__)
-    def importSource(self, origin):
+    def importSource(self, origin: Any) -> None:
+        """Import current source/AOV from media browser.
+        
+        Args:
+            origin: Media browser instance
+        """
         sourceData = origin.compGetImportSource()
         for sourceDat in sourceData:
             filepath = sourceDat[0]
             self.importMedia(filepath)
         
     @err_catcher(name=__name__)
-    def importAOVs(self, origin):
+    def importAOVs(self, origin: Any) -> None:
+        """Import all AOVs/passes from media browser.
+        
+        Args:
+            origin: Media browser instance
+        """
         sourceData = origin.compGetImportPasses()
         for sourceDat in sourceData:
             filepath = sourceDat[0]
             self.importMedia(filepath)
 
     @err_catcher(name=__name__)
-    def sm_getExternalFiles(self, origin):
+    def sm_getExternalFiles(self, origin: Any) -> List[List[str]]:
+        """Get external file paths from After Effects project.
+        
+        Args:
+            origin: Calling origin object
+            
+        Returns:
+            List containing [footage_paths_list, empty_list]
+        """
         footageItems = self.getFootageFromProject() or []
         paths = []
         for footageItem in footageItems:
@@ -391,7 +606,19 @@ class Prism_AfterEffects_Functions(object):
         return [paths, []]
 
     @err_catcher(name=__name__)
-    def getMediaFromEntities(self, entities, identifier):
+    def getMediaFromEntities(self, entities: List[dict], identifier: str) -> List[dict]:
+        """Get media versions from entities for specified identifier.
+        
+        Searches for latest versions matching identifier across entities, handling
+        playblasts, 2d renders, external media, and 3d renders.
+        
+        Args:
+            entities: List of entity dictionaries (shots/assets)
+            identifier: Media identifier (e.g. "beauty", "compositing (2d)")
+            
+        Returns:
+            List of version dictionaries with filepaths
+        """
         versions = []
         for entity in entities:
             if entity.get("type") != "shot":
@@ -439,7 +666,17 @@ class Prism_AfterEffects_Functions(object):
         return versions
 
     @err_catcher(name=__name__)
-    def importMediaVersions(self, entities, identifiers, addToComp=False):
+    def importMediaVersions(self, entities: List[dict], identifiers: List[str], addToComp: bool = False) -> Union[bool, dict]:
+        """Import media versions from entities into After Effects.
+        
+        Args:
+            entities: List of entity dictionaries
+            identifiers: List of media identifiers to import
+            addToComp: If True, add to active composition as layers
+            
+        Returns:
+            Result dictionary from last import, or False if no media found
+        """
         versions = []
         for identifier in identifiers:
             versions += self.getMediaFromEntities(entities, identifier)
@@ -465,19 +702,28 @@ class Prism_AfterEffects_Functions(object):
         return result.get("result") if result else False
 
     @err_catcher(name=__name__)
-    def importMedia(self, filepath, addToComp=False):
+    def importMedia(self, filepath: str, addToComp: bool = False) -> Optional[bytes]:
+        """Import media file or sequence into After Effects project.
+        
+        Args:
+            filepath: File path or sequence pattern to import
+            addToComp: If True, add imported footage to active composition
+            
+        Returns:
+            Result bytes from After Effects, or None
+        """
         filepaths = self.core.media.getFilesFromSequence(filepath)
         if not filepaths:
             return
 
         if addToComp:
-            addToComp = """
+            addToCompCmd = """
     if (activeItem instanceof CompItem) {
         var newLayer = activeItem.layers.add(importedFile);
     }
             """
         else:
-            addToComp = ""
+            addToCompCmd = ""
 
         cmd = """
 if (app.project) {
@@ -492,13 +738,21 @@ if (app.project) {
     "{\\"result\\": True, \\"fileName\\": \\"" + importedFile.name + "\\"}";
 } else {
     "{\\"result\\": False, \\"details\\": \\"No project found.\\"}";
-}""" % (filepaths[0].replace("\\", "/"), "true" if len(filepaths) > 1 else "false", addToComp)
+}""" % (filepaths[0].replace("\\", "/"), "true" if len(filepaths) > 1 else "false", addToCompCmd)
 
         result = self.sendCmd(cmd)
         return result
 
     @err_catcher(name=__name__)
-    def replaceActiveItem(self, filepath):
+    def replaceActiveItem(self, filepath: str) -> Optional[bool]:
+        """Replace active footage item in After Effects with new media.
+        
+        Args:
+            filepath: File path or sequence pattern to replace with
+            
+        Returns:
+            True if successful, False or None otherwise
+        """
         filepaths = self.core.media.getFilesFromSequence(filepath)
         if not filepaths:
             return
@@ -532,7 +786,16 @@ if (app.project && app.project.activeItem && app.project.activeItem instanceof F
         return result["result"]
 
     @err_catcher(name=__name__)
-    def replaceItem(self, idx, filepath):
+    def replaceItem(self, idx: int, filepath: str) -> Optional[bool]:
+        """Replace footage item at index in After Effects project.
+        
+        Args:
+            idx: Project item index (1-based)
+            filepath: File path or sequence pattern to replace with
+            
+        Returns:
+            True if successful, False or None otherwise
+        """
         filepaths = self.core.media.getFilesFromSequence(filepath)
         if not filepaths:
             return
@@ -566,7 +829,12 @@ if (app.project) {
         return result["result"]
 
     @err_catcher(name=__name__)
-    def getFootageFromProject(self):
+    def getFootageFromProject(self) -> Optional[List[Dict[str, Any]]]:
+        """Get all footage items from After Effects project.
+        
+        Returns:
+            List of dicts with 'idx', 'path', and 'name' keys, or None on error
+        """
         cmd = """
 function getAllFootage() {
     var project = app.project;
@@ -622,7 +890,17 @@ if (app.project) {
             return resultData
 
     @err_catcher(name=__name__)
-    def sm_render_getDeadlineSubmissionParams(self, origin, dlParams, jobOutputFile):
+    def sm_render_getDeadlineSubmissionParams(self, origin: Any, dlParams: dict, jobOutputFile: str) -> dict:
+        """Get Deadline submission parameters for After Effects render.
+        
+        Args:
+            origin: State manager origin object
+            dlParams: Deadline parameters dictionary to update
+            jobOutputFile: Job output file path
+            
+        Returns:
+            Updated Deadline parameters dictionary
+        """
         dlParams["Build"] = dlParams["build"]
         dlParams["OutputFilePath"] = os.path.split(jobOutputFile)[0]
         dlParams["OutputFilePrefix"] = os.path.splitext(
@@ -638,12 +916,21 @@ if (app.project) {
         return dlParams
 
     @err_catcher(name=__name__)
-    def openImportMediaDlg(self):
+    def openImportMediaDlg(self) -> None:
+        """Open import media dialog.
+        
+        Creates and shows ImportMediaDlg for importing media from project browser.
+        """
         self.dlg_importMedia = ImportMediaDlg(self)
         self.dlg_importMedia.show()
 
     @err_catcher(name=__name__)
-    def checkVersions(self):
+    def checkVersions(self) -> None:
+        """Check for outdated footage versions in project.
+        
+        Compares project footage against latest versions in media browser and
+        prompts to update if outdated versions found.
+        """
         items = self.getFootageFromProject() or []
         outdatedItems = []
         for item in items:
@@ -672,7 +959,14 @@ if (app.project) {
                 self.replaceItem(idx, item["latestPath"])
     
     @err_catcher(name=__name__)
-    def openRenderDlg(self):
+    def openRenderDlg(self) -> Any:
+        """Open render setup dialog.
+        
+        Creates and shows RenderDlg for configuring and submitting renders.
+        
+        Returns:
+            RenderDlg instance
+        """
         if hasattr(self, "dlg_render"):
             self.dlg_render.close()
 
@@ -681,7 +975,12 @@ if (app.project) {
         return self.dlg_render
     
     @err_catcher(name=__name__)
-    def getRenderTemplates(self):
+    def getRenderTemplates(self) -> Optional[List[str]]:
+        """Get available output module templates from After Effects.
+        
+        Returns:
+            List of template names (excludes _HIDDEN templates), or None if failed
+        """
         cmd = """
 if (app.project && app.project.activeItem && app.project.activeItem instanceof CompItem) {
     var comp = app.project.activeItem;
@@ -707,15 +1006,65 @@ if (app.project && app.project.activeItem && app.project.activeItem instanceof C
         except:
             result = {"result": False}
 
-        if result["result"] is True:
-            templates = [x for x in result["templates"].split(",") if not x.startswith("_HIDDEN") ]
+        if result.get("result") is True:
+            templateStr = str(result.get("templates", ""))
+            templates = [x for x in templateStr.split(",") if not x.startswith("_HIDDEN") ]
             return templates
         else:
             return None
 
     @err_catcher(name=__name__)
-    def setOutputPath(self, entity, identifier, comment="", composition=None, location="global", template="", useAME=False, outputPath=None):
-        extension = ".jpg"
+    def setOutputPath(
+        self,
+        entity: dict,
+        identifier: str,
+        comment: str = "",
+        composition: Optional[str] = None,
+        location: str = "global",
+        template: str = "",
+        useAME: bool = False,
+        outputPath: Optional[str] = None
+    ) -> Optional[str]:
+        """Set output path and add composition to render queue.
+        
+        Creates media product path, adds composition to render queue with specified
+        output module template, and optionally sends to Adobe Media Encoder.
+        
+        Args:
+            entity: Entity dictionary (shot/asset)
+            identifier: Media identifier/task name
+            comment: Version comment
+            composition: Composition name ("Current Composition" for active)
+            location: Render location ("global" or custom)
+            template: Output module template name
+            useAME: If True, queue in Adobe Media Encoder
+            outputPath: Optional explicit output path
+            
+        Returns:
+            Output file path if successful, None otherwise
+        """
+        if template in ["TIFF Sequence with Alpha"]:
+            doSetOutput = True
+            extension = ".tif"
+        elif template in ["Multi-Machine Sequence", "Photoshop"]:
+            doSetOutput = True
+            extension = ".psd"
+        elif template in ["H.264 - Match Render Settings - 5 Mbps", "H.264 - Match Render Settings - 15 Mbps" , "H.264 - Match Render Settings - 40 Mbps"]:
+            doSetOutput = False
+            extension = ".mp4"
+        elif template in ["High Quality", "High Quality with Alpha"]:
+            doSetOutput = False
+            extension = ".mov"
+        elif template in ["Alpha Only", "Lossless", "Lossless with Alpha"]:
+            doSetOutput = False
+            extension = ".avi"
+        elif template in ["AIFF 48kHz"]:
+            doSetOutput = False
+            extension = ".aif"
+        else:
+            doSetOutput = False
+            extension = ".jpg"
+
         if self.core.getConfig("globals", "productTasks", config="project"):
             fileName = self.core.getCurrentFileName()
             context = self.core.getScenefileData(fileName)
@@ -723,6 +1072,9 @@ if (app.project && app.project.activeItem && app.project.activeItem instanceof C
             entity["task"] = os.getenv("PRISM_AE_TASK", context.get("task", "Conform"))
 
         if not outputPath:
+            framePadding = (
+                "[" + "#" * self.core.framePadding + "]"
+            )
             outputPath = self.core.mediaProducts.generateMediaProductPath(
                 entity=entity,
                 task=identifier,
@@ -730,7 +1082,10 @@ if (app.project && app.project.activeItem && app.project.activeItem instanceof C
                 comment=comment,
                 location=location,
                 mediaType="2drenders",
+                framePadding=framePadding,
             )
+            if not outputPath:
+                return None
 
         if not os.path.exists(os.path.dirname(outputPath)):
             try:
@@ -746,6 +1101,11 @@ if (app.project && app.project.activeItem && app.project.activeItem instanceof C
             """
         else:
             ame = ""
+
+        if doSetOutput:
+            setOutput = "outputModule.file = new File(\"%s\");" % outputPath.replace("\\", "/")  # enforce a potential dot before the framenumber
+        else:
+            setOutput = ""
 
         cmd = """
 function getCompositionByName(compName) {
@@ -782,10 +1142,11 @@ if (comp) {
         outputModule.applyTemplate(template);
     }
     %s
+    %s
     "{\\"result\\": True}";
 } else {
     "{\\"result\\": False, \\"details\\": \\"No active composition found.\\"}";
-}""" % (useCurrent, composition, outputPath.replace("\\", "/"), template, ame)
+}""" % (useCurrent, composition, outputPath.replace("\\", "/"), template, setOutput, ame)
         result = self.sendCmd(cmd)
         if not result:
             return None
@@ -801,7 +1162,12 @@ if (comp) {
             return None
 
     @err_catcher(name=__name__)
-    def startRender(self):
+    def startRender(self) -> Optional[str]:
+        """Start rendering After Effects render queue.
+        
+        Returns:
+            "Render started." if successful, None otherwise
+        """
         cmd = """
 if (app.project && app.project.renderQueue.numItems > 0) {
     app.project.renderQueue.render();
@@ -826,7 +1192,12 @@ if (app.project && app.project.renderQueue.numItems > 0) {
 
 
 class RenderDlg(QDialog):
-    def __init__(self, plugin):
+    def __init__(self, plugin: Any) -> None:
+        """Initialize render setup dialog.
+        
+        Args:
+            plugin: AfterEffects plugin instance
+        """
         super(RenderDlg, self).__init__()
         self.plugin = plugin
         self.core = self.plugin.core
@@ -843,7 +1214,12 @@ class RenderDlg(QDialog):
         )
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Build UI layout for render dialog.
+        
+        Creates form with entity selector, identifier input, comment field,
+        location dropdown, composition selector, template options, and action buttons.
+        """
         self.setWindowTitle("Render Setup")
         self.core.parentWindow(self)
         self.lo_main = QVBoxLayout()
@@ -938,7 +1314,12 @@ class RenderDlg(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def onAddQueueContextMenuRequested(self, pos=None):
+    def onAddQueueContextMenuRequested(self, pos: Optional[Any] = None) -> None:
+        """Show context menu for add to queue button.
+        
+        Args:
+            pos: Optional menu position (uses cursor position if None)
+        """
         pos = QCursor.pos()
         tmenu = QMenu(self)
 
@@ -949,11 +1330,20 @@ class RenderDlg(QDialog):
         tmenu.exec_(pos)
 
     @err_catcher(name=__name__)
-    def addToAMEQueue(self):
+    def addToAMEQueue(self) -> None:
+        """Add composition to Adobe Media Encoder render queue.
+        
+        Calls buttonClicked with AME flag enabled.
+        """
         self.buttonClicked("Add to Render Queue", useAME=True)
 
     @err_catcher(name=__name__)
-    def loadSettings(self):
+    def loadSettings(self) -> None:
+        """Load saved render settings from user config.
+        
+        Restores entity, identifier, comment, location, composition, and template
+        settings from previous session.
+        """
         settings = self.core.getConfig("afterEffects", config="user") or {}
         if "render_entity" in settings:
             self.setEntity(settings["render_entity"])
@@ -983,11 +1373,23 @@ class RenderDlg(QDialog):
                 self.cb_template.setCurrentIndex(idx)
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Suggest preferred size for render dialog.
+        
+        Returns:
+            Preferred size (400x250)
+        """
         return QSize(400, 250)
 
     @err_catcher(name=__name__)
-    def closeEvent(self, event):
+    def closeEvent(self, event: Any) -> None:
+        """Handle dialog close event.
+        
+        Saves current settings to user config before closing.
+        
+        Args:
+            event: QCloseEvent
+        """
         data = {
             "afterEffects": {
                 "render_entity": self.entity,
@@ -1011,26 +1413,53 @@ class RenderDlg(QDialog):
         self.core.setConfig(data=data, config="user", updateNestedData={"exclude": ["render_entity"]})
 
     @err_catcher(name=__name__)
-    def getIdentifier(self):
+    def getIdentifier(self) -> str:
+        """Get identifier text from input field.
+        
+        Returns:
+            Identifier text
+        """
         return self.e_identifier.text()
 
     @err_catcher(name=__name__)
-    def getComment(self):
+    def getComment(self) -> str:
+        """Get comment text from input field.
+        
+        Returns:
+            Comment text
+        """
         return self.e_comment.text()
 
     @err_catcher(name=__name__)
-    def getLocation(self):
+    def getLocation(self) -> str:
+        """Get selected location from dropdown.
+        
+        Returns:
+            Location name ("global" if no dropdown)
+        """
         if not hasattr(self, "cb_location"):
             return "global"
 
         return self.cb_location.currentText()
 
     @err_catcher(name=__name__)
-    def getComposition(self):
+    def getComposition(self) -> str:
+        """Get selected composition name from dropdown.
+        
+        Returns:
+            Composition name
+        """
         return self.cb_composition.currentText()
 
     @err_catcher(name=__name__)
-    def setEntity(self, entity):
+    def setEntity(self, entity: Union[dict, List[dict]]) -> None:
+        """Set target entity for render.
+        
+        Updates UI with entity name and refreshes available identifiers.
+        
+        Args:
+            entity: Entity dictionary or list containing entity
+        """
         if isinstance(entity, list):
             entity = entity[0]
 
@@ -1055,7 +1484,11 @@ class RenderDlg(QDialog):
             self.lo_widgets.addWidget(self.e_identifier, 1, 1, 1, 3)
 
     @err_catcher(name=__name__)
-    def chooseEntity(self):
+    def chooseEntity(self) -> None:
+        """Open entity chooser dialog for render target selection.
+        
+        Shows EntityDlg to select target asset/shot entity for render.
+        """
         dlg = EntityDlg(self)
         dlg.w_browser.entered()
         dlg.entitiesSelected.connect(self.setEntity)
@@ -1065,7 +1498,11 @@ class RenderDlg(QDialog):
         dlg.exec_()
 
     @err_catcher(name=__name__)
-    def showIdentifiers(self):
+    def showIdentifiers(self) -> None:
+        """Show dropdown menu with available render identifiers.
+        
+        Displays menu of task identifiers (e.g. beauty, compositing) for current entity.
+        """
         pos = QCursor.pos()
         tmenu = QMenu(self)
 
@@ -1077,7 +1514,14 @@ class RenderDlg(QDialog):
         tmenu.exec_(pos)
 
     @err_catcher(name=__name__)
-    def validate(self):
+    def validate(self) -> bool:
+        """Validate render settings before submission.
+        
+        Checks that entity, identifier, and active composition are set.
+        
+        Returns:
+            True if valid, False otherwise
+        """
         if not self.entity:
             msg = "No entity is selected."
             self.core.popup(msg, parent=self)
@@ -1096,7 +1540,15 @@ class RenderDlg(QDialog):
         return True
 
     @err_catcher(name=__name__)
-    def saveVersionInfo(self, outputpath):
+    def saveVersionInfo(self, outputpath: str) -> None:
+        """Save version information file for render.
+        
+        Creates version info file with source scene, identifier, comment, and
+        entity details.
+        
+        Args:
+            outputpath: Output directory path for version info
+        """
         identifier = self.getIdentifier()
         comment = self.getComment()
         details = self.entity.copy()
@@ -1119,7 +1571,15 @@ class RenderDlg(QDialog):
         )
 
     @err_catcher(name=__name__)
-    def buttonClicked(self, button, useAME=False):
+    def buttonClicked(self, button: Any, useAME: bool = False) -> None:
+        """Handle dialog button clicks.
+        
+        Handles "Add to Render Queue", "Render", and "Cancel" actions.
+        
+        Args:
+            button: Clicked button (string or button object)
+            useAME: If True, queue in Adobe Media Encoder
+        """
         if self.chb_template.isChecked() and hasattr(self, "cb_template"):
             template = self.cb_template.currentText()
         else:
@@ -1191,6 +1651,7 @@ class RenderDlg(QDialog):
                 result = self.plugin.startRender()
 
             kwargs = {
+                "origin": self,
                 "settings": rSettings,
                 "outputpath": outputpath,
                 "result": result,
@@ -1222,7 +1683,12 @@ class RenderDlg(QDialog):
 
 
 class ImportMediaDlg(QDialog):
-    def __init__(self, plugin):
+    def __init__(self, plugin: Any) -> None:
+        """Initialize import media dialog.
+        
+        Args:
+            plugin: AfterEffects plugin instance
+        """
         super(ImportMediaDlg, self).__init__()
         self.plugin = plugin
         self.core = self.plugin.core
@@ -1231,7 +1697,12 @@ class ImportMediaDlg(QDialog):
         self.setupUi()
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Build UI layout for media import dialog.
+        
+        Creates layout with shot selector, identifier input, add-to-composition checkbox,
+        and Preview/Import/Cancel buttons.
+        """
         self.setWindowTitle("Import Media")
         self.core.parentWindow(self)
         self.lo_main = QVBoxLayout()
@@ -1282,15 +1753,33 @@ class ImportMediaDlg(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Suggest preferred size for import dialog.
+        
+        Returns:
+            Preferred size (400x150)
+        """
         return QSize(400, 150)
 
     @err_catcher(name=__name__)
-    def getIdentifiers(self):
+    def getIdentifiers(self) -> List[str]:
+        """Get list of identifiers from input field.
+        
+        Returns:
+            List of trimmed identifier strings from comma-separated input
+        """
         return [x.strip() for x in self.e_identifier.text().split(",")]
 
     @err_catcher(name=__name__)
-    def setShots(self, shots):
+    def setShots(self, shots: Union[dict, List[dict]]) -> None:
+        """Set target shots for import.
+        
+        Updates UI with shot names and refreshes available identifiers across
+        all task types (3d, 2d, playblast, external).
+        
+        Args:
+            shots: Shot dictionary or list of shot dictionaries
+        """
         if not isinstance(shots, list):
             shots = [shots]
 
@@ -1329,7 +1818,11 @@ class ImportMediaDlg(QDialog):
             self.lo_widgets.addWidget(self.e_identifier, 1, 1, 1, 3)
 
     @err_catcher(name=__name__)
-    def chooseEntity(self):
+    def chooseEntity(self) -> None:
+        """Open entity chooser dialog for shot selection.
+        
+        Shows EntityDlg configured for multi-shot selection.
+        """
         dlg = EntityDlg(self)
         dlg.w_browser.w_entities.getPage("Shots").tw_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         dlg.w_browser.w_entities.tb_entities.removeTab(0)
@@ -1342,7 +1835,11 @@ class ImportMediaDlg(QDialog):
         dlg.exec_()
 
     @err_catcher(name=__name__)
-    def showIdentifiers(self):
+    def showIdentifiers(self) -> None:
+        """Show dropdown menu with available identifiers.
+        
+        Displays menu of task identifiers with selection toggle (click to add/remove).
+        """
         pos = QCursor.pos()
         tmenu = QMenu(self)
 
@@ -1354,7 +1851,14 @@ class ImportMediaDlg(QDialog):
         tmenu.exec_(pos)
 
     @err_catcher(name=__name__)
-    def addIdentifier(self, identifier):
+    def addIdentifier(self, identifier: str) -> None:
+        """Add or remove identifier from selection.
+        
+        Toggles identifier in comma-separated list (adds if not present, removes if present).
+        
+        Args:
+            identifier: Identifier to toggle
+        """
         idfs = [idf.strip() for idf in self.e_identifier.text().split(",") if idf]
         if identifier in idfs:
             newIdfs = [idf for idf in idfs if idf != identifier]
@@ -1364,7 +1868,14 @@ class ImportMediaDlg(QDialog):
         self.e_identifier.setText(", ".join(newIdfs))
 
     @err_catcher(name=__name__)
-    def validate(self):
+    def validate(self) -> bool:
+        """Validate import settings before execution.
+        
+        Checks that shots and identifiers are specified.
+        
+        Returns:
+            True if valid, False otherwise
+        """
         if not self.shots:
             msg = "No shots are selected."
             self.core.popup(msg, parent=self)
@@ -1378,7 +1889,14 @@ class ImportMediaDlg(QDialog):
         return True
 
     @err_catcher(name=__name__)
-    def buttonClicked(self, button):
+    def buttonClicked(self, button: Any) -> None:
+        """Handle dialog button clicks.
+        
+        Handles "Import", "Preview", and "Cancel" actions for media import.
+        
+        Args:
+            button: Clicked button object
+        """
         if button.text() == "Import":
             if not self.validate():
                 return
@@ -1419,7 +1937,12 @@ class EntityDlg(QDialog):
 
     entitiesSelected = Signal(object)
 
-    def __init__(self, parent):
+    def __init__(self, parent: Any) -> None:
+        """Initialize entity selection dialog.
+        
+        Args:
+            parent: Parent dialog (RenderDlg or ImportMediaDlg)
+        """
         super(EntityDlg, self).__init__()
         self.parentDlg = parent
         self.plugin = self.parentDlg.plugin
@@ -1427,7 +1950,12 @@ class EntityDlg(QDialog):
         self.setupUi()
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Build UI layout for entity selection dialog.
+        
+        Creates layout with embedded media browser, select/cancel buttons, and
+        expand button for showing version preview.
+        """
         title = "Choose Shots"
 
         self.setWindowTitle(title)
@@ -1454,11 +1982,26 @@ class EntityDlg(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def itemDoubleClicked(self, item, column):
+    def itemDoubleClicked(self, item: Any, column: int) -> None:
+        """Handle double-click on entity item.
+        
+        Triggers entity selection.
+        
+        Args:
+            item: Clicked tree widget item
+            column: Clicked column index
+        """
         self.buttonClicked("select")
 
     @err_catcher(name=__name__)
-    def buttonClicked(self, button):
+    def buttonClicked(self, button: Any) -> None:
+        """Handle dialog button clicks.
+        
+        Handles "Select", "Cancel", and expand button actions.
+        
+        Args:
+            button: Clicked button (string or button object)
+        """
         if button == "select" or button.text() == "Select":
             entities = self.w_browser.w_entities.getCurrentData(returnOne=False)
             if isinstance(entities, dict):
@@ -1485,7 +2028,12 @@ class EntityDlg(QDialog):
         self.close()
 
     @err_catcher(name=__name__)
-    def setExpanded(self, expand):
+    def setExpanded(self, expand: bool) -> None:
+        """Show or hide version preview panels.
+        
+        Args:
+            expand: If True, show version/preview panels and expand dialog
+        """
         self.w_browser.w_identifier.setVisible(expand)
         self.w_browser.w_version.setVisible(expand)
         self.w_browser.w_preview.setVisible(expand)
@@ -1497,5 +2045,10 @@ class EntityDlg(QDialog):
             self.move(self.pos().x()-((newwidth-curwidth)/2), self.pos().y())
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Suggest preferred size for entity dialog.
+        
+        Returns:
+            Preferred size (500x500)
+        """
         return QSize(500, 500)

@@ -32,7 +32,14 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+"""Houdini COPs (Compositing) renderer implementation for Prism.
+
+Provides renderer-specific functionality for COPs ROP nodes
+including node creation and parameter configuration.
+"""
+
 import os
+from typing import Any, List, Union
 
 import hou
 
@@ -47,16 +54,34 @@ hasCamera = False
 hasResolution = False
 
 
-def isActive():
+def isActive() -> bool:
+    """Check if COPs renderer is available.
+    
+    Returns:
+        True if renderer is active.
+    """
     return True
 
 
-def getFormatFromNode(node):
+def getFormatFromNode(node: Any) -> str:
+    """Get output format from renderer node.
+    
+    Args:
+        node: COPs ROP node.
+    
+    Returns:
+        File extension string.
+    """
     ext = os.path.splitext(node.parm("copoutput").eval())[1]
     return ext
 
 
-def createROP(origin):
+def createROP(origin: Any) -> None:
+    """Create COPs ROP node in compositing context.
+    
+    Args:
+        origin: State manager origin object.
+    """
     nwPane = origin.core.appPlugin.getNetworkPane()
     if not nwPane:
         origin.node = None
@@ -70,20 +95,48 @@ def createROP(origin):
     origin.node = origin.core.appPlugin.createRop("rop_image", parent=parent)
 
 
-def refreshAOVs(origin):
+def refreshAOVs(origin: Any) -> None:
+    """Refresh AOV list (not supported for COPs).
+    
+    Hides the passes group box.
+    
+    Args:
+        origin: State manager origin object.
+    """
     origin.gb_passes.setVisible(False)
     return
 
 
-def deleteAOV(origin, row):
+def deleteAOV(origin: Any, row: int) -> None:
+    """Delete AOV (not supported for COPs).
+    
+    Args:
+        origin: State manager origin object.
+        row: Row index.
+    """
     pass
 
 
-def aovDbClick(origin, event):
+def aovDbClick(origin: Any, event: Any) -> None:
+    """Handle AOV double-click (not supported for COPs).
+    
+    Args:
+        origin: State manager origin object.
+        event: Mouse event.
+    """
     pass
 
 
-def executeAOVs(origin, outputName):
+def executeAOVs(origin: Any, outputName: str) -> Union[bool, List[str]]:
+    """Execute AOV setup and set output path.
+    
+    Args:
+        origin: State manager origin object.
+        outputName: Output file path.
+    
+    Returns:
+        True if successful, list of error messages otherwise.
+    """
     parmPath = origin.core.appPlugin.getPathRelativeToProject(outputName) if origin.core.appPlugin.getUseRelativePath() else outputName
     if not origin.core.appPlugin.setNodeParm(origin.node, "copoutput", val=parmPath):
         return [origin.state.text(0) + ": error - Publish canceled"]
@@ -91,7 +144,15 @@ def executeAOVs(origin, outputName):
     return True
 
 
-def setResolution(origin):
+def setResolution(origin: Any) -> Union[bool, List[str]]:
+    """Set render resolution on node.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful, list of error messages otherwise.
+    """
     if not origin.core.appPlugin.setNodeParm(
         origin.node, "setres", val=True
     ):
@@ -108,10 +169,26 @@ def setResolution(origin):
     return True
 
 
-def executeRender(origin):
+def executeRender(origin: Any) -> bool:
+    """Execute the render.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful.
+    """
     origin.node.parm("execute").pressButton()
     return True
 
 
-def postExecute(origin):
+def postExecute(origin: Any) -> bool:
+    """Post-execution cleanup.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful.
+    """
     return True

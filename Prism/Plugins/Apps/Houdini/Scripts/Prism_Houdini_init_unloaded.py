@@ -32,6 +32,8 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from typing import Any
+
 from Prism_Houdini_Variables import Prism_Houdini_Variables
 from Prism_Houdini_externalAccess_Functions import (
     Prism_Houdini_externalAccess_Functions,
@@ -44,7 +46,24 @@ class Prism_Houdini_unloaded(
     Prism_Houdini_externalAccess_Functions,
     Prism_Houdini_Integration,
 ):
-    def __init__(self, core):
+    """Houdini plugin in unloaded state.
+    
+    Represents the Houdini plugin when Prism is not running inside Houdini.
+    Provides access to external functions, integration management, and
+    configuration without requiring Houdini to be running.
+    
+    Inherits from:
+        Prism_Houdini_Variables: Plugin configuration.
+        Prism_Houdini_externalAccess_Functions: External access methods.
+        Prism_Houdini_Integration: Installation/integration management.
+    """
+    
+    def __init__(self, core: Any) -> None:
+        """Initialize unloaded Houdini plugin.
+        
+        Args:
+            core: PrismCore instance.
+        """
         Prism_Houdini_Variables.__init__(self, core, self)
         Prism_Houdini_externalAccess_Functions.__init__(self, core, self)
         Prism_Houdini_Integration.__init__(self, core, self)

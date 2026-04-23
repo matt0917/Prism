@@ -38,6 +38,7 @@ from Prism_Photoshop_externalAccess_Functions import (
 )
 from Prism_Photoshop_Functions import Prism_Photoshop_Functions
 from Prism_Photoshop_Integration import Prism_Photoshop_Integration
+from typing import Any
 
 
 class Prism_Plugin_Photoshop(
@@ -46,7 +47,14 @@ class Prism_Plugin_Photoshop(
     Prism_Photoshop_Functions,
     Prism_Photoshop_Integration,
 ):
-    def __init__(self, core):
+    def __init__(self, core: Any) -> None:
+        """Initialize Photoshop plugin combining all modules.
+        
+        Initializes Variables, externalAccess_Functions, Functions, and Integration modules.
+        
+        Args:
+            core: Prism core instance
+        """
         Prism_Photoshop_Variables.__init__(self, core, self)
         Prism_Photoshop_externalAccess_Functions.__init__(self, core, self)
         Prism_Photoshop_Functions.__init__(self, core, self)

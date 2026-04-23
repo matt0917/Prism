@@ -32,6 +32,8 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from typing import Any
+
 from Prism_Maya_Variables import Prism_Maya_Variables
 from Prism_Maya_externalAccess_Functions import Prism_Maya_externalAccess_Functions
 from Prism_Maya_Integration import Prism_Maya_Integration
@@ -40,7 +42,14 @@ from Prism_Maya_Integration import Prism_Maya_Integration
 class Prism_Maya_unloaded(
     Prism_Maya_Variables, Prism_Maya_externalAccess_Functions, Prism_Maya_Integration
 ):
-    def __init__(self, core):
+    def __init__(self, core: Any) -> None:
+        """Initialize unloaded Maya plugin state.
+        
+        Used when Maya is not actively running but plugin info is needed.
+        
+        Args:
+            core: Prism core instance
+        """
         Prism_Maya_Variables.__init__(self, core, self)
         Prism_Maya_externalAccess_Functions.__init__(self, core, self)
         Prism_Maya_Integration.__init__(self, core, self)

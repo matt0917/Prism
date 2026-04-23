@@ -32,7 +32,14 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+"""Houdini Arnold renderer implementation for Prism.
+
+Provides renderer-specific functionality for Arnold ROP nodes
+including AOV management, ASS export, deep EXR support, and parameter configuration.
+"""
+
 import os
+from typing import Any, List, Optional, Union
 
 import hou
 
@@ -45,11 +52,23 @@ label = "Arnold"
 ropNames = ["arnold"]
 
 
-def isActive():
+def isActive() -> bool:
+    """Check if Arnold renderer is available.
+    
+    Returns:
+        True if Arnold node type exists.
+    """
     return hou.nodeType(hou.ropNodeTypeCategory(), "arnold") is not None
 
 
-def activated(origin):
+def activated(origin: Any) -> None:
+    """Called when Arnold renderer is activated.
+    
+    Shows format controls and adds deep EXR format option.
+    
+    Args:
+        origin: State manager origin object.
+    """
     origin.chb_format.setHidden(False)
     origin.useFormatChanged(origin.chb_format.isChecked())
     origin.w_separateAovs.setHidden(False)
@@ -59,7 +78,14 @@ def activated(origin):
         origin.cb_format.addItem(deep)
 
 
-def deactivated(origin):
+def deactivated(origin: Any) -> None:
+    """Called when Arnold renderer is deactivated.
+    
+    Hides format controls and removes deep EXR format option.
+    
+    Args:
+        origin: State manager origin object.
+    """
     origin.chb_format.setHidden(True)
     origin.useFormatChanged(origin.chb_format.isChecked())
     origin.w_separateAovs.setHidden(True)
@@ -69,11 +95,29 @@ def deactivated(origin):
         origin.cb_format.removeItem(idx)
 
 
-def getCam(node):
+def getCam(node: Any) -> Any:
+    """Get camera node from renderer ROP.
+    
+    Args:
+        node: Arnold ROP node.
+    
+    Returns:
+        Camera node object.
+    """
     return hou.node(node.parm("camera").eval())
 
 
-def getFormatFromNode(node):
+def getFormatFromNode(node: Any) -> str:
+    """Get output format from renderer node.
+    
+    Converts Arnold format tokens to file extensions.
+    
+    Args:
+        node: Arnold ROP node.
+    
+    Returns:
+        File extension string.
+    """
     fmt = node.parm("ar_picture_format").eval()
     if fmt == "jpeg":
         fmt = "jpg"
@@ -84,7 +128,18 @@ def getFormatFromNode(node):
     return fmt
 
 
-def setFormatOnNode(fmt, node):
+def setFormatOnNode(fmt: str, node: Any) -> Optional[bool]:
+    """Set output format on renderer node.
+    
+    Converts file extension to Arnold format token.
+    
+    Args:
+        fmt: File extension string.
+        node: Arnold ROP node.
+    
+    Returns:
+        True if successful, None if format not supported.
+    """
     if fmt == ".jpg":
         fmt = "jpeg"
     elif fmt == ".png":
@@ -100,11 +155,24 @@ def setFormatOnNode(fmt, node):
     return True
 
 
-def createROP(origin):
+def createROP(origin: Any) -> None:
+    """Create Arnold ROP node.
+    
+    Args:
+        origin: State manager origin object.
+    """
     origin.node = origin.core.appPlugin.createRop("arnold")
 
 
-def setAOVData(origin, node, aovNum, item):
+def setAOVData(origin: Any, node: Any, aovNum: str, item: Any) -> None:
+    """Set AOV data on node from table widget item.
+    
+    Args:
+        origin: State manager origin object.
+        node: Arnold ROP node.
+        aovNum: AOV number string.
+        item: Table widget item with AOV data.
+    """
     if item.column() == 0:
         origin.core.appPlugin.setNodeParm(
             node, "ar_aov_label" + aovNum, val=item.text()
@@ -118,7 +186,17 @@ def setAOVData(origin, node, aovNum, item):
         )
 
 
-def getDefaultPasses(origin):
+def getDefaultPasses(origin: Any) -> List:
+    """Get default render passes for Arnold.
+    
+    Retrieves from config or plugin defaults.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        List of default AOV configurations.
+    """
     aovs = origin.core.getConfig(
         "defaultpasses", "houdini_arnold", configPath=origin.core.prismIni
     )
@@ -128,7 +206,15 @@ def getDefaultPasses(origin):
     return aovs
 
 
-def addAOV(origin, aovData):
+def addAOV(origin: Any, aovData: List) -> None:
+    """Add AOV to Arnold renderer.
+    
+    Creates new AOV with label and EXR layer name.
+    
+    Args:
+        origin: State manager origin object.
+        aovData: List containing [label, layer_name].
+    """
     passNum = origin.node.parm("ar_aovs").evalAsInt() + 1
     origin.core.appPlugin.setNodeParm(origin.node, "ar_aovs", val=passNum)
     origin.core.appPlugin.setNodeParm(
@@ -142,7 +228,14 @@ def addAOV(origin, aovData):
     )
 
 
-def refreshAOVs(origin):
+def refreshAOVs(origin: Any) -> None:
+    """Refresh AOV list in UI table.
+    
+    Reads AOVs from node and populates table widget.
+    
+    Args:
+        origin: State manager origin object.
+    """
     origin.tw_passes.horizontalHeaderItem(0).setText("Type")
     origin.tw_passes.horizontalHeaderItem(1).setText("Name")
 
@@ -173,12 +266,28 @@ def refreshAOVs(origin):
         passNum += 1
 
 
-def deleteAOV(origin, row):
+def deleteAOV(origin: Any, row: int) -> None:
+    """Delete AOV from renderer.
+    
+    Removes AOV multiparm instance.
+    
+    Args:
+        origin: State manager origin object.
+        row: Row index in table widget.
+    """
     pid = int(origin.tw_passes.item(row, 2).text())
     origin.node.parm("ar_aovs").removeMultiParmInstance(pid)
 
 
-def aovDbClick(origin, event):
+def aovDbClick(origin: Any, event: Any) -> None:
+    """Handle AOV double-click event.
+    
+    Opens type menu for AOV type column.
+    
+    Args:
+        origin: State manager origin object.
+        event: Mouse event.
+    """
     if origin.node is None or event.button() != Qt.LeftButton:
         origin.tw_passes.mouseDbcEvent(event)
         return
@@ -204,11 +313,32 @@ def aovDbClick(origin, event):
         origin.tw_passes.mouseDbcEvent(event)
 
 
-def setCam(origin, node, val):
+def setCam(origin: Any, node: Any, val: str) -> bool:
+    """Set camera on renderer node.
+    
+    Args:
+        origin: State manager origin object.
+        node: Arnold ROP node.
+        val: Camera path string.
+    
+    Returns:
+        True if successful.
+    """
     return origin.core.appPlugin.setNodeParm(node, "camera", val=val)
 
 
-def executeAOVs(origin, outputName):
+def executeAOVs(origin: Any, outputName: str) -> Union[bool, List[str]]:
+    """Execute AOV setup and configure output paths.
+    
+    Handles ASS export, format settings, and AOV output configuration.
+    
+    Args:
+        origin: State manager origin object.
+        outputName: Primary render output file path.
+    
+    Returns:
+        True if successful, list of error messages otherwise.
+    """
     if (
         not origin.gb_submit.isHidden()
         and origin.gb_submit.isChecked()
@@ -305,7 +435,15 @@ def executeAOVs(origin, outputName):
     return True
 
 
-def setResolution(origin):
+def setResolution(origin: Any) -> Union[bool, List[str]]:
+    """Set render resolution on node.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful, list of error messages otherwise.
+    """
     if not origin.core.appPlugin.setNodeParm(
         origin.node, "override_camerares", val=True
     ):
@@ -326,16 +464,37 @@ def setResolution(origin):
     return True
 
 
-def executeRender(origin):
+def executeRender(origin: Any) -> bool:
+    """Execute the render.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful.
+    """
     origin.node.parm("execute").pressButton()
     return True
 
 
-def postExecute(origin):
+def postExecute(origin: Any) -> bool:
+    """Post-execution cleanup.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful.
+    """
     return True
 
 
-def getCleanupScript():
+def getCleanupScript() -> str:
+    """Get cleanup script for ASS file removal.
+    
+    Returns:
+        Python script string for post-render ASS cleanup.
+    """
     script = """
 
 import os
@@ -358,7 +517,16 @@ else:
     return script
 
 
-def getAssOutputPath(origin, renderOutputPath):
+def getAssOutputPath(origin: Any, renderOutputPath: str) -> str:
+    """Get ASS output path for scene export.
+    
+    Args:
+        origin: State manager origin object.
+        renderOutputPath: Primary render output path.
+    
+    Returns:
+        ASS file output path string.
+    """
     jobOutputFile = os.path.join(
         os.path.dirname(renderOutputPath), "_ass", os.path.basename(renderOutputPath)
     )

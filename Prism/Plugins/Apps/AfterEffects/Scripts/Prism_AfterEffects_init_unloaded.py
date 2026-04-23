@@ -37,6 +37,7 @@ from Prism_AfterEffects_externalAccess_Functions import (
     Prism_AfterEffects_externalAccess_Functions,
 )
 from Prism_AfterEffects_Integration import Prism_AfterEffects_Integration
+from typing import Any
 
 
 class Prism_AfterEffects_unloaded(
@@ -44,7 +45,15 @@ class Prism_AfterEffects_unloaded(
     Prism_AfterEffects_externalAccess_Functions,
     Prism_AfterEffects_Integration,
 ):
-    def __init__(self, core):
+    def __init__(self, core: Any) -> None:
+        """Initialize unloaded AfterEffects plugin with limited functionality.
+        
+        Used when After Effects is not running. Initializes Variables, external
+        access functions, and integration components without main functions.
+        
+        Args:
+            core: Prism core instance
+        """
         Prism_AfterEffects_Variables.__init__(self, core, self)
         Prism_AfterEffects_externalAccess_Functions.__init__(self, core, self)
         Prism_AfterEffects_Integration.__init__(self, core, self)

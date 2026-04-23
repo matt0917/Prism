@@ -32,6 +32,8 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from typing import Any
+
 from Prism_Cinema4D_Variables import Prism_Cinema4D_Variables
 from Prism_Cinema4D_externalAccess_Functions import (
     Prism_Cinema4D_externalAccess_Functions,
@@ -46,7 +48,15 @@ class Prism_Plugin_Cinema4D(
     Prism_Cinema4D_Functions,
     Prism_Cinema4D_Integration,
 ):
-    def __init__(self, core):
+    def __init__(self, core: Any) -> None:
+        """Initialize Cinema4D plugin.
+        
+        Combines all Cinema4D plugin components (variables, functions, external
+        access, and integration) into unified plugin interface.
+        
+        Args:
+            core: Prism core instance
+        """
         Prism_Cinema4D_Variables.__init__(self, core, self)
         Prism_Cinema4D_externalAccess_Functions.__init__(self, core, self)
         Prism_Cinema4D_Functions.__init__(self, core, self)

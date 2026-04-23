@@ -32,6 +32,8 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from typing import Any
+
 from Prism_Nuke_Variables import Prism_Nuke_Variables
 from Prism_Nuke_externalAccess_Functions import Prism_Nuke_externalAccess_Functions
 from Prism_Nuke_Functions import Prism_Nuke_Functions
@@ -44,7 +46,15 @@ class Prism_Plugin_Nuke(
     Prism_Nuke_Functions,
     Prism_Nuke_Integration,
 ):
-    def __init__(self, core):
+    def __init__(self, core: Any) -> None:
+        """Initialize the Nuke plugin.
+        
+        Combines all Nuke plugin modules (Variables, Functions, Integration,
+        and External Access) into a single plugin class.
+        
+        Args:
+            core: The Prism core instance
+        """
         Prism_Nuke_Variables.__init__(self, core, self)
         Prism_Nuke_externalAccess_Functions.__init__(self, core, self)
         Prism_Nuke_Functions.__init__(self, core, self)

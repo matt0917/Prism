@@ -38,6 +38,7 @@ import platform
 import logging
 import time
 import errno
+from typing import Any, Optional, List, Dict, Tuple, Union
 
 from collections import OrderedDict
 
@@ -60,8 +61,27 @@ from PrismUtils import Lockfile
 logger = logging.getLogger(__name__)
 
 
-class ConfigManager(object):
-    def __init__(self, core):
+class ConfigManager:
+    """Manages configuration files and settings for the Prism pipeline.
+    
+    This class provides centralized management for reading, writing, and caching
+    configuration files in various formats (YAML, JSON, INI). It handles user
+    preferences, project settings, and supports automatic format conversion and
+    caching for performance optimization.
+    
+    Attributes:
+        core: The Prism core instance
+        cachedConfigs: Dictionary of cached configuration data with modification times
+        preferredExtension: The preferred file extension for new config files
+        configItems: Dictionary mapping config keys to file paths
+    """
+    
+    def __init__(self, core: Any) -> None:
+        """Initialize the ConfigManager.
+        
+        Args:
+            core: The Prism core instance
+        """
         self.core = core
         self.cachedConfigs = {}
         self.preferredExtension = self.core.preferredExtension
@@ -72,7 +92,18 @@ class ConfigManager(object):
             self.convertDeprecatedConfig(dprConfig)
 
     @err_catcher(name=__name__)
-    def addConfigItem(self, key, path):
+    def addConfigItem(self, key: str, path: str) -> bool:
+        """Add a custom configuration item path mapping.
+        
+        Register a custom config key with its associated file path for later retrieval.
+        
+        Args:
+            key: The configuration key identifier
+            path: The file path associated with this config key
+            
+        Returns:
+            True if the item was added successfully, False if the key already exists
+        """
         if key in self.configItems:
             return False
 
@@ -80,7 +111,15 @@ class ConfigManager(object):
         return True
 
     @err_catcher(name=__name__)
-    def getProjectExtension(self):
+    def getProjectExtension(self) -> str:
+        """Get the file extension to use for project configuration files.
+        
+        Returns .yml for Prism 1 compatibility mode, otherwise returns the
+        preferred extension.
+        
+        Returns:
+            The file extension to use (e.g., '.yml' or '.json')
+        """
         if self.core.prism1Compatibility:
             ext = ".yml"
         else:
@@ -89,7 +128,20 @@ class ConfigManager(object):
         return ext
 
     @err_catcher(name=__name__)
-    def getConfigPath(self, config, location=None):
+    def getConfigPath(self, config: str, location: Optional[str] = None) -> Optional[str]:
+        """Get the file path for a specific configuration.
+        
+        Resolves configuration keys like 'user', 'project', 'omit', 'shotinfo',
+        'assetinfo' to their full file paths. For custom config items, returns
+        the registered path or generates a new path.
+        
+        Args:
+            config: The configuration identifier (e.g., 'user', 'project', 'omit')
+            location: Optional location context for path generation
+            
+        Returns:
+            The full file path to the configuration file, or None if not found
+        """
         if config == "user":
             return self.core.userini
         elif config == "project":
@@ -118,13 +170,43 @@ class ConfigManager(object):
             return self.generateConfigPath(name=config, location=location)
 
     @err_catcher(name=__name__)
-    def getProjectConfigName(self, projectPath=None):
+    def getProjectConfigName(self, projectPath: Optional[str] = None) -> str:
+        """Get the name of the project configuration file.
+        
+        Checks the PRISM_PROJECT_CONFIG_NAME environment variable, or returns
+        the default 'pipeline' with preferred extension.
+        
+        Args:
+            projectPath: Optional project path (currently unused)
+            
+        Returns:
+            The project configuration filename (e.g., 'pipeline.json')
+        """
         return os.getenv(
             "PRISM_PROJECT_CONFIG_NAME", "pipeline" + self.preferredExtension
         )
 
     @err_catcher(name=__name__)
-    def getProjectConfigPath(self, projectPath=None, pipelineDir=None, useEnv=True):
+    def getProjectConfigPath(
+        self,
+        projectPath: Optional[str] = None,
+        pipelineDir: Optional[str] = None,
+        useEnv: bool = True
+    ) -> str:
+        """Get the full path to the project configuration file.
+        
+        Resolves the project config path based on project settings, environment
+        variables, and Prism 1 compatibility mode. Supports custom pipeline
+        directories and falls back to default locations.
+        
+        Args:
+            projectPath: Optional project root path (defaults to current project)
+            pipelineDir: Optional custom pipeline directory name
+            useEnv: Whether to check PRISM_PROJECT_CONFIG_PATH environment variable
+            
+        Returns:
+            The full path to the project configuration file
+        """
         projectPath = projectPath or self.core.prismIni
         if (
             self.core.prism1Compatibility
@@ -155,7 +237,16 @@ class ConfigManager(object):
         return configPath
 
     @err_catcher(name=__name__)
-    def clearCache(self, path=None):
+    def clearCache(self, path: Optional[str] = None) -> None:
+        """Clear cached configuration data.
+        
+        Removes configuration data from the cache. If a path is provided, only
+        that specific config is cleared; otherwise, the entire cache is cleared.
+        Triggers a postClearConfigCache callback.
+        
+        Args:
+            path: Optional path to specific config to clear (clears all if None)
+        """
         if path:
             path = os.path.normpath(path)
             self.cachedConfigs.pop(path, None)
@@ -165,7 +256,17 @@ class ConfigManager(object):
         self.core.callback("postClearConfigCache", args=[path])
 
     @err_catcher(name=__name__)
-    def getCacheTime(self, path):
+    def getCacheTime(self, path: str) -> Optional[Any]:
+        """Get the modification time of a cached configuration.
+        
+        Retrieves the timestamp when a cached config was last loaded from disk.
+        
+        Args:
+            path: Path to the configuration file
+            
+        Returns:
+            The modification time of the cached config, or None if not cached
+        """
         if path:
             path = os.path.normpath(path)
 
@@ -175,7 +276,14 @@ class ConfigManager(object):
         return self.cachedConfigs[path]["modtime"]
 
     @err_catcher(name=__name__)
-    def createUserPrefs(self):
+    def createUserPrefs(self) -> None:
+        """Create the default user preferences configuration file.
+        
+        Generates a new user preferences file with default settings for the Prism
+        pipeline, including globals, DCC app settings, browser preferences, local
+        files, and recent projects. Deletes any existing user preferences first.
+        Sets appropriate file permissions on Linux/macOS.
+        """
         if os.path.exists(self.core.userini):
             try:
                 os.remove(self.core.userini)
@@ -276,14 +384,34 @@ class ConfigManager(object):
     @err_catcher(name=__name__)
     def getConfig(
         self,
-        cat=None,
-        param=None,
-        configPath=None,
-        config=None,
-        dft=None,
-        location=None,
-        allowCache=True,
-    ):
+        cat: Optional[str] = None,
+        param: Optional[str] = None,
+        configPath: Optional[str] = None,
+        config: Optional[str] = None,
+        dft: Optional[Any] = None,
+        location: Optional[str] = None,
+        allowCache: bool = True,
+    ) -> Any:
+        """Get a configuration value from a config file.
+        
+        Reads configuration data from YAML or JSON files with automatic caching,
+        format conversion, and default value handling. Supports hierarchical
+        access to nested configuration values.
+        
+        Args:
+            cat: Category/section name in the config file
+            param: Parameter name within the category. If param is None and cat
+                  is provided, treats cat as the parameter name
+            configPath: Full path to config file (overrides config parameter)
+            config: Config identifier like 'user', 'project' to resolve path
+            dft: Default value to return and save if config value doesn't exist
+            location: Location context for path resolution
+            allowCache: Whether to use cached config data for performance
+            
+        Returns:
+            The requested configuration value, the default value if not found,
+            or the entire config data if no cat/param specified
+        """
         if not configPath and config:
             configPath = self.getConfigPath(config, location=location)
         elif configPath is None:
@@ -363,7 +491,18 @@ class ConfigManager(object):
         return dft
 
     @err_catcher(name=__name__)
-    def readConfig(self, configPath):
+    def readConfig(self, configPath: str) -> Optional[Any]:
+        """Read configuration data from a file.
+        
+        Automatically determines the file format based on extension and reads
+        the configuration using the appropriate parser (YAML or JSON).
+        
+        Args:
+            configPath: Full path to the configuration file
+            
+        Returns:
+            The parsed configuration data, or None if reading failed
+        """
         ext = os.path.splitext(configPath)[1]
         if ext == ".yml":
             configData = self.readYaml(configPath)
@@ -373,7 +512,20 @@ class ConfigManager(object):
         return configData
 
     @err_catcher(name=__name__)
-    def writeConfig(self, path, data):
+    def writeConfig(self, path: str, data: Any) -> Optional[Any]:
+        """Write configuration data to a file.
+        
+        Automatically determines the output format based on file extension and
+        writes the data using the appropriate formatter. Handles Prism 1
+        compatibility mode by converting paths to .yml format when needed.
+        
+        Args:
+            path: Full path to the configuration file
+            data: Configuration data to write
+            
+        Returns:
+            The written configuration data, or None if writing failed
+        """
         if self.core.prism1Compatibility:
             if (
                 getattr(self.core, "projectPath", "") and os.path.normpath(path).startswith(os.path.normpath(self.core.projectPath))
@@ -392,16 +544,35 @@ class ConfigManager(object):
     @err_catcher(name=__name__)
     def setConfig(
         self,
-        cat=None,
-        param=None,
-        val=None,
-        data=None,
-        configPath=None,
-        delete=False,
-        config=None,
-        location=None,
-        updateNestedData=True,
-    ):
+        cat: Optional[str] = None,
+        param: Optional[str] = None,
+        val: Optional[Any] = None,
+        data: Optional[Any] = None,
+        configPath: Optional[str] = None,
+        delete: bool = False,
+        config: Optional[str] = None,
+        location: Optional[str] = None,
+        updateNestedData: Union[bool, Dict[str, Any]] = True,
+    ) -> None:
+        """Set a configuration value in a config file.
+        
+        Writes a value to a configuration file with support for hierarchical
+        updates, deletion, and automatic file locking. Can update nested
+        dictionaries or replace entire config sections.
+        
+        Args:
+            cat: Category/section name in the config file
+            param: Parameter name within the category. If param is None and cat
+                  is provided, treats cat as the parameter name
+            val: Value to set for the parameter
+            data: Complete config data to write (overrides cat/param/val)
+            configPath: Full path to config file (overrides config parameter)
+            delete: If True, delete the specified category or parameter
+            config: Config identifier like 'user', 'project' to resolve path
+            location: Location context for path resolution
+            updateNestedData: If True/dict, merge nested dicts. If dict, can
+                            specify 'exclude' list of keys not to merge
+        """
         if not configPath and config:
             configPath = self.getConfigPath(config, location=location)
         elif configPath is None:
@@ -483,7 +654,26 @@ class ConfigManager(object):
             }
 
     @err_catcher(name=__name__)
-    def updateNestedDicts(self, d, u, exclude=None):
+    def updateNestedDicts(
+        self,
+        d: Dict[str, Any],
+        u: Dict[str, Any],
+        exclude: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """Recursively update nested dictionaries.
+        
+        Merges dictionary u into dictionary d, recursively updating nested
+        dictionaries while preserving structure. Can exclude specific keys
+        from merging.
+        
+        Args:
+            d: Target dictionary to update (modified in place)
+            u: Source dictionary with updates to apply
+            exclude: Optional list of keys to skip during merge
+            
+        Returns:
+            The updated target dictionary d
+        """
         exclude = exclude or []
         for k, v in u.items():
             if k not in exclude and isinstance(v, collections.Mapping) and isinstance(
@@ -496,7 +686,29 @@ class ConfigManager(object):
         return d
 
     @err_catcher(name=__name__)
-    def readYaml(self, path=None, data=None, stream=None, retry=True):
+    def readYaml(
+        self,
+        path: Optional[str] = None,
+        data: Optional[str] = None,
+        stream: Optional[Any] = None,
+        retry: bool = True
+    ) -> Optional[OrderedDict]:
+        """Read YAML configuration data.
+        
+        Reads and parses YAML data from a file, string, or stream with file
+        locking, error handling, and retry logic. Handles locked files with
+        user prompts and can reset corrupted files.
+        
+        Args:
+            path: Path to YAML file to read
+            data: YAML data as string to parse
+            stream: Stream object containing YAML data
+            retry: Whether to retry once if reading fails
+            
+        Returns:
+            OrderedDict containing parsed YAML data, or empty OrderedDict if
+            file doesn't exist, or None if user cancels on error
+        """
         logger.debug("read from config: %s" % path)
 
         try:
@@ -603,7 +815,28 @@ class ConfigManager(object):
         return yamlData
 
     @err_catcher(name=__name__)
-    def writeYaml(self, path=None, data=None, stream=None, retry=True):
+    def writeYaml(
+        self,
+        path: Optional[str] = None,
+        data: Optional[Any] = None,
+        stream: Optional[Any] = None,
+        retry: bool = True
+    ) -> Optional[str]:
+        """Write YAML configuration data.
+        
+        Writes configuration data to a YAML file or stream with automatic
+        directory creation, error handling, and retry logic. Handles disk
+        space and permission errors.
+        
+        Args:
+            path: Path to YAML file to write
+            data: Configuration data to serialize as YAML
+            stream: Stream object to write YAML data to
+            retry: Whether to retry once if writing fails
+            
+        Returns:
+            The YAML string if writing to stream, otherwise None
+        """
         logger.debug("write to yml config: %s" % path)
         if not data:
             return
@@ -651,7 +884,31 @@ class ConfigManager(object):
             return stream.getvalue()
 
     @err_catcher(name=__name__)
-    def readJson(self, path=None, stream=None, data=None, ignoreErrors=False, retry=True):
+    def readJson(
+        self,
+        path: Optional[str] = None,
+        stream: Optional[Any] = None,
+        data: Optional[str] = None,
+        ignoreErrors: bool = False,
+        retry: bool = True
+    ) -> Optional[Any]:
+        """Read JSON configuration data.
+        
+        Reads and parses JSON data from a file, string, or stream with file
+        locking, error handling, and retry logic. Handles locked files with
+        user prompts and can reset corrupted files.
+        
+        Args:
+            path: Path to JSON file to read
+            stream: Stream object containing JSON data
+            data: JSON data as string to parse
+            ignoreErrors: If True, suppress error popups and return silently
+            retry: Whether to retry once if reading fails
+            
+        Returns:
+            Parsed JSON data (dict/list), empty OrderedDict if file doesn't
+            exist, or None if reading failed or user canceled
+        """
         logger.debug("read from config: %s" % path)
         import json
 
@@ -690,7 +947,34 @@ class ConfigManager(object):
                 elif result == "Cancel":
                     return
 
-            with open(path, "r") as f:
+            try:
+                f_handle = open(path, "r")
+            except OSError as e:
+                if retry:
+                    time.sleep(0.5)
+                    return self.readJson(
+                        path=path, stream=stream, data=data, ignoreErrors=ignoreErrors, retry=False
+                    )
+                else:
+                    if not ignoreErrors:
+                        msg = (
+                            "Cannot open the following file:\n\n%s\n\nThe file may be unavailable due to a network or sync issue (e.g. Dropbox Smart Sync / cloud-only placeholder)."
+                            % path
+                        )
+                        msg += "\n\n%s" % str(e)
+                        result = self.core.popupQuestion(
+                            msg,
+                            icon=QMessageBox.Warning,
+                            buttons=["Retry", "Cancel"],
+                            default="Cancel",
+                        )
+                        if result == "Retry":
+                            return self.readJson(
+                                path=path, stream=stream, data=data, ignoreErrors=ignoreErrors, retry=True
+                            )
+                    return
+
+            with f_handle as f:
                 try:
                     jsonData = json.load(f)
                 except Exception as e:
@@ -758,7 +1042,30 @@ class ConfigManager(object):
         return jsonData
 
     @err_catcher(name=__name__)
-    def writeJson(self, data, path=None, stream=None, indent=4, quiet=False):
+    def writeJson(
+        self,
+        data: Any,
+        path: Optional[str] = None,
+        stream: Optional[Any] = None,
+        indent: int = 4,
+        quiet: bool = False
+    ) -> Optional[str]:
+        """Write JSON configuration data.
+        
+        Writes configuration data to a JSON file or stream with automatic
+        directory creation, formatting, and error handling. Can suppress
+        error popups in quiet mode.
+        
+        Args:
+            data: Configuration data to serialize as JSON
+            path: Path to JSON file to write
+            stream: Stream object to write JSON data to
+            indent: Number of spaces for JSON indentation (default 4)
+            quiet: If True, suppress error popups and return/raise silently
+            
+        Returns:
+            The JSON string if writing to stream, otherwise None
+        """
         logger.debug("write to json config: %s" % path)
         import json
 
@@ -772,16 +1079,30 @@ class ConfigManager(object):
                     else:
                         raise
 
-            try:
-                with open(path, "w") as config:
-                    json.dump(data, config, indent=indent, default=lambda o: "")
-            except Exception as e:
-                if getattr(e, "errno", None) == 13:
-                    if os.getenv("PRISM_CONFIG_PERMISSION_WARNING", "1") == "1":
+            while True:
+                try:
+                    with open(path, "w") as config:
+                        json.dump(data, config, indent=indent, default=lambda o: "")
+
+                    break
+                except Exception as e:
+                    logger.warning("Failed to write config: %s\n%s" % (path, str(e)))
+                    if getattr(e, "errno", None) == 13:
                         msg = "Failed to write to config because of missing permissions:\n\n%s\n\n%s" % (path, e)
-                        self.core.popup(msg)
-                else:
-                    raise
+                    else:
+                        msg = "Failed to write config:\n\n%s\n\n%s" % (path, e)
+
+                    if os.getenv("PRISM_CONFIG_WRITE_WARNING", "1") == "1":
+                        result = self.core.popupQuestion(
+                            msg, buttons=["Retry", "Cancel"], default="Cancel", icon=QMessageBox.Warning, escapeButton="Cancel"
+                        )
+                    else:
+                        result = "Cancel"
+
+                    if result == "Retry":
+                        continue
+                    else:
+                        break
 
         else:
             if not stream:
@@ -791,7 +1112,19 @@ class ConfigManager(object):
             return stream.getvalue()
 
     @err_catcher(name=__name__)
-    def findDeprecatedConfig(self, path):
+    def findDeprecatedConfig(self, path: str) -> Optional[str]:
+        """Find and convert a deprecated .ini config to the preferred format.
+        
+        Searches for a .ini version of the config file and converts it to
+        the preferred format (YAML or JSON) if found.
+        
+        Args:
+            path: Path to the config file (with preferred extension)
+            
+        Returns:
+            Path to the converted config file if found and converted,
+            otherwise None
+        """
         depConfig = os.path.splitext(path)[0] + ".ini"
         if os.path.exists(depConfig):
             newConfig = self.convertDeprecatedConfig(depConfig) or ""
@@ -799,7 +1132,21 @@ class ConfigManager(object):
                 return newConfig
 
     @err_catcher(name=__name__)
-    def convertDeprecatedConfig(self, path):
+    def convertDeprecatedConfig(self, path: str) -> Optional[str]:
+        """Convert a deprecated .ini config file to the preferred format.
+        
+        Reads an old .ini format configuration file and converts it to the
+        preferred format (YAML or JSON). Handles special cases for recent
+        projects, recent files, and omits. Creates sections as lists or
+        ordered dictionaries as appropriate.
+        
+        Args:
+            path: Path to the .ini config file to convert
+            
+        Returns:
+            Path to the newly created config file in preferred format,
+            or None if conversion was skipped
+        """
         if not os.path.exists(path):
             logger.debug("Skipped config conversion. Config doesn't exist: %s " % path)
             return
@@ -864,7 +1211,23 @@ class ConfigManager(object):
         return newConfig
 
     @err_catcher(name=__name__)
-    def readIni(self, path=None, data=None):
+    def readIni(
+        self,
+        path: Optional[str] = None,
+        data: Optional[str] = None
+    ) -> ConfigParser:
+        """Read an INI format configuration file.
+        
+        Reads legacy .ini format configuration files using ConfigParser.
+        Used for backward compatibility with older Prism versions.
+        
+        Args:
+            path: Path to the .ini file to read
+            data: INI data as string to parse
+            
+        Returns:
+            ConfigParser object containing the parsed INI data
+        """
         logger.debug("read from config: %s" % path)
         config = ConfigParser()
         if path:
@@ -883,7 +1246,25 @@ class ConfigManager(object):
         return config
 
     @err_catcher(name=__name__)
-    def generateConfigPath(self, name, location=None):
+    def generateConfigPath(
+        self,
+        name: str,
+        location: Optional[str] = None
+    ) -> str:
+        """Generate a full path for a new configuration file.
+        
+        Creates a configuration file path based on the name and location context.
+        Uses appropriate base directories and file extensions based on whether
+        it's a user or project config.
+        
+        Args:
+            name: Base name for the config file (without extension)
+            location: Either 'user' or 'project' to determine base directory
+                     (defaults to 'user')
+            
+        Returns:
+            Full path to the configuration file with appropriate extension
+        """
         location = location or "user"
         ext = self.preferredExtension
         if location == "user":

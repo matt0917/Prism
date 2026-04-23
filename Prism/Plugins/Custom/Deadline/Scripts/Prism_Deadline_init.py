@@ -31,12 +31,18 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing import Any
 
 from Prism_Deadline_Variables import Prism_Deadline_Variables
 from Prism_Deadline_Functions import Prism_Deadline_Functions
 
 
 class Prism_Deadline(Prism_Deadline_Variables, Prism_Deadline_Functions):
-    def __init__(self, core):
+    def __init__(self, core: Any) -> None:
+        """Initialize Deadline plugin combining Variables and Functions modules.
+        
+        Args:
+            core: Prism core instance
+        """
         Prism_Deadline_Variables.__init__(self, core, self)
         Prism_Deadline_Functions.__init__(self, core, self)

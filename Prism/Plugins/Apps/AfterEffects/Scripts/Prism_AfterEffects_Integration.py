@@ -191,8 +191,13 @@ class Prism_AfterEffects_Integration(object):
                 }
                 cmds.append(cmd)
 
-            origFile = os.path.join(integrationBase, "prism.cmd")
-            targetFile = os.path.join(installPath, "prism.cmd")
+            if platform.system() == "Darwin":
+                scriptName = "prism.sh"
+            else:
+                scriptName = "prism.cmd"
+
+            origFile = os.path.join(integrationBase, scriptName)
+            targetFile = os.path.join(installPath, scriptName)
             if os.path.exists(targetFile):
                 cmd = {
                     "type": "removeFile",
@@ -213,6 +218,10 @@ class Prism_AfterEffects_Integration(object):
             cmds.append(cmd)
 
             result = self.core.runFileCommands(cmds)
+            if result and platform.system() == "Darwin":
+                import stat
+                os.chmod(targetFile, os.stat(targetFile).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
             if result:
                 result = self.extractZipWithDates(origAepZip, targetFolder)
 
@@ -278,11 +287,15 @@ class Prism_AfterEffects_Integration(object):
         try:
             prAep = os.path.join(installPath, "prism.aep")
             prCmd = os.path.join(installPath, "prism.cmd")
+            prSh = os.path.join(installPath, "prism.sh")
             if os.path.exists(prAep):
                 shutil.rmtree(prAep)
 
             if os.path.exists(prCmd):
                 os.remove(prCmd)
+
+            if os.path.exists(prSh):
+                os.remove(prSh)
 
             return True
 

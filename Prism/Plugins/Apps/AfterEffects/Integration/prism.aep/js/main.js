@@ -52,7 +52,9 @@ function launchPrism() {
 
 function onButtonClick(cmd) {
     const path = require('path');
-    const cmdFilePath = path.join(__dirname, '..', 'prism.cmd');
+    const isWin = process.platform === 'win32';
+    const scriptName = isWin ? 'prism.cmd' : 'prism.sh';
+    const cmdFilePath = path.join(__dirname, '..', scriptName);
 
     console.log(`Executing command: "${cmdFilePath}"`);
 
@@ -63,11 +65,12 @@ function startProcess(cmdFilePath, cmd) {
     const { spawn } = require('child_process');
 
     const isWin = process.platform === 'win32';
+    let child;
 
     if (isWin) {
-        const child = spawn(cmdFilePath, [cmd], { shell: false });
+        child = spawn(cmdFilePath, [cmd], { shell: false });
     } else {
-        const child = spawn("\"%s\"" % cmdFilePath, [cmd], { shell: true }); // for mac
+        child = spawn(`"${cmdFilePath}" "${cmd}"`, [], { shell: true });
     }
 
     child.stdout.on('data', (data) => {

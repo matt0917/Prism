@@ -60,15 +60,3 @@ begin
   // Return True to continue setup; returning False would abort installer
   Result := True;
 end;
-
-// CurPageChanged: event handler called when the wizard navigates to a different page
-// CurPageID: numeric identifier of the page just entered (e.g., wpSelectDir)
-procedure CurPageChanged(CurPageID: Integer);
-begin
-  // wpSelectDir: constant for the directory selection page
-  if CurPageID = wpSelectDir then
-  begin
-    // MsgBox: show an information dialog to the user about the update
-    MsgBox('This will update your existing Prism installation at: ' + WizardForm.DirEdit.Text, mbInformation, MB_OK);
-  end;
-end;

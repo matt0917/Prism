@@ -1,37 +1,49 @@
+# Workflow name shown in GitHub Actions
 name: Build Prism Installer and Release
 
+# Run this workflow when a Git tag is pushed that starts with "v"
 on:
   push:
     tags:
       - 'v*'
 
+# Give the workflow permission to create and update repository content
 permissions:
   contents: write
 
 jobs:
+  # Define a single job called build-release
   build-release:
+    # Use a Windows runner for this job
     runs-on: windows-latest
 
     steps:
+      # Step 1: get the code from the repository
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      # Step 2: make a build folder and copy Prism files there (excluding Python311, PythonLibs, Tools)
       - name: Prepare build folder
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "build\Prism"
-          Copy-Item -Path "Prism\*" -Destination "build\Prism" -Recurse -Force
+          Get-ChildItem -Path "Prism" -Force | Where-Object { $_.Name -notin @('Python311', 'PythonLibs', 'Tools') } | ForEach-Object {
+            Copy-Item -Path $_.FullName -Destination "build\Prism\$($_.Name)" -Recurse -Force
+          }
 
+      # Step 3: install Inno Setup using Chocolatey
       - name: Install Inno Setup
         shell: pwsh
         run: |
           choco install innosetup -y
 
+      # Step 4: run the Inno Setup compiler to build the installer
       - name: Build installer
         shell: pwsh
         run: |
           iscc installer\PrismInstaller.iss
 
+      # Step 5: create a GitHub release and attach the built installer
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:

@@ -36,6 +36,7 @@ import os
 import sys
 import platform
 import glob
+from typing import Any, List, Optional, Union
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -51,30 +52,63 @@ from PrismUtils.Decorators import err_catcher_plugin as err_catcher
 
 
 class Prism_Blender_Integration(object):
-    def __init__(self, core, plugin):
+    """Blender integration management.
+    
+    Handles installation and removal of Prism integration files in
+    Blender directories, including startup scripts and menu modifications.
+    
+    Attributes:
+        core: PrismCore instance.
+        plugin: Blender plugin instance.
+        useUserPrefs: Whether to use user preferences folder.
+        examplePath: Example installation path for reference.
+    """
+    
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize Blender integration manager.
+        
+        Sets example paths based on platform.
+        
+        Args:
+            core: PrismCore instance.
+            plugin: Blender plugin instance.
+        """
         self.core = core
         self.plugin = plugin
 
+        self.useUserPrefs = True
         if platform.system() == "Windows":
-            self.examplePath = (
-                self.getBlenderPath()
-                or "C:/Program Files/Blender Foundation/Blender 3.6/"
-            )
+            if self.useUserPrefs:
+                self.examplePath = os.path.normpath(os.environ["appdata"] + "\\Blender Foundation\\Blender\\5.1")
+            else:
+                self.examplePath = self.getBlenderPath() or "C:/Program Files/Blender Foundation/Blender 5.1"
         elif platform.system() == "Linux":
-            self.examplePath = "/usr/local/blender-2.79b-linux-glibc219-x86_64/2.79"
+            self.examplePath = "/usr/local/blender-5.1-linux-glibc219-x86_64/5.1"
         elif platform.system() == "Darwin":
-            self.examplePath = "/Applications/blender/blender.app/Resources/2.79"
+            self.examplePath = os.path.expanduser("~/Library/Application Support/Blender/5.1")
 
     @err_catcher(name=__name__)
-    def getExecutable(self):
+    def getExecutable(self) -> str:
+        """Get Blender executable path.
+        
+        Returns:
+            Path to blender.exe on Windows, empty string on other platforms.
+        """
         execPath = ""
         if platform.system() == "Windows":
-            execPath = os.path.join(os.path.dirname(self.examplePath), "blender.exe")
+            bldPath = self.getBlenderPath()
+            if bldPath:
+                execPath = os.path.join(os.path.dirname(bldPath), "blender.exe")
 
         return execPath
 
     @err_catcher(name=__name__)
-    def getBlenderPath(self):
+    def getBlenderPath(self) -> str:
+        """Get Blender version path from Windows registry.
+        
+        Returns:
+            Path to Blender version folder if found, empty string otherwise.
+        """
         try:
             key = _winreg.OpenKey(
                 _winreg.HKEY_LOCAL_MACHINE,
@@ -86,7 +120,7 @@ class Prism_Blender_Integration(object):
                 (_winreg.QueryValueEx(key, ""))[0].split(' "%1"')[0].replace('"', "")
             )
 
-            vpath = os.path.join(os.path.dirname(blenderPath), "3.6")
+            vpath = os.path.join(os.path.dirname(blenderPath), "5.1")
 
             if os.path.exists(vpath):
                 return vpath
@@ -97,13 +131,24 @@ class Prism_Blender_Integration(object):
             return ""
 
     @err_catcher(name=__name__)
-    def getBlenderPaths(self):
+    def getBlenderPaths(self) -> List[str]:
+        """Get all available Blender installation paths.
+        
+        Searches for Blender installations and checks registry.
+        
+        Returns:
+            List of Blender version folder paths.
+        """
         blenderPaths = []
-        basepath = "C:/Program Files/Blender Foundation"
+        basepath = os.path.dirname(self.examplePath)
 
         for path in glob.glob(basepath + "/Blender*"):
-            if os.path.exists(path + "/blender.exe"):
-                blenderPaths.append(os.path.normpath(path))
+            if self.useUserPrefs:
+                if os.path.exists(path + "/config"):
+                    blenderPaths.append(os.path.normpath(path))
+            else:
+                if os.path.exists(path + "/blender.exe"):
+                    blenderPaths.append(os.path.normpath(path))
 
         regPath = self.getBlenderPath()
         if regPath and os.path.exists(regPath) and regPath not in blenderPaths:
@@ -111,7 +156,17 @@ class Prism_Blender_Integration(object):
 
         return blenderPaths
 
-    def addIntegration(self, installPath):
+    def addIntegration(self, installPath: str) -> bool:
+        """Install Prism integration into Blender.
+        
+        Copies integration files and modifies Blender startup scripts.
+        
+        Args:
+            installPath: Path to Blender version folder.
+        
+        Returns:
+            True if installation succeeded, False otherwise.
+        """
         try:
             if not os.path.exists(os.path.join(installPath, "scripts", "startup")):
                 if os.path.exists(installPath):
@@ -124,9 +179,9 @@ class Prism_Blender_Integration(object):
                             installPath = os.path.join(installPath, f)
                             break
 
-            if not os.path.exists(os.path.join(installPath, "scripts", "startup")):
+            if not os.path.exists(os.path.join(installPath, "scripts", "startup")) and not os.path.exists(os.path.join(installPath, "config")):
                 msgStr = (
-                    "Invalid Blender path: %s.\n\nThe path has to be the Blender version folder in the installation folder, which usually looks like this: (with your Blender version):\n\n%s"
+                    "Invalid Blender path: %s.\n\nThe path has to be the Blender version folder in the user preferences folder, which usually looks like this: (with your Blender version):\n\n%s"
                     % (installPath, self.examplePath)
                 )
                 self.core.popup(msgStr, title="Prism Integration")
@@ -135,6 +190,7 @@ class Prism_Blender_Integration(object):
             integrationBase = os.path.join(
                 os.path.dirname(os.path.dirname(__file__)), "Integration"
             )
+            integrationBase = os.path.realpath(integrationBase)
 
             # prismInit
             initpath = os.path.join(
@@ -164,6 +220,10 @@ class Prism_Blender_Integration(object):
 
             if os.path.exists(saveRenderPath + "c"):
                 cmd = {"type": "removeFile", "args": [saveRenderPath + "c"]}
+                cmds.append(cmd)
+
+            if not os.path.exists(os.path.dirname(initpath)):
+                cmd = {"type": "createFolder", "args": [os.path.dirname(initpath)]}
                 cmds.append(cmd)
 
             baseinitfile = os.path.join(integrationBase, "PrismInit.py")
@@ -297,7 +357,17 @@ class Prism_Blender_Integration(object):
             QMessageBox.warning(self.core.messageParent, "Prism Integration", msgStr)
             return False
 
-    def removeIntegration(self, installPath):
+    def removeIntegration(self, installPath: str) -> bool:
+        """Remove Prism integration from Blender.
+        
+        Removes integration files and restores modified scripts.
+        
+        Args:
+            installPath: Path to Blender version folder.
+        
+        Returns:
+            True if removal succeeded, False otherwise.
+        """
         try:
             cmds = []
             if not os.path.exists(os.path.join(installPath, "scripts", "startup")):
@@ -374,7 +444,18 @@ class Prism_Blender_Integration(object):
             QMessageBox.warning(self.core.messageParent, "Prism Integration", msgStr)
             return False
 
-    def updateInstallerUI(self, userFolders, pItem):
+    def updateInstallerUI(self, userFolders: Any, pItem: Any) -> Optional[bool]:
+        """Update installer UI with Blender installation options.
+        
+        Adds Blender versions to installer tree widget.
+        
+        Args:
+            userFolders: User folders object.
+            pItem: Parent tree widget item.
+            
+        Returns:
+            None on success, False on error.
+        """
         try:
             bldItem = QTreeWidgetItem(["Blender"])
             bldItem.setCheckState(0, Qt.Checked)
@@ -386,6 +467,7 @@ class Prism_Blender_Integration(object):
             bldCustomItem.setToolTip(1, 'e.g. "%s"' % self.examplePath)
             bldCustomItem.setText(1, "< doubleclick to browse path >")
             bldCustomItem.setCheckState(0, Qt.Unchecked)
+            bldCustomItem.setFlags(bldCustomItem.flags() & ~Qt.ItemIsAutoTristate)
             bldItem.addChild(bldCustomItem)
             bldItem.setExpanded(True)
 
@@ -395,13 +477,14 @@ class Prism_Blender_Integration(object):
                 bldItem.addChild(bldVItem)
 
                 bldVItem.setCheckState(0, Qt.Checked)
+                bldVItem.setFlags(bldVItem.flags() & ~Qt.ItemIsAutoTristate)
                 bldVItem.setText(1, bldPath)
                 bldVItem.setToolTip(0, bldPath)
                 bldVItem.setText(1, bldPath)
                 activeVersion = True
 
             if not activeVersion:
-                bldPaths.setCheckState(0, Qt.Unchecked)
+                bldItem.setCheckState(0, Qt.Unchecked)
                 bldCustomItem.setFlags(~Qt.ItemIsEnabled)
 
         except Exception as e:
@@ -414,7 +497,18 @@ class Prism_Blender_Integration(object):
             )
             return False
 
-    def installerExecute(self, bldItem, result):
+    def installerExecute(self, bldItem: Any, result: dict) -> Union[List[str], bool]:
+        """Execute Blender integration installation.
+        
+        Installs integration for all checked Blender versions.
+        
+        Args:
+            bldItem: Blender tree widget item.
+            result: Result dictionary to update.
+        
+        Returns:
+            List of successfully installed paths, or False on error.
+        """
         try:
             bldPaths = []
             installLocs = []

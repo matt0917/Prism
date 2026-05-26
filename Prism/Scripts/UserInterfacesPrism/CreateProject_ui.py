@@ -1,181 +1,255 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'CreateProject.ui'
-#
-# Created: Tue Aug  8 18:12:49 2023
-#      by: qtpy-uic 2.0.5
-#
-# WARNING! All changes made in this file will be lost!
+################################################################################
+## Form generated from reading UI file 'CreateProject.ui'
+##
+## Created by: Qt User Interface Compiler version 6.4.2
+##
+## WARNING! All changes made in this file will be lost when recompiling UI file!
+################################################################################
 
-from qtpy import QtCore, QtGui, QtWidgets
+from qtpy.QtCore import *  # type: ignore
+from qtpy.QtGui import *  # type: ignore
+from qtpy.QtWidgets import *  # type: ignore
 
 class Ui_dlg_createProject(object):
     def setupUi(self, dlg_createProject):
-        dlg_createProject.setObjectName("dlg_createProject")
+        if not dlg_createProject.objectName():
+            dlg_createProject.setObjectName(u"dlg_createProject")
         dlg_createProject.resize(726, 418)
-        self.horizontalLayout_11 = QtWidgets.QHBoxLayout(dlg_createProject)
-        self.horizontalLayout_11.setObjectName("horizontalLayout_11")
-        self.scrollArea = QtWidgets.QScrollArea(dlg_createProject)
-        self.scrollArea.setMinimumSize(QtCore.QSize(0, 300))
+        self.horizontalLayout_11 = QHBoxLayout(dlg_createProject)
+        self.horizontalLayout_11.setObjectName(u"horizontalLayout_11")
+        self.scrollArea = QScrollArea(dlg_createProject)
+        self.scrollArea.setObjectName(u"scrollArea")
+        self.scrollArea.setMinimumSize(QSize(0, 300))
         self.scrollArea.setWidgetResizable(True)
-        self.scrollArea.setObjectName("scrollArea")
-        self.scrollAreaWidgetContents = QtWidgets.QWidget()
-        self.scrollAreaWidgetContents.setGeometry(QtCore.QRect(0, 0, 689, 400))
-        self.scrollAreaWidgetContents.setObjectName("scrollAreaWidgetContents")
-        self.verticalLayout_2 = QtWidgets.QVBoxLayout(self.scrollAreaWidgetContents)
+        self.scrollAreaWidgetContents = QWidget()
+        self.scrollAreaWidgetContents.setObjectName(u"scrollAreaWidgetContents")
+        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 689, 400))
+        self.verticalLayout_2 = QVBoxLayout(self.scrollAreaWidgetContents)
         self.verticalLayout_2.setSpacing(15)
+        self.verticalLayout_2.setObjectName(u"verticalLayout_2")
         self.verticalLayout_2.setContentsMargins(9, 9, 9, 9)
-        self.verticalLayout_2.setObjectName("verticalLayout_2")
-        self.sw_project = QtWidgets.QStackedWidget(self.scrollAreaWidgetContents)
-        self.sw_project.setObjectName("sw_project")
-        self.page = QtWidgets.QWidget()
-        self.page.setObjectName("page")
-        self.verticalLayout = QtWidgets.QVBoxLayout(self.page)
+        self.sw_project = QStackedWidget(self.scrollAreaWidgetContents)
+        self.sw_project.setObjectName(u"sw_project")
+        self.page = QWidget()
+        self.page.setObjectName(u"page")
+        self.verticalLayout = QVBoxLayout(self.page)
+        self.verticalLayout.setObjectName(u"verticalLayout")
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
-        self.verticalLayout.setObjectName("verticalLayout")
-        self.w_start = QtWidgets.QWidget(self.page)
-        self.w_start.setObjectName("w_start")
-        self.gridLayout = QtWidgets.QGridLayout(self.w_start)
-        self.gridLayout.setContentsMargins(0, 0, 0, 0)
-        self.gridLayout.setObjectName("gridLayout")
-        self.l_preset = QtWidgets.QLabel(self.w_start)
-        self.l_preset.setObjectName("l_preset")
+        self.w_start = QWidget(self.page)
+        self.w_start.setObjectName(u"w_start")
+        self.gridLayout = QGridLayout(self.w_start)
+        self.gridLayout.setObjectName(u"gridLayout")
+        self.l_preset = QLabel(self.w_start)
+        self.l_preset.setObjectName(u"l_preset")
+
         self.gridLayout.addWidget(self.l_preset, 3, 0, 1, 1)
-        self.l_name = QtWidgets.QLabel(self.w_start)
-        self.l_name.setObjectName("l_name")
+
+        self.l_name = QLabel(self.w_start)
+        self.l_name.setObjectName(u"l_name")
+
         self.gridLayout.addWidget(self.l_name, 0, 0, 1, 1)
-        spacerItem = QtWidgets.QSpacerItem(20, 30, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Fixed)
-        self.gridLayout.addItem(spacerItem, 5, 1, 1, 1)
-        spacerItem1 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
-        self.gridLayout.addItem(spacerItem1, 7, 1, 1, 1)
-        self.e_path = QtWidgets.QLineEdit(self.w_start)
-        self.e_path.setObjectName("e_path")
+
+        self.verticalSpacer_2 = QSpacerItem(20, 30, QSizePolicy.Minimum, QSizePolicy.Fixed)
+
+        self.gridLayout.addItem(self.verticalSpacer_2, 5, 1, 1, 1)
+
+        self.verticalSpacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+
+        self.gridLayout.addItem(self.verticalSpacer, 7, 1, 1, 1)
+
+        self.e_path = QLineEdit(self.w_start)
+        self.e_path.setObjectName(u"e_path")
+
         self.gridLayout.addWidget(self.e_path, 1, 1, 1, 1)
-        self.b_browse = QtWidgets.QToolButton(self.w_start)
-        self.b_browse.setObjectName("b_browse")
+
+        self.b_browse = QToolButton(self.w_start)
+        self.b_browse.setObjectName(u"b_browse")
+
         self.gridLayout.addWidget(self.b_browse, 1, 2, 1, 1)
-        self.l_path = QtWidgets.QLabel(self.w_start)
-        self.l_path.setObjectName("l_path")
+
+        self.l_path = QLabel(self.w_start)
+        self.l_path.setObjectName(u"l_path")
+
         self.gridLayout.addWidget(self.l_path, 1, 0, 1, 1)
-        self.widget_4 = QtWidgets.QWidget(self.w_start)
-        self.widget_4.setObjectName("widget_4")
-        self.horizontalLayout_2 = QtWidgets.QHBoxLayout(self.widget_4)
-        self.horizontalLayout_2.setContentsMargins(0, 0, 0, 0)
-        self.horizontalLayout_2.setObjectName("horizontalLayout_2")
-        spacerItem2 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_2.addItem(spacerItem2)
-        self.l_preview = QtWidgets.QLabel(self.widget_4)
-        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+
+        self.widget_4 = QWidget(self.w_start)
+        self.widget_4.setObjectName(u"widget_4")
+        self.horizontalLayout_2 = QHBoxLayout(self.widget_4)
+        self.horizontalLayout_2.setObjectName(u"horizontalLayout_2")
+        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.horizontalLayout_2.addItem(self.horizontalSpacer)
+
+        self.l_preview = QLabel(self.widget_4)
+        self.l_preview.setObjectName(u"l_preview")
+        sizePolicy = QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.l_preview.sizePolicy().hasHeightForWidth())
         self.l_preview.setSizePolicy(sizePolicy)
-        self.l_preview.setMinimumSize(QtCore.QSize(300, 169))
-        self.l_preview.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-        self.l_preview.setAlignment(QtCore.Qt.AlignCenter)
-        self.l_preview.setObjectName("l_preview")
+        self.l_preview.setMinimumSize(QSize(300, 169))
+        self.l_preview.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.l_preview.setAlignment(Qt.AlignCenter)
+
         self.horizontalLayout_2.addWidget(self.l_preview)
-        spacerItem3 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_2.addItem(spacerItem3)
+
+        self.horizontalSpacer_2 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.horizontalLayout_2.addItem(self.horizontalSpacer_2)
+
+
         self.gridLayout.addWidget(self.widget_4, 6, 1, 1, 1)
-        self.label_2 = QtWidgets.QLabel(self.w_start)
-        self.label_2.setObjectName("label_2")
+
+        self.label_2 = QLabel(self.w_start)
+        self.label_2.setObjectName(u"label_2")
+
         self.gridLayout.addWidget(self.label_2, 6, 0, 1, 1)
-        self.e_name = QtWidgets.QLineEdit(self.w_start)
-        self.e_name.setObjectName("e_name")
+
+        self.e_name = QLineEdit(self.w_start)
+        self.e_name.setObjectName(u"e_name")
+
         self.gridLayout.addWidget(self.e_name, 0, 1, 1, 1)
-        self.w_preset = QtWidgets.QWidget(self.w_start)
-        self.w_preset.setObjectName("w_preset")
-        self.horizontalLayout_6 = QtWidgets.QHBoxLayout(self.w_preset)
+
+        self.w_preset = QWidget(self.w_start)
+        self.w_preset.setObjectName(u"w_preset")
+        self.horizontalLayout_6 = QHBoxLayout(self.w_preset)
+        self.horizontalLayout_6.setObjectName(u"horizontalLayout_6")
         self.horizontalLayout_6.setContentsMargins(0, 0, 0, 0)
-        self.horizontalLayout_6.setObjectName("horizontalLayout_6")
-        spacerItem4 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_6.addItem(spacerItem4)
-        self.cb_preset = QtWidgets.QComboBox(self.w_preset)
-        self.cb_preset.setObjectName("cb_preset")
+        self.horizontalSpacer_4 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.horizontalLayout_6.addItem(self.horizontalSpacer_4)
+
+        self.cb_preset = QComboBox(self.w_preset)
+        self.cb_preset.setObjectName(u"cb_preset")
+
         self.horizontalLayout_6.addWidget(self.cb_preset)
-        self.b_reload = QtWidgets.QToolButton(self.w_preset)
-        self.b_reload.setObjectName("b_reload")
+
+        self.b_reload = QToolButton(self.w_preset)
+        self.b_reload.setObjectName(u"b_reload")
+
         self.horizontalLayout_6.addWidget(self.b_reload)
-        self.b_addPreset = QtWidgets.QToolButton(self.w_preset)
-        self.b_addPreset.setObjectName("b_addPreset")
+
+        self.b_addPreset = QToolButton(self.w_preset)
+        self.b_addPreset.setObjectName(u"b_addPreset")
+
         self.horizontalLayout_6.addWidget(self.b_addPreset)
-        self.b_managePresets = QtWidgets.QToolButton(self.w_preset)
-        self.b_managePresets.setObjectName("b_managePresets")
+
+        self.b_managePresets = QToolButton(self.w_preset)
+        self.b_managePresets.setObjectName(u"b_managePresets")
+
         self.horizontalLayout_6.addWidget(self.b_managePresets)
+
+
         self.gridLayout.addWidget(self.w_preset, 3, 1, 1, 1)
-        self.l_placeholder = QtWidgets.QLabel(self.w_start)
-        self.l_placeholder.setText("")
-        self.l_placeholder.setObjectName("l_placeholder")
+
+        self.l_placeholder = QLabel(self.w_start)
+        self.l_placeholder.setObjectName(u"l_placeholder")
+
         self.gridLayout.addWidget(self.l_placeholder, 4, 1, 1, 1)
+
+
         self.verticalLayout.addWidget(self.w_start)
+
         self.sw_project.addWidget(self.page)
-        self.page_2 = QtWidgets.QWidget()
-        self.page_2.setObjectName("page_2")
-        self.verticalLayout_3 = QtWidgets.QVBoxLayout(self.page_2)
+        self.page_2 = QWidget()
+        self.page_2.setObjectName(u"page_2")
+        self.verticalLayout_3 = QVBoxLayout(self.page_2)
+        self.verticalLayout_3.setObjectName(u"verticalLayout_3")
         self.verticalLayout_3.setContentsMargins(0, 0, 0, 0)
-        self.verticalLayout_3.setObjectName("verticalLayout_3")
-        self.widget_32 = QtWidgets.QWidget(self.page_2)
-        self.widget_32.setObjectName("widget_32")
-        self.verticalLayout_6 = QtWidgets.QVBoxLayout(self.widget_32)
-        self.verticalLayout_6.setContentsMargins(0, 0, 0, 0)
-        self.verticalLayout_6.setObjectName("verticalLayout_6")
-        self.tw_structure = QtWidgets.QTreeWidget(self.widget_32)
-        self.tw_structure.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-        self.tw_structure.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
+        self.widget_32 = QWidget(self.page_2)
+        self.widget_32.setObjectName(u"widget_32")
+        self.verticalLayout_6 = QVBoxLayout(self.widget_32)
+        self.verticalLayout_6.setObjectName(u"verticalLayout_6")
+        self.tw_structure = QTreeWidget(self.widget_32)
+        __qtreewidgetitem = QTreeWidgetItem()
+        __qtreewidgetitem.setText(0, u"1");
+        self.tw_structure.setHeaderItem(__qtreewidgetitem)
+        self.tw_structure.setObjectName(u"tw_structure")
+        self.tw_structure.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tw_structure.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.tw_structure.setIndentation(10)
-        self.tw_structure.setObjectName("tw_structure")
-        self.tw_structure.headerItem().setText(0, "1")
+
         self.verticalLayout_6.addWidget(self.tw_structure)
-        self.b_settings = QtWidgets.QPushButton(self.widget_32)
-        self.b_settings.setObjectName("b_settings")
+
+        self.b_settings = QPushButton(self.widget_32)
+        self.b_settings.setObjectName(u"b_settings")
+
         self.verticalLayout_6.addWidget(self.b_settings)
+
+
         self.verticalLayout_3.addWidget(self.widget_32)
+
         self.sw_project.addWidget(self.page_2)
+
         self.verticalLayout_2.addWidget(self.sw_project)
-        self.w_footer = QtWidgets.QWidget(self.scrollAreaWidgetContents)
-        self.w_footer.setObjectName("w_footer")
-        self.horizontalLayout_3 = QtWidgets.QHBoxLayout(self.w_footer)
+
+        self.w_footer = QWidget(self.scrollAreaWidgetContents)
+        self.w_footer.setObjectName(u"w_footer")
+        self.horizontalLayout_3 = QHBoxLayout(self.w_footer)
+        self.horizontalLayout_3.setObjectName(u"horizontalLayout_3")
         self.horizontalLayout_3.setContentsMargins(0, 0, 0, 0)
-        self.horizontalLayout_3.setObjectName("horizontalLayout_3")
-        spacerItem5 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_3.addItem(spacerItem5)
-        self.b_back = QtWidgets.QPushButton(self.w_footer)
-        self.b_back.setObjectName("b_back")
+        self.horizontalSpacer_3 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.horizontalLayout_3.addItem(self.horizontalSpacer_3)
+
+        self.b_back = QPushButton(self.w_footer)
+        self.b_back.setObjectName(u"b_back")
+
         self.horizontalLayout_3.addWidget(self.b_back)
-        self.b_next = QtWidgets.QPushButton(self.w_footer)
-        self.b_next.setObjectName("b_next")
+
+        self.b_next = QPushButton(self.w_footer)
+        self.b_next.setObjectName(u"b_next")
+
         self.horizontalLayout_3.addWidget(self.b_next)
-        self.b_create = QtWidgets.QPushButton(self.w_footer)
-        self.b_create.setObjectName("b_create")
+
+        self.b_create = QPushButton(self.w_footer)
+        self.b_create.setObjectName(u"b_create")
+
         self.horizontalLayout_3.addWidget(self.b_create)
-        spacerItem6 = QtWidgets.QSpacerItem(0, 20, QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_3.addItem(spacerItem6)
+
+        self.sp_footer = QSpacerItem(0, 20, QSizePolicy.Fixed, QSizePolicy.Minimum)
+
+        self.horizontalLayout_3.addItem(self.sp_footer)
+
+
         self.verticalLayout_2.addWidget(self.w_footer)
+
         self.scrollArea.setWidget(self.scrollAreaWidgetContents)
+
         self.horizontalLayout_11.addWidget(self.scrollArea)
 
+        QWidget.setTabOrder(self.scrollArea, self.e_name)
+        QWidget.setTabOrder(self.e_name, self.e_path)
+        QWidget.setTabOrder(self.e_path, self.b_browse)
+
         self.retranslateUi(dlg_createProject)
+
         self.sw_project.setCurrentIndex(0)
-        QtCore.QMetaObject.connectSlotsByName(dlg_createProject)
-        dlg_createProject.setTabOrder(self.scrollArea, self.e_name)
-        dlg_createProject.setTabOrder(self.e_name, self.e_path)
-        dlg_createProject.setTabOrder(self.e_path, self.b_browse)
+
+
+        QMetaObject.connectSlotsByName(dlg_createProject)
+    # setupUi
 
     def retranslateUi(self, dlg_createProject):
-        dlg_createProject.setWindowTitle(QtWidgets.QApplication.translate("", "Create Project", None, -1))
-        self.l_preset.setText(QtWidgets.QApplication.translate("", "Preset:", None, -1))
-        self.l_name.setText(QtWidgets.QApplication.translate("", "Project Name:", None, -1))
-        self.b_browse.setToolTip(QtWidgets.QApplication.translate("", "browse", None, -1))
-        self.b_browse.setText(QtWidgets.QApplication.translate("", "...", None, -1))
-        self.l_path.setText(QtWidgets.QApplication.translate("", "Project Path:", None, -1))
-        self.l_preview.setText(QtWidgets.QApplication.translate("", "Preview image", None, -1))
-        self.label_2.setText(QtWidgets.QApplication.translate("", "Image (optional):", None, -1))
-        self.b_reload.setText(QtWidgets.QApplication.translate("", "...", None, -1))
-        self.b_addPreset.setText(QtWidgets.QApplication.translate("", "...", None, -1))
-        self.b_managePresets.setText(QtWidgets.QApplication.translate("", "...", None, -1))
-        self.b_settings.setText(QtWidgets.QApplication.translate("", "Customize Project Settings...", None, -1))
-        self.b_back.setText(QtWidgets.QApplication.translate("", "Back", None, -1))
-        self.b_next.setText(QtWidgets.QApplication.translate("", "Edit Settings", None, -1))
-        self.b_create.setText(QtWidgets.QApplication.translate("", "Create", None, -1))
+        dlg_createProject.setWindowTitle(QCoreApplication.translate("dlg_createProject", u"Create Project", None))
+        self.l_preset.setText(QCoreApplication.translate("dlg_createProject", u"Preset:", None))
+        self.l_name.setText(QCoreApplication.translate("dlg_createProject", u"Project Name:", None))
+#if QT_CONFIG(tooltip)
+        self.b_browse.setToolTip(QCoreApplication.translate("dlg_createProject", u"browse", None))
+#endif // QT_CONFIG(tooltip)
+        self.b_browse.setText(QCoreApplication.translate("dlg_createProject", u"...", None))
+        self.l_path.setText(QCoreApplication.translate("dlg_createProject", u"Project Path:", None))
+        self.l_preview.setText(QCoreApplication.translate("dlg_createProject", u"Preview image", None))
+        self.label_2.setText(QCoreApplication.translate("dlg_createProject", u"Image (optional):", None))
+        self.b_reload.setText(QCoreApplication.translate("dlg_createProject", u"...", None))
+        self.b_addPreset.setText(QCoreApplication.translate("dlg_createProject", u"...", None))
+        self.b_managePresets.setText(QCoreApplication.translate("dlg_createProject", u"...", None))
+        self.l_placeholder.setText("")
+        self.b_settings.setText(QCoreApplication.translate("dlg_createProject", u"Customize Project Settings...", None))
+        self.b_back.setText(QCoreApplication.translate("dlg_createProject", u"Back", None))
+        self.b_next.setText(QCoreApplication.translate("dlg_createProject", u"Edit Settings", None))
+        self.b_create.setText(QCoreApplication.translate("dlg_createProject", u"Create", None))
+    # retranslateUi
 

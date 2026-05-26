@@ -37,6 +37,7 @@ import tempfile
 import subprocess
 import logging
 import platform
+from typing import Any, List, Optional, Dict
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -49,7 +50,23 @@ logger = logging.getLogger(__name__)
 
 
 class Prism_PureRef_externalAccess_Functions(object):
-    def __init__(self, core, plugin):
+    """External access and callback functions for PureRef plugin.
+    
+    Handles file operations, context menus, media exports, and PureRef
+    executable integration.
+    
+    Attributes:
+        core: PrismCore instance
+        plugin: Plugin instance
+    """
+
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize external access functions and register callbacks.
+        
+        Args:
+            core: PrismCore instance.
+            plugin: Plugin instance.
+        """
         self.core = core
         self.plugin = plugin
         self.core.registerCallback("getIconPathForFileType", self.getIconPathForFileType, plugin=self.plugin)
@@ -61,7 +78,12 @@ class Prism_PureRef_externalAccess_Functions(object):
         self.initialize()
 
     @err_catcher(name=__name__)
-    def initializeFirstLaunch(self):
+    def initializeFirstLaunch(self) -> None:
+        """Prompt user to configure PureRef executable on first launch.
+        
+        Shows file browser dialog to select PureRef executable if not already
+        configured. Saves configuration to user settings.
+        """
         if not self.core.uiAvailable:
             return
 
@@ -69,6 +91,9 @@ class Prism_PureRef_externalAccess_Functions(object):
             return
 
         if self.core.getConfig("dccoverrides", "PureRef_path"):
+            return
+
+        if self.core.status == "starting":
             return
 
         msg = "Please specify the \"PureRef\" executable to use the \"PureRef\" plugin in Prism.\nYou can change the path to the executable later in the \"DCC Apps\" tab of the Prism User Settings."
@@ -100,34 +125,66 @@ class Prism_PureRef_externalAccess_Functions(object):
         self.core.setConfig("pureref", "initialized", True, config="user")
 
     @err_catcher(name=__name__)
-    def initialize(self):
+    def initialize(self) -> None:
+        """Initialize PureRef plugin integration.
+        
+        Registers PureRef file formats with the Project Browser's scene browser
+        and refreshes the scene file list.
+        """
         if hasattr(self.core, "pb") and self.core.pb:
             self.core.pb.sceneBrowser.appFilters[self.pluginName] = {
                 "formats": self.sceneFormats,
                 "show": True,
             }
-            self.core.pb.sceneBrowser.refreshScenefiles()
+            self.core.pb.sceneBrowser.refreshScenefilesThreaded()
 
     @err_catcher(name=__name__)
-    def preUninstall(self):
+    def preUninstall(self) -> None:
+        """Clean up configuration before plugin uninstall.
+        
+        Removes PureRef-related configuration entries from user settings.
+        """
         self.core.setConfig("pureref", "initialized", delete=True, config="user")
         self.core.setConfig("dccoverrides", "PureRef_override", delete=True, config="user")
         self.core.setConfig("dccoverrides", "PureRef_path", delete=True, config="user")
 
     @err_catcher(name=__name__)
-    def getPresetScenes(self, presetScenes):
+    def getPresetScenes(self, presetScenes: List) -> None:
+        """Add PureRef preset scenes to the preset scenes list.
+        
+        Args:
+            presetScenes: List to append preset scenes to.
+        """
+        if os.getenv("PRISM_SHOW_DEFAULT_SCENEFILE_PRESETS", "1") != "1":
+            return
+
         presetDir = os.path.join(self.pluginDirectory, "Presets")
         scenes = self.core.entities.getPresetScenesFromFolder(presetDir)
         presetScenes += scenes
 
     @err_catcher(name=__name__)
-    def getIconPathForFileType(self, extension):
+    def getIconPathForFileType(self, extension: str) -> Optional[str]:
+        """Get icon path for PureRef file extension.
+        
+        Args:
+            extension: File extension (e.g., ".pur").
+        
+        Returns:
+            Path to icon file, or None if extension not supported.
+        """
         if extension == ".pur":
             path = os.path.join(self.pluginDirectory, "Resources", "PureRef.ico")
             return path
 
     @err_catcher(name=__name__)
-    def openPBFileContextMenu(self, origin, menu, filepath):
+    def openPBFileContextMenu(self, origin: Any, menu: QMenu, filepath: str) -> None:
+        """Add PureRef-specific actions to Project Browser file context menu.
+        
+        Args:
+            origin: Originating widget.
+            menu: Context menu to modify.
+            filepath: Path to the file.
+        """
         ext = os.path.splitext(filepath)[1]
         if ext == ".pur":
             pmenu = QMenu("PureRef", origin)
@@ -146,7 +203,13 @@ class Prism_PureRef_externalAccess_Functions(object):
             menu.insertMenu(menu.actions()[0], pmenu)
 
     @err_catcher(name=__name__)
-    def mediaPlayerContextMenuRequested(self, origin, menu):
+    def mediaPlayerContextMenuRequested(self, origin: Any, menu: QMenu) -> None:
+        """Add "Open in PureRef" action to media player context menu.
+        
+        Args:
+            origin: Originating widget.
+            menu: Context menu to modify.
+        """
         if not type(origin.origin).__name__ == "MediaBrowser":
             return
 
@@ -166,7 +229,12 @@ class Prism_PureRef_externalAccess_Functions(object):
         menu.insertAction(menu.actions()[-2], action)
 
     @err_catcher(name=__name__)
-    def openMediaInPureRef(self, media):
+    def openMediaInPureRef(self, media: List[str]) -> None:
+        """Open media files in PureRef application.
+        
+        Args:
+            media: List of media file paths to open.
+        """
         exe = None
         orApp = self.core.getConfig(
             "dccoverrides",
@@ -191,7 +259,13 @@ class Prism_PureRef_externalAccess_Functions(object):
         subprocess.Popen(args)
 
     @err_catcher(name=__name__)
-    def setAsPreview(self, origin, path):
+    def setAsPreview(self, origin: Any, path: str) -> None:
+        """Set PureRef scene as entity preview image.
+        
+        Args:
+            origin: Originating widget.
+            path: Path to PureRef scene file.
+        """
         with self.core.waitPopup(self.core, "Creating preview. Please wait..."):
             entity = self.core.entities.getScenefileData(path)
             previewImg = self.getImageFromScene(path)
@@ -199,12 +273,29 @@ class Prism_PureRef_externalAccess_Functions(object):
             origin.refreshEntityInfo()
 
     @err_catcher(name=__name__)
-    def exportDlg(self, path):
+    def exportDlg(self, path: str) -> None:
+        """Show export dialog for PureRef scene.
+        
+        Args:
+            path: Path to PureRef scene file.
+        """
         self.dlg_export = ExportDlg(self, path)
         self.dlg_export.show()
 
     @err_catcher(name=__name__)
-    def exportSceneToProject(self, path, entity, identifier, comment=None, location="global"):
+    def exportSceneToProject(self, path: str, entity: Dict, identifier: str, comment: Optional[str] = None, location: str = "global") -> Optional[str]:
+        """Export PureRef scene as image to project.
+        
+        Args:
+            path: Path to PureRef scene file.
+            entity: Entity dictionary (asset or shot).
+            identifier: Task/identifier name.
+            comment: Optional version comment. Defaults to None.
+            location: Storage location. Defaults to "global".
+        
+        Returns:
+            Path to exported image, or False if export failed.
+        """
         if entity.get("type") not in ["asset", "shot"]:
             msg = "The scene is located in an invalid context."
             self.core.popup(msg)
@@ -235,7 +326,15 @@ class Prism_PureRef_externalAccess_Functions(object):
         return imgPath
 
     @err_catcher(name=__name__)
-    def getImageFromScene(self, path):
+    def getImageFromScene(self, path: str) -> Optional[Any]:
+        """Extract image from PureRef scene file.
+        
+        Args:
+            path: Path to PureRef scene file.
+        
+        Returns:
+            QPixmap of exported image, or None if export failed.
+        """
         entity = self.core.entities.getScenefileData(path)
         if entity.get("type") not in ["asset", "shot"]:
             msg = "The scene is located in an invalid context."
@@ -264,7 +363,16 @@ class Prism_PureRef_externalAccess_Functions(object):
         return previewImg
 
     @err_catcher(name=__name__)
-    def exportImage(self, path, imgPath):
+    def exportImage(self, path: str, imgPath: str) -> bool:
+        """Export image from PureRef scene to file.
+        
+        Args:
+            path: Path to PureRef scene file.
+            imgPath: Destination path for exported image.
+        
+        Returns:
+            True if export successful, False otherwise.
+        """
         exe = None
         orApp = self.core.getConfig(
             "dccoverrides",
@@ -299,7 +407,26 @@ class Prism_PureRef_externalAccess_Functions(object):
 
 
 class ExportDlg(QDialog):
-    def __init__(self, plugin, path):
+    """Dialog for exporting PureRef scenes as images to project.
+    
+    Allows selecting entity, identifier, comment, and location for
+    exporting PureRef board as rendered image.
+    
+    Attributes:
+        plugin: Plugin instance
+        core: PrismCore instance
+        path (str): Path to PureRef scene file
+        identifiers (List[str]): Available task identifiers
+        entity (Dict): Target entity for export
+    """
+
+    def __init__(self, plugin: Any, path: str) -> None:
+        """Initialize export dialog.
+        
+        Args:
+            plugin: Plugin instance.
+            path: Path to PureRef scene file.
+        """
         super(ExportDlg, self).__init__()
         self.plugin = plugin
         self.core = self.plugin.core
@@ -311,7 +438,8 @@ class ExportDlg(QDialog):
         self.setEntity(entity)
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Setup the dialog user interface."""
         self.setWindowTitle("Export Image")
         self.core.parentWindow(self)
         self.lo_main = QVBoxLayout()
@@ -367,23 +495,48 @@ class ExportDlg(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Get preferred dialog size.
+        
+        Returns:
+            Preferred size for the dialog.
+        """
         return QSize(400, 250)
 
     @err_catcher(name=__name__)
-    def getIdentifier(self):
+    def getIdentifier(self) -> str:
+        """Get the selected identifier text.
+        
+        Returns:
+            Identifier/task name.
+        """
         return self.e_identifier.text()
 
     @err_catcher(name=__name__)
-    def getComment(self):
+    def getComment(self) -> str:
+        """Get the comment text.
+        
+        Returns:
+            Version comment.
+        """
         return self.e_comment.text()
 
     @err_catcher(name=__name__)
-    def getLocation(self):
+    def getLocation(self) -> str:
+        """Get the selected location.
+        
+        Returns:
+            Storage location name.
+        """
         return self.cb_location.currentText()
 
     @err_catcher(name=__name__)
-    def setEntity(self, entity):
+    def setEntity(self, entity: Any) -> None:
+        """Set the target entity for export.
+        
+        Args:
+            entity: Entity dictionary or list containing entity.
+        """
         if isinstance(entity, list):
             entity = entity[0]
 
@@ -405,7 +558,8 @@ class ExportDlg(QDialog):
             self.lo_widgets.addWidget(self.e_identifier, 1, 1, 1, 3)
 
     @err_catcher(name=__name__)
-    def chooseEntity(self):
+    def chooseEntity(self) -> None:
+        """Show entity selection dialog."""
         dlg = EntityDlg(self)
         dlg.entitiesSelected.connect(self.setEntity)
         if self.entity:
@@ -414,7 +568,8 @@ class ExportDlg(QDialog):
         dlg.exec_()
 
     @err_catcher(name=__name__)
-    def showIdentifiers(self):
+    def showIdentifiers(self) -> None:
+        """Show context menu with available identifiers."""
         pos = QCursor.pos()
         tmenu = QMenu(self)
 
@@ -426,7 +581,12 @@ class ExportDlg(QDialog):
         tmenu.exec_(pos)
 
     @err_catcher(name=__name__)
-    def validate(self):
+    def validate(self) -> bool:
+        """Validate dialog inputs before export.
+        
+        Returns:
+            True if inputs are valid, False otherwise.
+        """
         if not self.entity:
             msg = "No entity is selected."
             self.core.popup(msg, parent=self)
@@ -440,7 +600,12 @@ class ExportDlg(QDialog):
         return True
 
     @err_catcher(name=__name__)
-    def buttonClicked(self, button):
+    def buttonClicked(self, button: Any) -> None:
+        """Handle dialog button clicks.
+        
+        Args:
+            button: Clicked button widget.
+        """
         if button.text() == "Export":
             if not self.validate():
                 return
@@ -476,10 +641,26 @@ class ExportDlg(QDialog):
 
 
 class EntityDlg(QDialog):
+    """Dialog for selecting entities (assets/shots).
+    
+    Provides entity browser for selecting target entities for export.
+    
+    Attributes:
+        parentDlg: Parent dialog
+        plugin: Plugin instance
+        core: PrismCore instance
+        w_browser: MediaBrowser widget
+        entitiesSelected (Signal): Signal emitted when entities are selected
+    """
 
     entitiesSelected = Signal(object)
 
-    def __init__(self, parent):
+    def __init__(self, parent: Any) -> None:
+        """Initialize entity selection dialog.
+        
+        Args:
+            parent: Parent dialog.
+        """
         super(EntityDlg, self).__init__()
         self.parentDlg = parent
         self.plugin = self.parentDlg.plugin
@@ -487,7 +668,8 @@ class EntityDlg(QDialog):
         self.setupUi()
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Setup the entity dialog user interface."""
         title = "Choose Shots"
 
         self.setWindowTitle(title)
@@ -514,11 +696,22 @@ class EntityDlg(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def itemDoubleClicked(self, item, column):
+    def itemDoubleClicked(self, item: Any, column: int) -> None:
+        """Handle double-click on entity item.
+        
+        Args:
+            item: Clicked tree widget item.
+            column: Column index.
+        """
         self.buttonClicked("select")
 
     @err_catcher(name=__name__)
-    def buttonClicked(self, button):
+    def buttonClicked(self, button: Any) -> None:
+        """Handle dialog button clicks.
+        
+        Args:
+            button: Clicked button widget or string identifier.
+        """
         if button == "select" or button.text() == "Select":
             entities = self.w_browser.w_entities.getCurrentData()
             if isinstance(entities, dict):
@@ -545,7 +738,12 @@ class EntityDlg(QDialog):
         self.close()
 
     @err_catcher(name=__name__)
-    def setExpanded(self, expand):
+    def setExpanded(self, expand: bool) -> None:
+        """Set expanded state of the browser.
+        
+        Args:
+            expand: Whether to expand the browser view.
+        """
         self.w_browser.w_identifier.setVisible(expand)
         self.w_browser.w_version.setVisible(expand)
         self.w_browser.w_preview.setVisible(expand)
@@ -557,5 +755,10 @@ class EntityDlg(QDialog):
             self.move(self.pos().x()-((newwidth-curwidth)/2), self.pos().y())
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Get preferred dialog size.
+        
+        Returns:
+            Preferred size for the dialog.
+        """
         return QSize(500, 500)

@@ -31,11 +31,19 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing import Any
+
 
 class Prism_Deadline_Variables(object):
-    def __init__(self, core, plugin):
-        self.version = "v2.0.0"
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize Deadline plugin variables.
+        
+        Args:
+            core: Prism core instance
+            plugin: Plugin instance reference
+        """
+        self.version = "v2.1.2"
         self.pluginName = "Deadline"
         self.pluginType = "Custom"
         self.canOutputLocal = True
-        self.platforms = ["Windows"]
+        self.platforms = ["Windows", "Linux", "Darwin"]

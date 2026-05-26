@@ -1,87 +1,119 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'MediaBrowser.ui'
-#
-# Created: Fri Mar 17 11:44:15 2023
-#      by: qtpy-uic 2.0.5
-#
-# WARNING! All changes made in this file will be lost!
+################################################################################
+## Form generated from reading UI file 'MediaBrowser.ui'
+##
+## Created by: Qt User Interface Compiler version 6.4.2
+##
+## WARNING! All changes made in this file will be lost when recompiling UI file!
+################################################################################
 
-from qtpy import QtCore, QtGui, QtWidgets
+from qtpy.QtCore import *  # type: ignore
+from qtpy.QtGui import *  # type: ignore
+from qtpy.QtWidgets import *  # type: ignore
 
 class Ui_w_mediaBrowser(object):
     def setupUi(self, w_mediaBrowser):
-        w_mediaBrowser.setObjectName("w_mediaBrowser")
+        if not w_mediaBrowser.objectName():
+            w_mediaBrowser.setObjectName(u"w_mediaBrowser")
         w_mediaBrowser.resize(714, 393)
-        self.horizontalLayout = QtWidgets.QHBoxLayout(w_mediaBrowser)
-        self.horizontalLayout.setObjectName("horizontalLayout")
-        self.splitter = QtWidgets.QSplitter(w_mediaBrowser)
-        self.splitter.setOrientation(QtCore.Qt.Horizontal)
-        self.splitter.setObjectName("splitter")
-        self.w_identifier = QtWidgets.QWidget(self.splitter)
-        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
+        self.horizontalLayout = QHBoxLayout(w_mediaBrowser)
+        self.horizontalLayout.setObjectName(u"horizontalLayout")
+        self.splitter1 = QSplitter(w_mediaBrowser)
+        self.splitter1.setObjectName(u"splitter1")
+        self.splitter1.setOrientation(Qt.Horizontal)
+        self.w_identifier = QWidget(self.splitter1)
+        self.w_identifier.setObjectName(u"w_identifier")
+        sizePolicy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         sizePolicy.setHorizontalStretch(8)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.w_identifier.sizePolicy().hasHeightForWidth())
         self.w_identifier.setSizePolicy(sizePolicy)
-        self.w_identifier.setObjectName("w_identifier")
-        self.verticalLayout_8 = QtWidgets.QVBoxLayout(self.w_identifier)
+        self.verticalLayout_8 = QVBoxLayout(self.w_identifier)
+        self.verticalLayout_8.setObjectName(u"verticalLayout_8")
         self.verticalLayout_8.setContentsMargins(0, 0, 0, 0)
-        self.verticalLayout_8.setObjectName("verticalLayout_8")
-        self.l_identifier = QtWidgets.QLabel(self.w_identifier)
-        self.l_identifier.setObjectName("l_identifier")
+        self.l_identifier = QLabel(self.w_identifier)
+        self.l_identifier.setObjectName(u"l_identifier")
+
         self.verticalLayout_8.addWidget(self.l_identifier)
-        self.lw_task = QtWidgets.QListWidget(self.w_identifier)
-        self.lw_task.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-        self.lw_task.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
-        self.lw_task.setObjectName("lw_task")
-        self.verticalLayout_8.addWidget(self.lw_task)
-        self.w_autoUpdate = QtWidgets.QWidget(self.w_identifier)
-        self.w_autoUpdate.setObjectName("w_autoUpdate")
-        self.horizontalLayout_10 = QtWidgets.QHBoxLayout(self.w_autoUpdate)
+
+        self.tw_identifier = QTreeWidget(self.w_identifier)
+        __qtreewidgetitem = QTreeWidgetItem()
+        __qtreewidgetitem.setText(0, u"1");
+        self.tw_identifier.setHeaderItem(__qtreewidgetitem)
+        self.tw_identifier.setObjectName(u"tw_identifier")
+        self.tw_identifier.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tw_identifier.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.tw_identifier.setIndentation(10)
+        self.tw_identifier.header().setVisible(False)
+
+        self.verticalLayout_8.addWidget(self.tw_identifier)
+
+        self.w_autoUpdate = QWidget(self.w_identifier)
+        self.w_autoUpdate.setObjectName(u"w_autoUpdate")
+        self.horizontalLayout_10 = QHBoxLayout(self.w_autoUpdate)
         self.horizontalLayout_10.setSpacing(15)
+        self.horizontalLayout_10.setObjectName(u"horizontalLayout_10")
         self.horizontalLayout_10.setContentsMargins(0, 5, 0, 0)
-        self.horizontalLayout_10.setObjectName("horizontalLayout_10")
-        self.chb_autoUpdate = QtWidgets.QCheckBox(self.w_autoUpdate)
+        self.chb_autoUpdate = QCheckBox(self.w_autoUpdate)
+        self.chb_autoUpdate.setObjectName(u"chb_autoUpdate")
         self.chb_autoUpdate.setChecked(True)
-        self.chb_autoUpdate.setObjectName("chb_autoUpdate")
+
         self.horizontalLayout_10.addWidget(self.chb_autoUpdate)
-        self.b_refresh = QtWidgets.QPushButton(self.w_autoUpdate)
+
+        self.b_refresh = QPushButton(self.w_autoUpdate)
+        self.b_refresh.setObjectName(u"b_refresh")
         self.b_refresh.setEnabled(False)
-        self.b_refresh.setFocusPolicy(QtCore.Qt.NoFocus)
-        self.b_refresh.setObjectName("b_refresh")
+        self.b_refresh.setFocusPolicy(Qt.NoFocus)
+
         self.horizontalLayout_10.addWidget(self.b_refresh)
-        spacerItem = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_10.addItem(spacerItem)
+
+        self.horizontalSpacer_3 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.horizontalLayout_10.addItem(self.horizontalSpacer_3)
+
+
         self.verticalLayout_8.addWidget(self.w_autoUpdate)
-        self.w_version = QtWidgets.QWidget(self.splitter)
-        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
-        sizePolicy.setHorizontalStretch(9)
-        sizePolicy.setVerticalStretch(0)
-        sizePolicy.setHeightForWidth(self.w_version.sizePolicy().hasHeightForWidth())
-        self.w_version.setSizePolicy(sizePolicy)
-        self.w_version.setObjectName("w_version")
-        self.verticalLayout_11 = QtWidgets.QVBoxLayout(self.w_version)
+
+        self.splitter1.addWidget(self.w_identifier)
+        self.w_version = QWidget(self.splitter1)
+        self.w_version.setObjectName(u"w_version")
+        sizePolicy1 = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        sizePolicy1.setHorizontalStretch(9)
+        sizePolicy1.setVerticalStretch(0)
+        sizePolicy1.setHeightForWidth(self.w_version.sizePolicy().hasHeightForWidth())
+        self.w_version.setSizePolicy(sizePolicy1)
+        self.verticalLayout_11 = QVBoxLayout(self.w_version)
+        self.verticalLayout_11.setObjectName(u"verticalLayout_11")
         self.verticalLayout_11.setContentsMargins(0, 0, 0, 0)
-        self.verticalLayout_11.setObjectName("verticalLayout_11")
-        self.l_version = QtWidgets.QLabel(self.w_version)
-        self.l_version.setObjectName("l_version")
+        self.l_version = QLabel(self.w_version)
+        self.l_version.setObjectName(u"l_version")
+
         self.verticalLayout_11.addWidget(self.l_version)
-        self.lw_version = QtWidgets.QListWidget(self.w_version)
-        self.lw_version.setMaximumSize(QtCore.QSize(16777215, 9999))
-        self.lw_version.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-        self.lw_version.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
-        self.lw_version.setObjectName("lw_version")
+
+        self.lw_version = QListWidget(self.w_version)
+        self.lw_version.setObjectName(u"lw_version")
+        self.lw_version.setMaximumSize(QSize(16777215, 9999))
+        self.lw_version.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.lw_version.setSelectionMode(QAbstractItemView.ExtendedSelection)
+
         self.verticalLayout_11.addWidget(self.lw_version)
-        self.horizontalLayout.addWidget(self.splitter)
+
+        self.splitter1.addWidget(self.w_version)
+
+        self.horizontalLayout.addWidget(self.splitter1)
+
 
         self.retranslateUi(w_mediaBrowser)
-        QtCore.QMetaObject.connectSlotsByName(w_mediaBrowser)
+
+        QMetaObject.connectSlotsByName(w_mediaBrowser)
+    # setupUi
 
     def retranslateUi(self, w_mediaBrowser):
-        w_mediaBrowser.setWindowTitle(QtWidgets.QApplication.translate("", "Media Browser", None, -1))
-        self.l_identifier.setText(QtWidgets.QApplication.translate("", "Identifiers:", None, -1))
-        self.chb_autoUpdate.setText(QtWidgets.QApplication.translate("", "Auto update", None, -1))
-        self.b_refresh.setText(QtWidgets.QApplication.translate("", "Refresh Tasks", None, -1))
-        self.l_version.setText(QtWidgets.QApplication.translate("", "Versions:", None, -1))
+        w_mediaBrowser.setWindowTitle(QCoreApplication.translate("w_mediaBrowser", u"Media Browser", None))
+        self.l_identifier.setText(QCoreApplication.translate("w_mediaBrowser", u"Identifiers:", None))
+        self.chb_autoUpdate.setText(QCoreApplication.translate("w_mediaBrowser", u"Auto update", None))
+        self.b_refresh.setText(QCoreApplication.translate("w_mediaBrowser", u"Refresh Tasks", None))
+        self.l_version.setText(QCoreApplication.translate("w_mediaBrowser", u"Versions:", None))
+    # retranslateUi
 

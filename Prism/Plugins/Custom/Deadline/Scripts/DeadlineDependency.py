@@ -31,8 +31,8 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
-
 import os
+from typing import Any, List, Optional, Union
 
 from Deadline.Scripting import RepositoryUtils, ClientUtils
 
@@ -46,14 +46,36 @@ from Deadline.Scripting import RepositoryUtils, ClientUtils
 # perform: "Tools->Perform pending job scan" in super user mode to the log in Deadline console
 
 
-def splitext(path):
+def splitext(path: str) -> List[str]:
+    """Split file path into name and extension, handling Houdini .bgeo.sc files.
+    
+    Args:
+        path: File path to split
+        
+    Returns:
+        List containing [path_without_extension, extension]
+    """
     if path.endswith(".bgeo.sc"):
         return [path[: -len(".bgeo.sc")], ".bgeo.sc"]
     else:
-        return os.path.splitext(path)
+        return list(os.path.splitext(path))
 
 
-def __main__(jobId, taskIds=None):
+def __main__(jobId: str, taskIds: Optional[List[str]] = None) -> Union[bool, List[str]]:
+    """Check if dependencies exist for Deadline job/tasks and release when ready.
+    
+    This is a Deadline event script that checks if all dependency files exist
+    before allowing jobs or tasks to proceed. Used as a Deadline OnJobSubmitted
+    or OnTasksQueued event plugin.
+    
+    Args:
+        jobId: Deadline job ID to check dependencies for
+        taskIds: Optional list of task IDs to check. If None, checks entire job.
+        
+    Returns:
+        If taskIds is None: bool indicating if job can be released
+        If taskIds provided: list of task IDs that can be released
+    """
     job = RepositoryUtils.GetJob(jobId, True)
     jobTasks = RepositoryUtils.GetJobTasks(job, True)
 

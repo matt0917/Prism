@@ -34,6 +34,7 @@
 
 import os
 import sys
+from typing import Any, Optional, List, Dict, Tuple
 
 if sys.version[0] == "3":
     import collections.abc as collections
@@ -56,12 +57,37 @@ from UserInterfaces import ItemList_ui
 
 
 class ItemList(QDialog, ItemList_ui.Ui_dlg_ItemList):
-    def __init__(self, core, entity="passes", mode=None):
+    """Dialog for creating and managing departments, tasks, and passes.
+    
+    This class provides an interface for users to select or create:
+    - Departments (modeling, animation, etc.)
+    - Tasks (specific work items within departments)
+    - Passes (render or export passes)
+    
+    Supports task presets for quickly setting up multiple tasks, and allows
+    creation of new departments with default task configurations.
+    
+    Attributes:
+        core: The Prism core instance
+        entities: List of entity dictionaries (assets/shots) to create items for
+        mode: Operation mode - "passes", "departments", or "tasks"
+        btext: Text for the "Next" button
+        e_tasks: Optional line edit for additional task input
+    """
+    
+    def __init__(self, core: Any, entities: Optional[List[Dict[str, Any]]] = None, mode: str = "passes") -> None:
+        """Initialize the ItemList dialog.
+        
+        Args:
+            core: The Prism core instance providing access to pipeline functionality
+            entities: List of entity dictionaries to create items for
+            mode: Dialog mode - "passes", "departments", or "tasks"
+        """
         QDialog.__init__(self)
         self.setupUi(self)
 
         self.core = core
-        self.entity = entity
+        self.entities = entities
         self.mode = mode
 
         self.tw_steps.setColumnCount(2)
@@ -69,14 +95,12 @@ class ItemList(QDialog, ItemList_ui.Ui_dlg_ItemList):
         self.tw_steps.horizontalHeader().setDefaultAlignment(Qt.AlignLeft)
 
         if (
-            not isinstance(self.entity, collections.Mapping)
-            or self.entity["type"] not in ["asset", "shot", "sequence"]
+            mode != "departments"
             or (
-                self.entity["type"] == "asset"
+                self.entities[0]["type"] == "asset"
                 and self.core.compareVersions(self.core.projectVersion, "v1.2.1.6")
                 == "lower"
             )
-            or mode is not None
         ):
             self.chb_category.setVisible(False)
         else:
@@ -86,11 +110,7 @@ class ItemList(QDialog, ItemList_ui.Ui_dlg_ItemList):
         self.buttonBox.clicked.connect(self.buttonboxClicked)
 
         self.btext = "Next"
-        if isinstance(self.entity, collections.Mapping) and self.entity["type"] in [
-            "asset",
-            "shot",
-            "sequence"
-        ] and (self.mode != "tasks" or self.core.appPlugin.pluginName != "Standalone"):
+        if self.entities and (self.mode == "departments" or self.core.appPlugin.pluginName != "Standalone"):
             self.b_next = self.buttonBox.addButton(self.btext, QDialogButtonBox.AcceptRole)
             if self.mode == "tasks":
                 toolTip = "Create tasks and create a new scene from the current scene"
@@ -104,6 +124,31 @@ class ItemList(QDialog, ItemList_ui.Ui_dlg_ItemList):
             )
             icon = self.core.media.getColoredIcon(iconPath)
             self.b_next.setIcon(icon)
+
+            if self.mode == "departments":
+                self.w_taskPreset = QWidget()
+                self.lo_taskPreset = QHBoxLayout(self.w_taskPreset)
+                self.lo_taskPreset.setContentsMargins(0, 0, 0, 0)
+                self.chb_taskPreset = QCheckBox("Task Preset")
+                self.cb_taskPreset = QComboBox()
+                self.lo_taskPreset.addWidget(self.chb_taskPreset)
+                self.lo_taskPreset.addWidget(self.cb_taskPreset)
+                self.lo_taskPreset.addStretch()
+                self.cb_taskPreset.setEnabled(self.chb_taskPreset.isChecked())
+                self.chb_taskPreset.toggled.connect(self.cb_taskPreset.setEnabled)
+                self.chb_taskPreset.toggled.connect(lambda state: self.tw_steps.setEnabled(not state))
+                self.chb_taskPreset.toggled.connect(lambda state: self.chb_category.setEnabled(not state))
+                self.chb_taskPreset.toggled.connect(lambda state: self.enableOk())
+                if self.entities[0]["type"] in ["asset"]:
+                    presets = self.core.projects.getAssetTaskPresets()
+                else:
+                    presets = self.core.projects.getShotTaskPresets()
+
+                if presets:
+                    for preset in presets:
+                        self.cb_taskPreset.addItem(preset.get("name", ""), preset)
+
+                    self.verticalLayout.insertWidget(2, self.w_taskPreset)
 
         if self.mode == "tasks":
             self.e_tasks = QLineEdit()
@@ -126,15 +171,21 @@ class ItemList(QDialog, ItemList_ui.Ui_dlg_ItemList):
         self.tw_steps.customContextMenuRequested.connect(self.rclList)
 
     @err_catcher(name=__name__)
-    def rclList(self, pos):
-        if isinstance(self.entity, collections.Mapping) and self.entity["type"] in [
-            "asset",
-            "shot",
-            "sequence",
-        ]:
+    def rclList(self, pos: Any) -> None:
+        """Display context menu for the item list.
+        
+        Args:
+            pos: Position where the context menu should appear
+            
+        Provides options to:
+        - Create new department (in departments mode)
+        - Manage project departments (in departments mode)
+        - Manage project tasks (in tasks mode)
+        """
+        if self.entities:
             rcmenu = QMenu(self)
 
-            if self.mode is None:
+            if self.mode == "departments":
                 exp = QAction("Create new department...", self)
                 exp.triggered.connect(self.createDepartment)
                 rcmenu.addAction(exp)
@@ -150,19 +201,20 @@ class ItemList(QDialog, ItemList_ui.Ui_dlg_ItemList):
             rcmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def selectionChanged(self):
+    def selectionChanged(self) -> None:
+        """Handle changes in item selection.
+        
+        Updates the OK button state and modifies the category checkbox text
+        to reflect what default tasks will be created based on the selection.
+        """
         self.enableOk()
-        if isinstance(self.entity, collections.Mapping) and self.entity["type"] in [
-            "asset",
-            "shot",
-            "sequence",
-        ] and self.mode is None:
+        if self.mode == "departments":
             items = self.tw_steps.selectedItems()
             if len(items) == 0:
                 txt = "Create default tasks"
             elif len(items) == 1:
                 abbr = items[0].data(Qt.UserRole)["abbreviation"]
-                defaultTasks = self.core.entities.getDefaultTasksForDepartment(self.entity["type"], abbr)
+                defaultTasks = self.core.entities.getDefaultTasksForDepartment(self.entities[0]["type"], abbr)
                 if defaultTasks:
                     txt = "Create default tasks: \"%s\"" % "\", \"".join(defaultTasks)
                 else:
@@ -173,41 +225,84 @@ class ItemList(QDialog, ItemList_ui.Ui_dlg_ItemList):
             self.chb_category.setText(txt)
 
     @err_catcher(name=__name__)
-    def enableOk(self):
+    def enableOk(self) -> None:
+        """Enable or disable the OK and Next buttons based on current state.
+        
+        The OK button is enabled when:
+        - Items are selected in the list
+        - Additional tasks are entered (in tasks mode)
+        - A task preset is selected (in departments mode)
+        
+        The Next button is enabled in specific scenarios depending on mode.
+        """
         enabled = len(self.tw_steps.selectedItems()) > 0
         if self.mode == "tasks" and self.e_tasks.text():
+            enabled = True
+        elif self.getTaskPreset():
             enabled = True
 
         self.buttonBox.button(QDialogButtonBox.Ok).setEnabled(enabled)
         if self.core.appPlugin.pluginName != "Standalone" or self.mode != "tasks":
-            if isinstance(self.entity, collections.Mapping) and self.entity["type"] in [
-                "asset",
-                "shot",
-                "sequence",
-            ] and self.mode is None:
-                nextEnabled = len([x for x in self.tw_steps.selectedItems() if x.column() == 0]) == 1
+            if self.mode == "departments":
+                nextEnabled = len([x for x in self.tw_steps.selectedItems() if x.column() == 0]) == 1 and not self.getTaskPreset()
                 self.b_next.setEnabled(nextEnabled)
             elif self.mode == "tasks":
                 self.b_next.setEnabled(bool(enabled or self.e_tasks.text()))
 
     @err_catcher(name=__name__)
-    def createDepartment(self):
-        self.dlg_department = PrismWidgets.CreateDepartmentDlg(core=self.core, entity=self.entity["type"], parent=self)
+    def getTaskPreset(self) -> Optional[Dict[str, Any]]:
+        """Get the currently selected task preset.
+        
+        Returns:
+            Task preset dictionary if selected and in departments mode, None otherwise
+            
+        Task presets are predefined collections of tasks for quick setup.
+        """
+        if not self.entities:
+            return
+
+        if self.mode != "departments":
+            return
+
+        if not self.chb_taskPreset.isChecked():
+            return
+
+        return self.cb_taskPreset.currentData()
+
+    @err_catcher(name=__name__)
+    def createDepartment(self) -> None:
+        """Open dialog to create a new project department.
+        
+        Displays the CreateDepartmentDlg and connects its departmentCreated
+        signal to add the new department to the list.
+        """
+        self.dlg_department = PrismWidgets.CreateDepartmentDlg(core=self.core, entity=self.entities[0]["type"], parent=self)
         self.dlg_department.departmentCreated.connect(self.onDepartmentCreated)
         self.dlg_department.exec_()
 
     @err_catcher(name=__name__)
-    def manageDepartments(self):
+    def manageDepartments(self) -> None:
+        """Open project settings to manage departments.
+        
+        Closes the current dialog and opens the project settings dialog
+        on the Departments tab.
+        """
         self.close()
         self.core.prismSettings(tab="Departments", settingsType="Project")
 
     @err_catcher(name=__name__)
-    def manageTasks(self):
+    def manageTasks(self) -> None:
+        """Open project settings to manage tasks for the current department.
+        
+        Closes the current dialog, opens project settings on the Departments tab,
+        and automatically selects the row corresponding to the current department.
+        """
         self.close()
         dlg = self.core.prismSettings(tab="Departments", settingsType="Project")
-        entity = self.core.pb.sceneBrowser.getCurrentEntity()
-        dep = self.core.pb.sceneBrowser.getCurrentDepartment()
-        if entity.get("type") == "asset":
+        pb = self.core.pb or self.core.projectBrowser(openUi=False)
+        entities = pb.sceneBrowser.getCurrentEntities()
+        dep = pb.sceneBrowser.getCurrentDepartment()
+        if entities[0].get("type") == "asset":
             for idx in range(dlg.w_project.tw_assetDepartments.rowCount()):
                 itemDep = dlg.w_project.tw_assetDepartments.item(idx, 0).data(Qt.UserRole).get("abbreviation")
                 if itemDep == dep:
@@ -217,7 +312,7 @@ class ItemList(QDialog, ItemList_ui.Ui_dlg_ItemList):
                 return
 
             dlg.w_project.tw_assetDepartments.selectRow(row)
-        elif entity.get("type") in ["shot", "sequence"]:
+        elif entities[0].get("type") in ["shot", "sequence"]:
             for idx in range(dlg.w_project.tw_shotDepartments.rowCount()):
                 itemDep = dlg.w_project.tw_shotDepartments.item(idx, 0).data(Qt.UserRole).get("abbreviation")
                 if itemDep == dep:
@@ -229,7 +324,14 @@ class ItemList(QDialog, ItemList_ui.Ui_dlg_ItemList):
             dlg.w_project.tw_shotDepartments.selectRow(row)
 
     @err_catcher(name=__name__)
-    def onDepartmentCreated(self, department):
+    def onDepartmentCreated(self, department: Dict[str, Any]) -> None:
+        """Handle the creation of a new department.
+        
+        Args:
+            department: Dictionary containing department data (name, abbreviation)
+            
+        Adds the newly created department to the list and selects it.
+        """
         rc = self.tw_steps.rowCount()
         self.tw_steps.insertRow(rc)
         name = "%s (%s)" % (department["name"], department["abbreviation"])
@@ -239,18 +341,41 @@ class ItemList(QDialog, ItemList_ui.Ui_dlg_ItemList):
         self.tw_steps.selectRow(rc)
 
     @err_catcher(name=__name__)
-    def buttonboxClicked(self, button):
+    def buttonboxClicked(self, button: Any) -> None:
+        """Handle button box button clicks.
+        
+        Args:
+            button: The button that was clicked
+            
+        Processes clicks on:
+        - Create: Creates departments/tasks based on mode and selections
+        - Next: Creates items and triggers next action (task dialog or scene creation)
+        - Cancel: Rejects the dialog
+        """
         if button.text() == "Create":
-            if self.mode is None:
-                if self.entity == "passes":
-                    pass
+            pb = self.core.pb or self.core.projectBrowser(openUi=False)
+            if self.mode == "passes":
+                pass
+            elif self.mode == "departments":
+                preset = self.getTaskPreset()
+                if preset:
+                    createdDirs = False
+                    for entity in self.entities:
+                        result = self.core.entities.createTasksFromPreset(entity, preset)
+                        if result:
+                            createdDirs = True
+
+                    if createdDirs:
+                        pb.sceneBrowser.refreshDepartments()
+
                 else:
                     steps = []
                     for i in self.tw_steps.selectedItems():
                         if i.column() == 0:
                             steps.append(i.data(Qt.UserRole)["abbreviation"])
 
-                    self.core.pb.sceneBrowser.createSteps(self.entity, steps, createTask=self.chb_category.isChecked())
+                    pb.sceneBrowser.createSteps(self.entities, steps, createTask=self.chb_category.isChecked())
+
             elif self.mode == "tasks":
                 tasks = []
                 for item in self.tw_steps.selectedItems():
@@ -258,15 +383,11 @@ class ItemList(QDialog, ItemList_ui.Ui_dlg_ItemList):
                         tasks.append(item.data(Qt.UserRole))
 
                 tasks += [t.strip() for t in self.e_tasks.text().split(",") if t]                
-                self.core.pb.sceneBrowser.createTask(tasks)
+                pb.sceneBrowser.createTask(tasks)
 
             self.accept()
         elif button.text() == self.btext:
-            if isinstance(self.entity, collections.Mapping) and self.entity["type"] in [
-                "asset",
-                "shot",
-                "sequence"
-            ]:
+            if self.entities:
                 self.stepBbClicked(button)
                 self.accept()
 
@@ -274,16 +395,25 @@ class ItemList(QDialog, ItemList_ui.Ui_dlg_ItemList):
             self.reject()
 
     @err_catcher(name=__name__)
-    def stepBbClicked(self, button):
+    def stepBbClicked(self, button: Any) -> None:
+        """Handle Next button clicks for multi-step workflows.
+        
+        Args:
+            button: The button that was clicked
+            
+        In departments mode: Creates the selected department and opens task dialog
+        In tasks mode: Creates tasks and optionally creates new scene from current
+        """
         if button.text() == self.btext:
-            if self.mode is None:
+            pb = self.core.pb or self.core.projectBrowser(openUi=False)
+            if self.mode == "departments":
                 for i in self.tw_steps.selectedItems():
                     if i.column() == 0:
                         step = i.data(Qt.UserRole)["abbreviation"]
 
-                self.core.pb.sceneBrowser.createSteps(self.entity, [step], createTask=False)
+                pb.sceneBrowser.createSteps(self.entities, [step], createTask=False)
                 self.close()
-                self.core.pb.sceneBrowser.createTaskDlg()
+                pb.sceneBrowser.createTaskDlg()
             elif self.mode == "tasks":
                 tasks = []
                 for item in self.tw_steps.selectedItems():
@@ -291,19 +421,25 @@ class ItemList(QDialog, ItemList_ui.Ui_dlg_ItemList):
                         tasks.append(item.data(Qt.UserRole))
 
                 tasks += [t.strip() for t in self.e_tasks.text().split(",") if t]                
-                self.core.pb.sceneBrowser.createTask(tasks)
+                pb.sceneBrowser.createTask(tasks)
                 self.reject()
                 if self.core.appPlugin.pluginName != "Standalone":
-                    self.core.pb.sceneBrowser.createFromCurrent()
-                    self.core.pb.close()
+                    pb.sceneBrowser.createFromCurrent()
+                    pb.close()
 
     @err_catcher(name=__name__)
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, event: Any) -> None:
+        """Handle key press events.
+        
+        Args:
+            event: The key event object
+            
+        Processes Enter/Return keys to trigger the appropriate button action
+        based on current selection and mode.
+        """
         if event.key() == Qt.Key_Enter or event.key() == Qt.Key_Return:
             if self.tw_steps.selectedItems():
-                if isinstance(self.entity, collections.Mapping) and self.entity[
-                    "type"
-                ] in ["asset", "shot", "sequence"]:
+                if self.entities:
                     if self.core.appPlugin.pluginName != "Standalone":
                         self.stepBbClicked(self.b_next)
                     else:

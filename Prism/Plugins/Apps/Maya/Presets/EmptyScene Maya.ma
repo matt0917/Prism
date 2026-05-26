@@ -1,5 +1,6 @@
 //Maya ASCII scene
 //Codeset: 1252
+requires maya "2022";
 currentUnit -l centimeter -a degree -t film;
 fileInfo "application" "maya";
 fileInfo "cutIdentifier" "201911140446-42a737a01c";

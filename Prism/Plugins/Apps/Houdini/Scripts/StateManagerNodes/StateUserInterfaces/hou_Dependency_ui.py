@@ -1,136 +1,188 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'hou_Dependency.ui'
-#
-# Created: Tue Mar  7 11:17:56 2023
-#      by: qtpy-uic 2.0.5
-#
-# WARNING! All changes made in this file will be lost!
+################################################################################
+## Form generated from reading UI file 'hou_Dependency.ui'
+##
+## Created by: Qt User Interface Compiler version 6.4.2
+##
+## WARNING! All changes made in this file will be lost when recompiling UI file!
+################################################################################
 
-from qtpy import QtCore, QtGui, QtWidgets
+from qtpy.QtCore import *  # type: ignore
+from qtpy.QtGui import *  # type: ignore
+from qtpy.QtWidgets import *  # type: ignore
 
 class Ui_wg_Dependency(object):
     def setupUi(self, wg_Dependency):
-        wg_Dependency.setObjectName("wg_Dependency")
+        if not wg_Dependency.objectName():
+            wg_Dependency.setObjectName(u"wg_Dependency")
         wg_Dependency.resize(340, 643)
-        self.verticalLayout = QtWidgets.QVBoxLayout(wg_Dependency)
+        self.verticalLayout = QVBoxLayout(wg_Dependency)
+        self.verticalLayout.setObjectName(u"verticalLayout")
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
-        self.verticalLayout.setObjectName("verticalLayout")
-        self.widget_4 = QtWidgets.QWidget(wg_Dependency)
-        self.widget_4.setObjectName("widget_4")
-        self.horizontalLayout_2 = QtWidgets.QHBoxLayout(self.widget_4)
+        self.widget_4 = QWidget(wg_Dependency)
+        self.widget_4.setObjectName(u"widget_4")
+        self.horizontalLayout_2 = QHBoxLayout(self.widget_4)
+        self.horizontalLayout_2.setObjectName(u"horizontalLayout_2")
         self.horizontalLayout_2.setContentsMargins(-1, 0, 18, 0)
-        self.horizontalLayout_2.setObjectName("horizontalLayout_2")
-        self.l_name = QtWidgets.QLabel(self.widget_4)
-        self.l_name.setObjectName("l_name")
+        self.l_name = QLabel(self.widget_4)
+        self.l_name.setObjectName(u"l_name")
+
         self.horizontalLayout_2.addWidget(self.l_name)
-        self.e_name = QtWidgets.QLineEdit(self.widget_4)
-        self.e_name.setObjectName("e_name")
+
+        self.e_name = QLineEdit(self.widget_4)
+        self.e_name.setObjectName(u"e_name")
+
         self.horizontalLayout_2.addWidget(self.e_name)
-        self.l_class = QtWidgets.QLabel(self.widget_4)
-        font = QtGui.QFont()
-        font.setWeight(75)
+
+        self.l_class = QLabel(self.widget_4)
+        self.l_class.setObjectName(u"l_class")
+        font = QFont()
         font.setBold(True)
         self.l_class.setFont(font)
-        self.l_class.setObjectName("l_class")
+
         self.horizontalLayout_2.addWidget(self.l_class)
+
+
         self.verticalLayout.addWidget(self.widget_4)
-        self.f_manager = QtWidgets.QWidget(wg_Dependency)
-        self.f_manager.setObjectName("f_manager")
-        self.horizontalLayout_8 = QtWidgets.QHBoxLayout(self.f_manager)
+
+        self.f_manager = QWidget(wg_Dependency)
+        self.f_manager.setObjectName(u"f_manager")
+        self.horizontalLayout_8 = QHBoxLayout(self.f_manager)
+        self.horizontalLayout_8.setObjectName(u"horizontalLayout_8")
         self.horizontalLayout_8.setContentsMargins(-1, 0, -1, 0)
-        self.horizontalLayout_8.setObjectName("horizontalLayout_8")
-        self.l_manager = QtWidgets.QLabel(self.f_manager)
-        self.l_manager.setObjectName("l_manager")
+        self.l_manager = QLabel(self.f_manager)
+        self.l_manager.setObjectName(u"l_manager")
+
         self.horizontalLayout_8.addWidget(self.l_manager)
-        spacerItem = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_8.addItem(spacerItem)
-        self.cb_manager = QtWidgets.QComboBox(self.f_manager)
-        self.cb_manager.setMinimumSize(QtCore.QSize(150, 0))
-        self.cb_manager.setObjectName("cb_manager")
+
+        self.horizontalSpacer_19 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.horizontalLayout_8.addItem(self.horizontalSpacer_19)
+
+        self.cb_manager = QComboBox(self.f_manager)
+        self.cb_manager.setObjectName(u"cb_manager")
+        self.cb_manager.setMinimumSize(QSize(150, 0))
+
         self.horizontalLayout_8.addWidget(self.cb_manager)
+
+
         self.verticalLayout.addWidget(self.f_manager)
-        self.gb_dlDependency = QtWidgets.QGroupBox(wg_Dependency)
-        self.gb_dlDependency.setObjectName("gb_dlDependency")
-        self.verticalLayout_2 = QtWidgets.QVBoxLayout(self.gb_dlDependency)
+
+        self.gb_dlDependency = QGroupBox(wg_Dependency)
+        self.gb_dlDependency.setObjectName(u"gb_dlDependency")
+        self.verticalLayout_2 = QVBoxLayout(self.gb_dlDependency)
+        self.verticalLayout_2.setObjectName(u"verticalLayout_2")
         self.verticalLayout_2.setContentsMargins(-1, 18, -1, -1)
-        self.verticalLayout_2.setObjectName("verticalLayout_2")
-        self.w_clear = QtWidgets.QWidget(self.gb_dlDependency)
-        self.w_clear.setObjectName("w_clear")
-        self.horizontalLayout_4 = QtWidgets.QHBoxLayout(self.w_clear)
+        self.w_clear = QWidget(self.gb_dlDependency)
+        self.w_clear.setObjectName(u"w_clear")
+        self.horizontalLayout_4 = QHBoxLayout(self.w_clear)
         self.horizontalLayout_4.setSpacing(0)
+        self.horizontalLayout_4.setObjectName(u"horizontalLayout_4")
         self.horizontalLayout_4.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout_4.setObjectName("horizontalLayout_4")
-        self.l_clear = QtWidgets.QLabel(self.w_clear)
-        self.l_clear.setObjectName("l_clear")
+        self.l_clear = QLabel(self.w_clear)
+        self.l_clear.setObjectName(u"l_clear")
+
         self.horizontalLayout_4.addWidget(self.l_clear)
-        spacerItem1 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_4.addItem(spacerItem1)
-        self.chb_clear = QtWidgets.QCheckBox(self.w_clear)
-        self.chb_clear.setText("")
+
+        self.horizontalSpacer_3 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.horizontalLayout_4.addItem(self.horizontalSpacer_3)
+
+        self.chb_clear = QCheckBox(self.w_clear)
+        self.chb_clear.setObjectName(u"chb_clear")
         self.chb_clear.setChecked(True)
-        self.chb_clear.setObjectName("chb_clear")
+
         self.horizontalLayout_4.addWidget(self.chb_clear)
+
+
         self.verticalLayout_2.addWidget(self.w_clear)
-        self.widget_5 = QtWidgets.QWidget(self.gb_dlDependency)
-        self.widget_5.setObjectName("widget_5")
-        self.horizontalLayout_3 = QtWidgets.QHBoxLayout(self.widget_5)
+
+        self.widget_5 = QWidget(self.gb_dlDependency)
+        self.widget_5.setObjectName(u"widget_5")
+        self.horizontalLayout_3 = QHBoxLayout(self.widget_5)
         self.horizontalLayout_3.setSpacing(0)
+        self.horizontalLayout_3.setObjectName(u"horizontalLayout_3")
         self.horizontalLayout_3.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout_3.setObjectName("horizontalLayout_3")
-        self.label_3 = QtWidgets.QLabel(self.widget_5)
-        self.label_3.setObjectName("label_3")
+        self.label_3 = QLabel(self.widget_5)
+        self.label_3.setObjectName(u"label_3")
+
         self.horizontalLayout_3.addWidget(self.label_3)
-        spacerItem2 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_3.addItem(spacerItem2)
-        self.cb_depType = QtWidgets.QComboBox(self.widget_5)
-        self.cb_depType.setMinimumSize(QtCore.QSize(150, 0))
-        self.cb_depType.setObjectName("cb_depType")
+
+        self.horizontalSpacer_2 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.horizontalLayout_3.addItem(self.horizontalSpacer_2)
+
+        self.cb_depType = QComboBox(self.widget_5)
+        self.cb_depType.setObjectName(u"cb_depType")
+        self.cb_depType.setMinimumSize(QSize(150, 0))
+
         self.horizontalLayout_3.addWidget(self.cb_depType)
+
+
         self.verticalLayout_2.addWidget(self.widget_5)
-        self.w_offset = QtWidgets.QWidget(self.gb_dlDependency)
-        self.w_offset.setObjectName("w_offset")
-        self.horizontalLayout = QtWidgets.QHBoxLayout(self.w_offset)
+
+        self.w_offset = QWidget(self.gb_dlDependency)
+        self.w_offset.setObjectName(u"w_offset")
+        self.horizontalLayout = QHBoxLayout(self.w_offset)
+        self.horizontalLayout.setObjectName(u"horizontalLayout")
         self.horizontalLayout.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout.setObjectName("horizontalLayout")
-        self.label = QtWidgets.QLabel(self.w_offset)
-        self.label.setMinimumSize(QtCore.QSize(200, 0))
-        self.label.setObjectName("label")
+        self.label = QLabel(self.w_offset)
+        self.label.setObjectName(u"label")
+        self.label.setMinimumSize(QSize(200, 0))
+
         self.horizontalLayout.addWidget(self.label)
-        self.sp_offset = QtWidgets.QSpinBox(self.w_offset)
-        self.sp_offset.setSuffix("")
+
+        self.sp_offset = QSpinBox(self.w_offset)
+        self.sp_offset.setObjectName(u"sp_offset")
         self.sp_offset.setMinimum(-99999)
         self.sp_offset.setMaximum(99999)
-        self.sp_offset.setObjectName("sp_offset")
+
         self.horizontalLayout.addWidget(self.sp_offset)
+
+
         self.verticalLayout_2.addWidget(self.w_offset)
-        self.widget = QtWidgets.QWidget(self.gb_dlDependency)
-        self.widget.setObjectName("widget")
-        self.verticalLayout_3 = QtWidgets.QVBoxLayout(self.widget)
+
+        self.widget = QWidget(self.gb_dlDependency)
+        self.widget.setObjectName(u"widget")
+        self.verticalLayout_3 = QVBoxLayout(self.widget)
+        self.verticalLayout_3.setObjectName(u"verticalLayout_3")
         self.verticalLayout_3.setContentsMargins(-1, 0, -1, 0)
-        self.verticalLayout_3.setObjectName("verticalLayout_3")
-        self.tw_caches = QtWidgets.QTreeWidget(self.widget)
-        self.tw_caches.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        self.tw_caches.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
+        self.tw_caches = QTreeWidget(self.widget)
+        __qtreewidgetitem = QTreeWidgetItem()
+        __qtreewidgetitem.setText(0, u"1");
+        self.tw_caches.setHeaderItem(__qtreewidgetitem)
+        self.tw_caches.setObjectName(u"tw_caches")
+        self.tw_caches.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.tw_caches.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.tw_caches.setItemsExpandable(True)
         self.tw_caches.setExpandsOnDoubleClick(True)
-        self.tw_caches.setObjectName("tw_caches")
-        self.tw_caches.headerItem().setText(0, "1")
         self.tw_caches.header().setVisible(True)
+
         self.verticalLayout_3.addWidget(self.tw_caches)
+
+
         self.verticalLayout_2.addWidget(self.widget)
+
+
         self.verticalLayout.addWidget(self.gb_dlDependency)
 
+
         self.retranslateUi(wg_Dependency)
-        QtCore.QMetaObject.connectSlotsByName(wg_Dependency)
+
+        QMetaObject.connectSlotsByName(wg_Dependency)
+    # setupUi
 
     def retranslateUi(self, wg_Dependency):
-        wg_Dependency.setWindowTitle(QtWidgets.QApplication.translate("", "Dependency", None, -1))
-        self.l_name.setText(QtWidgets.QApplication.translate("", "Name:", None, -1))
-        self.l_class.setText(QtWidgets.QApplication.translate("", "Dependency", None, -1))
-        self.l_manager.setText(QtWidgets.QApplication.translate("", "Manager:", None, -1))
-        self.gb_dlDependency.setTitle(QtWidgets.QApplication.translate("", " Dependency", None, -1))
-        self.l_clear.setText(QtWidgets.QApplication.translate("", "Clear all existing dependencies:", None, -1))
-        self.label_3.setText(QtWidgets.QApplication.translate("", "Release when:", None, -1))
-        self.label.setText(QtWidgets.QApplication.translate("", "Start when next n frames exist", None, -1))
+        wg_Dependency.setWindowTitle(QCoreApplication.translate("wg_Dependency", u"Dependency", None))
+        self.l_name.setText(QCoreApplication.translate("wg_Dependency", u"Name:", None))
+        self.l_class.setText(QCoreApplication.translate("wg_Dependency", u"Dependency", None))
+        self.l_manager.setText(QCoreApplication.translate("wg_Dependency", u"Manager:", None))
+        self.gb_dlDependency.setTitle(QCoreApplication.translate("wg_Dependency", u" Dependency", None))
+        self.l_clear.setText(QCoreApplication.translate("wg_Dependency", u"Clear all existing dependencies:", None))
+        self.chb_clear.setText("")
+        self.label_3.setText(QCoreApplication.translate("wg_Dependency", u"Release when:", None))
+        self.label.setText(QCoreApplication.translate("wg_Dependency", u"Start when next n frames exist", None))
+        self.sp_offset.setSuffix("")
+    # retranslateUi
 

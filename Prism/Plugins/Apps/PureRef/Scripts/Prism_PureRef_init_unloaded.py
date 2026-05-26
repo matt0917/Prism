@@ -32,6 +32,8 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from typing import Any
+
 from Prism_PureRef_Variables import Prism_PureRef_Variables
 from Prism_PureRef_externalAccess_Functions import (
     Prism_PureRef_externalAccess_Functions,
@@ -44,7 +46,18 @@ class Prism_PureRef_unloaded(
     Prism_PureRef_externalAccess_Functions,
     Prism_PureRef_Integration,
 ):
-    def __init__(self, core):
+    """Unloaded version of PureRef plugin.
+    
+    Used when PureRef is not actively loaded but plugin needs to be available.
+    Excludes core functions that require active DCC connection.
+    """
+
+    def __init__(self, core: Any) -> None:
+        """Initialize unloaded PureRef plugin.
+        
+        Args:
+            core: PrismCore instance.
+        """
         Prism_PureRef_Variables.__init__(self, core, self)
         Prism_PureRef_externalAccess_Functions.__init__(self, core, self)
         Prism_PureRef_Integration.__init__(self, core, self)

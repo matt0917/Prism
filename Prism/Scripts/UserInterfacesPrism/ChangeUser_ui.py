@@ -1,47 +1,64 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'ChangeUser.ui'
-#
-# Created: Tue Mar  7 09:52:58 2023
-#      by: qtpy-uic 2.0.5
-#
-# WARNING! All changes made in this file will be lost!
+################################################################################
+## Form generated from reading UI file 'ChangeUser.ui'
+##
+## Created by: Qt User Interface Compiler version 6.4.2
+##
+## WARNING! All changes made in this file will be lost when recompiling UI file!
+################################################################################
 
-from qtpy import QtCore, QtGui, QtWidgets
+from qtpy.QtCore import *  # type: ignore
+from qtpy.QtGui import *  # type: ignore
+from qtpy.QtWidgets import *  # type: ignore
 
 class Ui_dlg_ChangeUser(object):
     def setupUi(self, dlg_ChangeUser):
-        dlg_ChangeUser.setObjectName("dlg_ChangeUser")
+        if not dlg_ChangeUser.objectName():
+            dlg_ChangeUser.setObjectName(u"dlg_ChangeUser")
         dlg_ChangeUser.resize(368, 73)
-        self.verticalLayout = QtWidgets.QVBoxLayout(dlg_ChangeUser)
-        self.verticalLayout.setObjectName("verticalLayout")
-        self.w_username = QtWidgets.QWidget(dlg_ChangeUser)
-        self.w_username.setObjectName("w_username")
-        self.horizontalLayout = QtWidgets.QHBoxLayout(self.w_username)
+        self.verticalLayout = QVBoxLayout(dlg_ChangeUser)
+        self.verticalLayout.setObjectName(u"verticalLayout")
+        self.w_username = QWidget(dlg_ChangeUser)
+        self.w_username.setObjectName(u"w_username")
+        self.horizontalLayout = QHBoxLayout(self.w_username)
         self.horizontalLayout.setContentsMargins(0, 0, 0, 0)
-        self.horizontalLayout.setObjectName("horizontalLayout")
-        self.l_username = QtWidgets.QLabel(self.w_username)
-        self.l_username.setObjectName("l_username")
+        self.horizontalLayout.setObjectName(u"horizontalLayout")
+        self.l_username = QLabel(self.w_username)
+        self.l_username.setObjectName(u"l_username")
+
         self.horizontalLayout.addWidget(self.l_username)
-        self.e_username = QtWidgets.QLineEdit(self.w_username)
-        self.e_username.setObjectName("e_username")
+
+        self.e_username = QLineEdit(self.w_username)
+        self.e_username.setObjectName(u"e_username")
+
         self.horizontalLayout.addWidget(self.e_username)
+
+
         self.verticalLayout.addWidget(self.w_username)
-        spacerItem = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
-        self.verticalLayout.addItem(spacerItem)
-        self.buttonBox = QtWidgets.QDialogButtonBox(dlg_ChangeUser)
-        self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
-        self.buttonBox.setStandardButtons(QtWidgets.QDialogButtonBox.Cancel|QtWidgets.QDialogButtonBox.Ok)
+
+        self.verticalSpacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+
+        self.verticalLayout.addItem(self.verticalSpacer)
+
+        self.buttonBox = QDialogButtonBox(dlg_ChangeUser)
+        self.buttonBox.setObjectName(u"buttonBox")
+        self.buttonBox.setOrientation(Qt.Horizontal)
+        self.buttonBox.setStandardButtons(QDialogButtonBox.Cancel|QDialogButtonBox.Ok)
         self.buttonBox.setCenterButtons(False)
-        self.buttonBox.setObjectName("buttonBox")
+
         self.verticalLayout.addWidget(self.buttonBox)
 
+
         self.retranslateUi(dlg_ChangeUser)
-        QtCore.QObject.connect(self.buttonBox, QtCore.SIGNAL("accepted()"), dlg_ChangeUser.accept)
-        QtCore.QObject.connect(self.buttonBox, QtCore.SIGNAL("rejected()"), dlg_ChangeUser.reject)
-        QtCore.QMetaObject.connectSlotsByName(dlg_ChangeUser)
+        self.buttonBox.accepted.connect(dlg_ChangeUser.accept)
+        self.buttonBox.rejected.connect(dlg_ChangeUser.reject)
+
+        QMetaObject.connectSlotsByName(dlg_ChangeUser)
+    # setupUi
 
     def retranslateUi(self, dlg_ChangeUser):
-        dlg_ChangeUser.setWindowTitle(QtWidgets.QApplication.translate("", "Change User", None, -1))
-        self.l_username.setText(QtWidgets.QApplication.translate("", "Local Username:", None, -1))
+        dlg_ChangeUser.setWindowTitle(QCoreApplication.translate("dlg_ChangeUser", u"Change User", None))
+        self.l_username.setText(QCoreApplication.translate("dlg_ChangeUser", u"Local Username:", None))
+    # retranslateUi
 

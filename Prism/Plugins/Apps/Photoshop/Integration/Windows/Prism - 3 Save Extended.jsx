@@ -1,1 +1,1 @@
-app.system('start "" "PRISMLIBS/Python39/Prism.exe" "PLUGINROOT/Scripts/Prism_Photoshop_MenuTools.py" "PRISMROOT" SaveComment')
+app.system('start "" "PRISMLIBS/Python313/Prism.exe" "PLUGINROOT/Scripts/Prism_Photoshop_MenuTools.py" "PRISMROOT" SaveComment')

@@ -13,9 +13,9 @@
   <property name="windowTitle">
    <string>Product Browser</string>
   </property>
-  <layout class="QVBoxLayout" name="verticalLayout_4">
+  <layout class="QVBoxLayout" name="lo_main">
    <item>
-    <widget class="QSplitter" name="splitter">
+    <widget class="QSplitter" name="splitter1">
      <property name="orientation">
       <enum>Qt::Horizontal</enum>
      </property>

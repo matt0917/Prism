@@ -773,6 +773,13 @@ QTreeView::item:selected  {
     show-decoration-selected: 1; /* make the selection span the entire width of the view */
 }
 
+QListView::item:disabled,
+QTreeView::item:disabled  {
+    color: #8c8c8c;
+    background-color: transparent;
+    show-decoration-selected: 1; /* make the selection span the entire width of the view */
+}
+
 /* Property Editor QTreeView (FreeCAD custom widget) */
 Gui--PropertyEditor--PropertyEditor {
     gridline-color: #a0a0a0; /* same as Group header background */

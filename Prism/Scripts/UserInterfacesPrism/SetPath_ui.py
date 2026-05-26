@@ -1,57 +1,77 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'SetPath.ui'
-#
-# Created: Mon Mar  6 12:39:27 2023
-#      by: qtpy-uic 2.0.5
-#
-# WARNING! All changes made in this file will be lost!
+################################################################################
+## Form generated from reading UI file 'SetPath.ui'
+##
+## Created by: Qt User Interface Compiler version 6.4.2
+##
+## WARNING! All changes made in this file will be lost when recompiling UI file!
+################################################################################
 
-from qtpy import QtCore, QtGui, QtWidgets
+from qtpy.QtCore import *  # type: ignore
+from qtpy.QtGui import *  # type: ignore
+from qtpy.QtWidgets import *  # type: ignore
 
 class Ui_dlg_SetPath(object):
     def setupUi(self, dlg_SetPath):
-        dlg_SetPath.setObjectName("dlg_SetPath")
+        if not dlg_SetPath.objectName():
+            dlg_SetPath.setObjectName(u"dlg_SetPath")
         dlg_SetPath.resize(676, 110)
-        self.verticalLayout = QtWidgets.QVBoxLayout(dlg_SetPath)
-        self.verticalLayout.setObjectName("verticalLayout")
-        self.l_description = QtWidgets.QLabel(dlg_SetPath)
-        self.l_description.setObjectName("l_description")
+        self.verticalLayout = QVBoxLayout(dlg_SetPath)
+        self.verticalLayout.setObjectName(u"verticalLayout")
+        self.l_description = QLabel(dlg_SetPath)
+        self.l_description.setObjectName(u"l_description")
+
         self.verticalLayout.addWidget(self.l_description)
-        self.w_path = QtWidgets.QWidget(dlg_SetPath)
-        self.w_path.setObjectName("w_path")
-        self.gridLayout = QtWidgets.QGridLayout(self.w_path)
-        self.gridLayout.setContentsMargins(0, 0, 0, 0)
-        self.gridLayout.setObjectName("gridLayout")
-        self.e_path = QtWidgets.QLineEdit(self.w_path)
-        self.e_path.setObjectName("e_path")
+
+        self.w_path = QWidget(dlg_SetPath)
+        self.w_path.setObjectName(u"w_path")
+        self.gridLayout = QGridLayout(self.w_path)
+        self.gridLayout.setObjectName(u"gridLayout")
+        self.e_path = QLineEdit(self.w_path)
+        self.e_path.setObjectName(u"e_path")
+
         self.gridLayout.addWidget(self.e_path, 0, 1, 1, 1)
-        self.l_path = QtWidgets.QLabel(self.w_path)
-        self.l_path.setObjectName("l_path")
+
+        self.l_path = QLabel(self.w_path)
+        self.l_path.setObjectName(u"l_path")
+
         self.gridLayout.addWidget(self.l_path, 0, 0, 1, 1)
-        self.b_browse = QtWidgets.QPushButton(self.w_path)
-        self.b_browse.setMaximumSize(QtCore.QSize(50, 16777215))
-        self.b_browse.setObjectName("b_browse")
+
+        self.b_browse = QPushButton(self.w_path)
+        self.b_browse.setObjectName(u"b_browse")
+        self.b_browse.setMaximumSize(QSize(50, 16777215))
+
         self.gridLayout.addWidget(self.b_browse, 0, 2, 1, 1)
+
+
         self.verticalLayout.addWidget(self.w_path)
-        spacerItem = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
-        self.verticalLayout.addItem(spacerItem)
-        self.buttonBox = QtWidgets.QDialogButtonBox(dlg_SetPath)
-        self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
-        self.buttonBox.setStandardButtons(QtWidgets.QDialogButtonBox.Cancel|QtWidgets.QDialogButtonBox.Ok)
+
+        self.verticalSpacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+
+        self.verticalLayout.addItem(self.verticalSpacer)
+
+        self.buttonBox = QDialogButtonBox(dlg_SetPath)
+        self.buttonBox.setObjectName(u"buttonBox")
+        self.buttonBox.setOrientation(Qt.Horizontal)
+        self.buttonBox.setStandardButtons(QDialogButtonBox.Cancel|QDialogButtonBox.Ok)
         self.buttonBox.setCenterButtons(False)
-        self.buttonBox.setObjectName("buttonBox")
+
         self.verticalLayout.addWidget(self.buttonBox)
 
+
         self.retranslateUi(dlg_SetPath)
-        QtCore.QObject.connect(self.buttonBox, QtCore.SIGNAL("accepted()"), dlg_SetPath.accept)
-        QtCore.QObject.connect(self.buttonBox, QtCore.SIGNAL("rejected()"), dlg_SetPath.reject)
-        QtCore.QMetaObject.connectSlotsByName(dlg_SetPath)
+        self.buttonBox.accepted.connect(dlg_SetPath.accept)
+        self.buttonBox.rejected.connect(dlg_SetPath.reject)
+
+        QMetaObject.connectSlotsByName(dlg_SetPath)
+    # setupUi
 
     def retranslateUi(self, dlg_SetPath):
-        dlg_SetPath.setWindowTitle(QtWidgets.QApplication.translate("", "Set local projectpath", None, -1))
-        self.l_description.setText(QtWidgets.QApplication.translate("", "All your local scenefiles are saved in this folder.\n"
-"This folder should be on your local hard drive and should not be synrchonized to any server.", None, -1))
-        self.l_path.setText(QtWidgets.QApplication.translate("", "Local projectpath:", None, -1))
-        self.b_browse.setText(QtWidgets.QApplication.translate("", "...", None, -1))
+        dlg_SetPath.setWindowTitle(QCoreApplication.translate("dlg_SetPath", u"Set local projectpath", None))
+        self.l_description.setText(QCoreApplication.translate("dlg_SetPath", u"All your local scenefiles are saved in this folder.\n"
+"This folder should be on your local hard drive and should not be synrchonized to any server.", None))
+        self.l_path.setText(QCoreApplication.translate("dlg_SetPath", u"Local projectpath:", None))
+        self.b_browse.setText(QCoreApplication.translate("dlg_SetPath", u"...", None))
+    # retranslateUi
 

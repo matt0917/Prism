@@ -32,8 +32,15 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+"""Houdini Filecache node implementation for Prism.
+
+Provides Prism::Filecache HDA functionality for caching and exporting
+geometry/volumes with version management, context switching, and farm submission.
+"""
+
 import os
 import logging
+from typing import Any, Optional, List, Dict, Tuple
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -47,24 +54,56 @@ logger = logging.getLogger(__name__)
 
 
 class Prism_Houdini_Filecache(object):
-    def __init__(self, plugin):
+    """Prism Filecache HDA node manager.
+    
+    Manages Prism::Filecache nodes for exporting/caching geometry with
+    automatic versioning, context management, and render farm integration.
+    
+    Attributes:
+        plugin: Houdini plugin instance.
+        core: PrismCore instance.
+        initState: Initialization state.
+        executeBackground: Background execution flag.
+        stateType: State type identifier.
+        listType: List type for state manager.
+    """
+    
+    def __init__(self, plugin: Any) -> None:
+        """Initialize Filecache node manager.
+        
+        Args:
+            plugin: Houdini plugin instance.
+        """
         self.plugin = plugin
         self.core = self.plugin.core
         self.initState = None
         self.executeBackground = False
-        self.nodeExecuted = False
         self.stateType = "Export"
         self.listType = "Export"
 
     @err_catcher(name=__name__)
-    def getTypeName(self):
+    def getTypeName(self) -> str:
+        """Get node type name.
+        
+        Returns:
+            Node type name string.
+        """
         return "prism::Filecache"
 
     @err_catcher(name=__name__)
-    def getFormats(self):
+    def getFormats(self, kwargs=None):
+        """Get available output formats for the node.
+        
+        Args:
+            kwargs: Optional node context.
+            
+        Returns:
+            List of supported format strings."""
         blacklisted = [".hda", "ShotCam", "other", ".rs"]
         appFormats = self.core.appPlugin.outputFormats
         nodeFormats = [f for f in appFormats if f not in blacklisted]
+        if kwargs and kwargs["node"].parm("showUsdSettings").eval():
+            nodeFormats = [n for n in nodeFormats if "usd" in n]
 
         tokens = []
         for f in nodeFormats:
@@ -75,6 +114,13 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def getLocations(self, kwargs):
+        """Get available export locations.
+        
+        Args:
+            kwargs: Node context.
+            
+        Returns:
+            List of location name strings."""
         if hou.hipFile.isLoadingHipFile():
             return []
 
@@ -103,6 +149,13 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def getReadVersions(self, kwargs):
+        """Get available versions for reading/loading.
+        
+        Args:
+            kwargs: Node context.
+            
+        Returns:
+            List of version strings."""
         versions = []
         versions.insert(0, "latest")
 
@@ -115,6 +168,13 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def getSaveVersions(self, kwargs):
+        """Get available versions for saving/exporting.
+        
+        Args:
+            kwargs: Node context.
+            
+        Returns:
+            List of version strings."""
         versions = []
         versions.insert(0, "next")
 
@@ -127,6 +187,10 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def onNodeCreated(self, kwargs):
+        """Handle node creation callback.
+        
+        Args:
+            kwargs: Node creation context."""
         self.plugin.onNodeCreated(kwargs)
         kwargs["node"].setColor(hou.Color(0.95, 0.5, 0.05))
         self.fetchStageRange(kwargs)
@@ -134,6 +198,10 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def fetchStageRange(self, kwargs):
+        """Fetch frame range from current stage/context.
+        
+        Args:
+            kwargs: Node context."""
         parent = kwargs["node"].parent()
         while parent and not isinstance(parent, hou.LopNode):
             parent = parent.parent()
@@ -143,16 +211,22 @@ class Prism_Houdini_Filecache(object):
         else:
             parent3 = None
 
-        if parent3 and parent3.inputs():
+        if parent3 and parent3.inputs() and parent3.inputs()[0]:
             stage = parent3.inputs()[0].stage()
-            if stage:
-                frameRange = self.core.getPlugin("USD").api.getFrameRangeFromStage(stage)
+            usdPlug = self.core.getPlugin("USD")
+            if stage and usdPlug:
+                frameRange = usdPlug.api.getFrameRangeFromStage(stage)
                 if frameRange["authored"]:
                     self.plugin.setNodeParm(kwargs["node"], "f1", frameRange["start"], clear=True)
                     self.plugin.setNodeParm(kwargs["node"], "f2", frameRange["end"], clear=True)
 
     @err_catcher(name=__name__)
     def nodeInit(self, node, state=None):
+        """Initialize node with Prism state.
+        
+        Args:
+            node: Houdini node to initialize.
+            state: Optional State Manager state to link."""
         if not state:
             state = self.getStateFromNode({"node": node})
 
@@ -174,14 +248,29 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def onNodeDeleted(self, kwargs):
+        """Handle node deletion callback.
+        
+        Args:
+            kwargs: Deletion context."""
         self.plugin.onNodeDeleted(kwargs)
 
     @err_catcher(name=__name__)
     def getStateFromNode(self, kwargs):
+        """Get State Manager state linked to node.
+        
+        Args:
+            kwargs: Node context.
+            
+        Returns:
+            Linked state or None."""
         return self.plugin.getStateFromNode(kwargs)
 
     @err_catcher(name=__name__)
     def setTaskFromNode(self, kwargs):
+        """Set task/product name from node parameter.
+        
+        Args:
+            kwargs: Node context."""
         taskname = self.getProductName(kwargs["node"])
         state = self.getStateFromNode(kwargs)
         if not state:
@@ -192,6 +281,10 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def setFormatFromNode(self, kwargs):
+        """Set output format from node parameter.
+        
+        Args:
+            kwargs: Node context."""
         state = self.getStateFromNode(kwargs)
         if not state:
             return
@@ -200,47 +293,132 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def setUpdateMasterVersionFromNode(self, kwargs):
+        """Set master version update mode from node.
+        
+        Args:
+            kwargs: Node context."""
         master = kwargs["node"].parm("updateMasterVersion").eval()
         state = self.getStateFromNode(kwargs)
         state.ui.setUpdateMasterVersion(master)
 
     @err_catcher(name=__name__)
     def setUpdateMasterVersionOnNode(self, node, master):
+        """Set master version update parameter on node.
+        
+        Args:
+            node: Target node.
+            master: Master version mode string."""
         if master != node.parm("updateMasterVersion").eval():
             self.plugin.setNodeParm(node, "updateMasterVersion", master, clear=True)
 
     @err_catcher(name=__name__)
     def setLocationFromNode(self, kwargs):
+        """Set export location from node parameter.
+        
+        Args:
+            kwargs: Node context."""
         location = kwargs["node"].parm("location").evalAsString()
         state = self.getStateFromNode(kwargs)
         state.ui.setLocation(location)
 
     @err_catcher(name=__name__)
     def setLocationOnNode(self, node, location):
+        """Set location parameter on node.
+        
+        Args:
+            node: Target node.
+            location: Location name string."""
         if location != node.parm("location").evalAsString():
             if location in node.parm("location").menuItems():
                 self.plugin.setNodeParm(node, "location", location, clear=True)
 
     @err_catcher(name=__name__)
     def showInStateManagerFromNode(self, kwargs):
+        """Show linked state in State Manager.
+        
+        Args:
+            kwargs: Node context."""
         self.plugin.showInStateManagerFromNode(kwargs)
 
     @err_catcher(name=__name__)
-    def openInExplorerFromNode(self, kwargs):
+    def openInFromNode(self, kwargs):
+        """Open exported cache in external application.
+        
+        Args:
+            kwargs: Node context."""
         state = self.getStateFromNode(kwargs)
         if not state:
             return
 
         folderpath = state.ui.l_pathLast.text()
-        if not os.path.exists(os.path.dirname(folderpath)):
-            impPath = self.getImportPath()
-            if os.path.exists(os.path.dirname(impPath)):
-                folderpath = impPath
 
-        self.core.openFolder(folderpath)
+        parent = self.core.messageParent
+        menu = QMenu(parent)
+
+        act_open = QAction("Open in Product Browser", parent)
+        act_open.triggered.connect(lambda: self.openInProductBrowser(folderpath))
+        menu.addAction(act_open)
+
+        act_open = QAction("Open in explorer", parent)
+        act_open.triggered.connect(lambda: self.core.openFolder(folderpath))
+        menu.addAction(act_open)
+
+        act_open = QAction("Load in LOPs", parent)
+        act_open.triggered.connect(lambda: self.openInLOPs(kwargs, folderpath))
+        menu.addAction(act_open)
+
+        act_copy = self.core.getCopyAction(folderpath, parent=parent)
+        menu.addAction(act_copy)
+
+        menu.exec_(QCursor.pos())
+
+    @err_catcher(name=__name__)
+    def openInProductBrowser(self, path):
+        """Open path in Product Browser.
+        
+        Args:
+            path: File/folder path to open."""
+        self.core.projectBrowser()
+        self.core.pb.showTab("Products")
+        data = self.core.paths.getCachePathData(path)
+        self.core.pb.productBrowser.navigateToProduct(data["product"], entity=data)
+
+    @err_catcher(name=__name__)
+    def openInLOPs(self, kwargs, path):
+        """Open USD cache in LOPs context.
+        
+        Args:
+            kwargs: Node context.
+            path: USD file path."""
+        parent = kwargs["node"].parent()
+        while parent and (not isinstance(parent, hou.LopNode) or parent.isInsideLockedHDA() or parent.isLockedHDA()):
+            parent = parent.parent()
+
+        if isinstance(parent, hou.LopNode):
+            parent3 = parent
+        else:
+            parent3 = hou.node("/stage")
+
+        if hou.nodeType(hou.lopNodeTypeCategory(), "prism::LOP_Import::1.0"):
+            lopnode = parent3.createNode("prism::LOP_Import::1.0")
+            lopnode.parm("filepath").set(path)
+            lopnode.parm("importAs").set(1)
+            lopnode.hdaModule().setPath({"node": lopnode, "script_value": path})
+        else:
+            lopnode = parent3.createNode("sublayer")
+            lopnode.parm("filepath1").set(path)
+
+        lopnode.setDisplayFlag(True)
+        self.core.appPlugin.goToNode(lopnode)
 
     @err_catcher(name=__name__)
     def refreshNodeUi(self, node, state, forceCook=False):
+        """Refresh node UI with current state.
+        
+        Args:
+            node: Target node.
+            state: Linked State Manager state.
+            forceCook: Force geometry cook before refresh."""
         taskname = state.getTaskname()
         if taskname != self.getProductName(node):
             self.plugin.setNodeParm(node, "task", taskname, clear=True)
@@ -283,16 +461,28 @@ class Prism_Houdini_Filecache(object):
         else:
             parent3 = None
 
-        lopChild = bool(parent3 and node.parm("showLopFetch") and self.core.getPlugin("USD"))
-        node.parm("showLopFetch").set(lopChild)
+        usdPlug = self.core.getPlugin("USD")
+        lopChild = bool(parent3 and node.parm("showLopFetch") and usdPlug)
+        self.plugin.setNodeParm(node, "showLopFetch", lopChild, clear=True) 
 
     @err_catcher(name=__name__)
     def setRangeOnNode(self, node, val):
+        """Set frame range parameter on node.
+        
+        Args:
+            node: Target node.
+            val: Range type string."""
         idx = node.parm("framerange").menuItems().index(val)
         self.plugin.setNodeParm(node, "framerange", idx, clear=True) 
 
     @err_catcher(name=__name__)
     def refreshContextFromEntity(self, node, entity, needsToCook=False):
+        """Refresh context display from entity data.
+        
+        Args:
+            node: Target node.
+            entity: Entity data dictionary.
+            needsToCook: Whether cook is required."""
         if not entity and needsToCook:
             context = "< node not cooked >"
         else:
@@ -305,8 +495,19 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def getRenderNode(self, node):
+        """Get render/export node inside filecache.
+        
+        Args:
+            node: Filecache node.
+            
+        Returns:
+            Internal render node."""
         if node.parm("format").evalAsString() == ".abc":
             ropName = "write_alembic"
+        elif node.parm("format").evalAsString() == ".fbx":
+            ropName = "write_fbx"
+        elif node.parm("format").evalAsString() in [".usda", ".usdc"]:
+            ropName = "write_usd/lopnet_EXPORT/USD_OUT"
         else:
             ropName = "write_geo"
 
@@ -315,34 +516,74 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def executeNode(self, node):
+        """Execute cache export on node.
+        
+        Args:
+            node: Filecache node to execute."""
         rop = self.getRenderNode(node)
-
-        if self.executeBackground:
-            parmName = "executebackground"
-        else:
-            parmName = "execute"
-
-        rop.parm(parmName).pressButton()
-        QCoreApplication.processEvents()
         self.updateLatestVersion(node)
-        node.node("switch_abc").cook(force=True)
+        if node.parm("useWedging").eval():
+            if node.parm("nextVersionWrite").eval():
+                node.parm("nextVersionWrite").set(False)
+                enableNext = True
+            else:
+                enableNext = False
+
+            import nodegraphtopui
+            topnet = node.node("wedging")
+            node.parm("useWedging").set(0)
+            node.wedgeInProgress = True
+            nodegraphtopui.dirtyAll(topnet, False)
+            topnet.cookOutputWorkItems(block=True)
+            node.parm("useWedging").set(1)
+            node.wedgeInProgress = False
+            node.nodeExecuted = True
+            if enableNext:
+                node.parm("nextVersionWrite").set(True)
+
+        else:
+            if self.executeBackground:
+                parmName = "executebackground"
+            else:
+                parmName = "execute"
+
+            rop.parm(parmName).pressButton()
+            QCoreApplication.processEvents()
+
+        try:
+            node.node("switch_format").cook(force=True)
+        except:
+            pass
+
         if (
             not self.executeBackground
             and node.parm("showSuccessPopup").eval()
-            and self.nodeExecuted
+            and getattr(node, "nodeExecuted", False)
             and not rop.errors()
+            and not getattr(node, "wedgeInProgress", False)
         ):
             self.core.popup(
                 "Finished caching successfully.", severity="info", modal=False
             )
 
+        if not getattr(node, "wedgeInProgress", False):
+            self.updateLatestVersion(node)
+
         if self.executeBackground:
             return "background"
         else:
-            return True
+            if node.parm("useWedging").eval():
+                return "wedges"
+            else:
+                return True
 
     @err_catcher(name=__name__)
     def executePressed(self, kwargs, background=False):
+        """Handle execute button press.
+        
+        Args:
+            kwargs: Button press context.
+            background: Execute in background flag."""
         if not kwargs["node"].inputs():
             self.core.popup("No inputs connected")
             return
@@ -360,8 +601,13 @@ class Prism_Houdini_Filecache(object):
         )
         state.ui.gb_submit.setChecked(False)
 
-        self.nodeExecuted = True
+        if getattr(state.ui.node, "wedgeInProgress", False):
+            saveScene = False
+            sanityChecks = False
+
+        state.ui.node.nodeExecuted = True
         self.executeBackground = background
+        comment = kwargs["node"].parm("comment").eval()
         sm.publish(
             executeState=True,
             useVersion=version,
@@ -371,13 +617,21 @@ class Prism_Houdini_Filecache(object):
             incrementScene=incrementScene,
             sanityChecks=sanityChecks,
             versionWarning=False,
+            comment=comment,
         )
         self.executeBackground = False
-        self.nodeExecuted = False
+        state.ui.node.nodeExecuted = False
+        if not kwargs["node"].parm("autorefresh").eval() and kwargs["node"].parm("latestVersionRead").eval():
+            self.refreshImportPath(kwargs)
+
         self.reload(kwargs)
 
     @err_catcher(name=__name__)
     def submitPressed(self, kwargs):
+        """Handle farm submission button press.
+        
+        Args:
+            kwargs: Button press context."""
         if not kwargs["node"].inputs():
             self.core.popup("No inputs connected")
             return
@@ -397,14 +651,68 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def nextChanged(self, kwargs):
+        """Handle 'next version' toggle change.
+        
+        Args:
+            kwargs: Change context."""
         self.updateLatestVersion(kwargs["node"])
 
     @err_catcher(name=__name__)
     def latestChanged(self, kwargs):
+        """Handle 'use latest' toggle change.
+        
+        Args:
+            kwargs: Change context."""
         self.updateLatestVersion(kwargs["node"])
+        if not kwargs["node"].parm("autorefresh").eval():
+            self.refreshImportPath(kwargs)
+
+    @err_catcher(name=__name__)
+    def masterChanged(self, kwargs):
+        """Handle 'use master' toggle change.
+        
+        Args:
+            kwargs: Change context."""
+        self.updateLatestVersion(kwargs["node"])
+        if not kwargs["node"].parm("autorefresh").eval():
+            self.refreshImportPath(kwargs)
+
+    @err_catcher(name=__name__)
+    def readVersionChanged(self, kwargs):
+        """Handle read version selection change.
+        
+        Args:
+            kwargs: Change context."""
+        if not kwargs["node"].parm("autorefresh").eval():
+            self.refreshImportPath(kwargs)
+
+    @err_catcher(name=__name__)
+    def useWedgeChanged(self, kwargs):
+        """Handle wedge usage toggle change.
+        
+        Args:
+            kwargs: Change context."""
+        if not kwargs["node"].parm("autorefresh").eval():
+            self.refreshImportPath(kwargs)
+
+    @err_catcher(name=__name__)
+    def wedgeChanged(self, kwargs):
+        """Handle wedge selection change.
+        
+        Args:
+            kwargs: Change context."""
+        if not kwargs["node"].parm("autorefresh").eval():
+            self.refreshImportPath(kwargs)
 
     @err_catcher(name=__name__)
     def getReadVersionFromNode(self, node):
+        """Get read version string from node.
+        
+        Args:
+            node: Source node.
+            
+        Returns:
+            Version string."""
         if node.parm("latestVersionRead").eval():
             version = "latest"
         else:
@@ -415,6 +723,13 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def getWriteVersionFromNode(self, node):
+        """Get write version string from node.
+        
+        Args:
+            node: Source node.
+            
+        Returns:
+            Version string."""
         if node.parm("nextVersionWrite").eval():
             version = "next"
         else:
@@ -425,6 +740,10 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def updateLatestVersion(self, node):
+        """Update latest version parameter on node.
+        
+        Args:
+            node: Target node."""
         latestVersion = None
         state = self.getStateFromNode({"node": node})
         if not state:
@@ -444,7 +763,7 @@ class Prism_Houdini_Filecache(object):
                     versionpath, num=True
                 ) or 0
 
-            node.parm("writeVersion").set(latestVersion + 1)
+            self.core.appPlugin.setNodeParm(node, "writeVersion", latestVersion + 1, clear=True)
 
         if node.parm("latestVersionRead").eval():
             if latestVersion is None:
@@ -458,10 +777,18 @@ class Prism_Houdini_Filecache(object):
                     )
 
             if latestVersion is not None:
-                node.parm("readVersion").set(latestVersion)
+                self.core.appPlugin.setNodeParm(node, "readVersion", latestVersion, clear=True)
 
     @err_catcher(name=__name__)
     def getParentFolder(self, create=True, node=None):
+        """Get parent folder path for exports.
+        
+        Args:
+            create: Create folder if missing.
+            node: Source node.
+            
+        Returns:
+            Folder path string."""
         sm = self.core.getStateManager()
         if not sm:
             return
@@ -479,7 +806,7 @@ class Prism_Houdini_Filecache(object):
             stateData = {
                 "statename": "Filecaches",
                 "listtype": "Export",
-                "stateenabled": "PySide2.QtCore.Qt.CheckState.Checked",
+                "stateenabled": 2,
                 "stateexpanded": True,
             }
             state = sm.createState("Folder", stateData=stateData)
@@ -487,6 +814,11 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def findExistingVersion(self, kwargs, mode):
+        """Find existing version for read/write.
+        
+        Args:
+            kwargs: Node context.
+            mode: 'read' or 'write' mode."""
         if not getattr(self.core, "projectPath", None):
             return
 
@@ -539,6 +871,12 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def versionSelected(self, path, mode, kwargs):
+        """Handle version selection from browser.
+        
+        Args:
+            path: Selected version path.
+            mode: 'read' or 'write' mode.
+            kwargs: Selection context."""
         if not path:
             return
 
@@ -579,10 +917,20 @@ class Prism_Houdini_Filecache(object):
                     self.plugin.setNodeParm(kwargs["node"], "readWedge", True, clear=True)
                     self.plugin.setNodeParm(kwargs["node"], "readWedgeNum", int(data["wedge"]), clear=True)
 
+            if not kwargs["node"].parm("autorefresh").eval():
+                self.refreshImportPath(kwargs)
+
         return version
 
     @err_catcher(name=__name__)
     def getContextSources(self, kwargs):
+        """Get available context source options.
+        
+        Args:
+            kwargs: Node context.
+            
+        Returns:
+            List of context source strings."""
         parent = kwargs["node"].parent()
         while parent and not isinstance(parent, hou.LopNode):
             parent = parent.parent()
@@ -606,6 +954,10 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def refreshPressed(self, kwargs):
+        """Handle context refresh button press.
+        
+        Args:
+            kwargs: Button press context."""
         state = self.getStateFromNode(kwargs)
         if not state:
             return
@@ -614,12 +966,19 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def getContextStrFromEntity(self, entity):
+        """Get context display string from entity.
+        
+        Args:
+            entity: Entity data dictionary.
+            
+        Returns:
+            Context display string."""
         if not entity:
             return ""
 
         entityType = entity.get("type", "")
         if entityType == "asset":
-            entityName = entity.get("asset_path").replace("\\", "/")
+            entityName = entity.get("asset_path", "").replace("\\", "/")
         elif entityType == "shot":
             entityName = self.core.entities.getShotName(entity)
 
@@ -628,6 +987,10 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def selectContextClicked(self, kwargs):
+        """Handle context selection button click.
+        
+        Args:
+            kwargs: Click context."""
         dlg = EntityDlg(self)
         data = self.core.configs.readJson(data=kwargs["node"].parm("customContext").eval().replace("\\", "/"), ignoreErrors=False)
         if not data:
@@ -643,6 +1006,11 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def setCustomContext(self, kwargs, context):
+        """Set custom output context.
+        
+        Args:
+            kwargs: Node context.
+            context: Custom context dictionary."""
         value = self.core.configs.writeJson(context)
         if value != kwargs["node"].parm("customContext").eval():
             self.core.appPlugin.setNodeParm(kwargs["node"], "customContext", value, clear=True)
@@ -655,6 +1023,10 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def setContextSourceFromNode(self, kwargs):
+        """Set context source from node parameter.
+        
+        Args:
+            kwargs: Node context."""
         state = self.getStateFromNode(kwargs)
         if not state:
             return
@@ -663,10 +1035,48 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def getProductName(self, node):
-        return node.parm("task").unexpandedString()
+        """Get product/task name from node.
+        
+        Args:
+            node: Source node.
+            
+        Returns:
+            Product name string."""
+        parm = node.parm("task")
+        if parm.keyframes():
+            val = parm.eval()
+        else:
+            val = parm.unexpandedString()
+
+        return val
 
     @err_catcher(name=__name__)
-    def getImportPath(self):
+    def isPrismFilecacheNode(self, node):
+        """Check if node is a Prism Filecache.
+        
+        Args:
+            node: Node to check.
+            
+        Returns:
+            True if Prism Filecache node."""
+        if not self.core.appPlugin.isNodeValid(self, node):
+            return False
+
+        if node.type().name().startswith("prism::Filecache"):
+            return True
+
+        return False
+
+    @err_catcher(name=__name__)
+    def getImportPath(self, expand=True, node=None):
+        """Get import/read cache path from node.
+        
+        Args:
+            expand: Expand variables in path.
+            node: Source node.
+            
+        Returns:
+            Import path string."""
         if hou.hipFile.isLoadingHipFile():
             return ""
 
@@ -674,10 +1084,18 @@ class Prism_Houdini_Filecache(object):
         if not sm or self.core.getCurrentFileName() != sm.scenename:
             return ""
 
-        node = hou.pwd()
+        node = node or hou.pwd()
         state = self.getStateFromNode({"node": node})
         if not state:
             return
+
+        if self.isPrismFilecacheNode(node) and node.parm("showUsdSettings").eval():
+            usdPlug = self.core.getPlugin("USD")
+            if not usdPlug:
+                self.core.popup("USD plugin is not loaded.")
+                return
+
+            return usdPlug.api.usdExport.getImportPath(expand=expand, node=node)
 
         entity = state.ui.getOutputEntity()
         product = hou.text.expandString(self.getProductName(node))
@@ -688,21 +1106,37 @@ class Prism_Houdini_Filecache(object):
             wedge = None
 
         if version == "latest":
-            path = self.core.products.getLatestVersionpathFromProduct(product, entity=entity, wedge=wedge)
+            includeMaster = node.parm("includeMaster").eval()
+            path = self.core.products.getLatestVersionpathFromProduct(product, includeMaster=includeMaster, entity=entity, wedge=wedge)
         else:
             path = self.core.products.getVersionpathFromProductVersion(product, version, entity=entity, wedge=wedge)
 
         if path:
             path = path.replace("\\", "/")
-            path = self.core.appPlugin.detectCacheSequence(path)
-            path = hou.text.expandString(path)
+            incr = node.parm("f3").eval() / node.parm("substeps").eval()
+            if incr < 1:
+                subframeStr = f"`pythonexprs('\"%0{self.core.framePadding}d.%03d\" % (int(hou.timeToFrame(hou.time())), round(int(hou.timeToFrame(hou.time()) * (1 / {incr})) / (1 / {incr}) % 1, 3) * 1000)')`"
+            else:
+                subframeStr = None
+
+            path = self.core.appPlugin.detectCacheSequence(path, subframeStr=subframeStr)
+            path = self.core.appPlugin.getPathRelativeToProject(path) if self.core.appPlugin.getUseRelativePath() else path
+            if expand:
+                path = hou.text.expandString(path)
         else:
             path = ""
+
+        if path != node.parm("importPathFallback").eval():
+            self.core.appPlugin.setNodeParm(node, "importPathFallback", path, clear=True)
 
         return path
 
     @err_catcher(name=__name__)
     def getProductNames(self):
+        """Get available product names from project.
+        
+        Returns:
+            List of product name strings."""
         names = []
         node = hou.pwd()
         state = self.getStateFromNode({"node": node})
@@ -719,21 +1153,60 @@ class Prism_Houdini_Filecache(object):
         return names
 
     @err_catcher(name=__name__)
+    def autoRefreshToggled(self, kwargs):
+        """Handle auto-refresh toggle change.
+        
+        Args:
+            kwargs: Toggle context."""
+        auto = kwargs["node"].parm("autorefresh").eval()
+        if auto:
+            kwargs["node"].parm("importPath").setExpression("hou.phm().getImportPath()", language=hou.exprLanguage.Python)
+        else:
+            self.refreshImportPath(kwargs)
+
+    @err_catcher(name=__name__)
+    def refreshImportPath(self, kwargs):
+        """Refresh import path from current settings.
+        
+        Args:
+            kwargs: Node context."""
+        path = self.getImportPath(expand=False)
+        self.plugin.setNodeParm(kwargs["node"], "importPath", path, clear=True)
+
+    @err_catcher(name=__name__)
     def reload(self, kwargs):
-        isAbc = kwargs["node"].parm("switch_abc/input").eval()
+        """Reload cache from disk.
+        
+        Args:
+            kwargs: Reload context."""
+        isAbc = kwargs["node"].parm("switch_format/input").eval() == 1
+        isUsd = kwargs["node"].parm("switch_format/input").eval() == 2
         if isAbc:
             kwargs["node"].parm("read_alembic/reload").pressButton()
+        elif isUsd:
+            kwargs["node"].parm("read_usd/reload").pressButton()
         else:
             kwargs["node"].parm("read_geo/reload").pressButton()
 
     @err_catcher(name=__name__)
     def getFrameranges(self):
+        """Get available frame range types.
+        
+        Returns:
+            List of range type strings."""
         ranges = ["Save Current Frame", "Save Frame Range", "From State Manager"]
         ranges = [r for r in ranges for _ in range(2)]
         return ranges
 
     @err_catcher(name=__name__)
     def getFrameRange(self, node):
+        """Get frame range from node.
+        
+        Args:
+            node: Source node.
+            
+        Returns:
+            Tuple of (startFrame, endFrame)."""
         if node.parm("framerange").eval() == 0:
             startFrame = self.core.appPlugin.getCurrentFrame()
             endFrame = startFrame
@@ -745,6 +1218,10 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def framerangeChanged(self, kwargs):
+        """Handle frame range type change.
+        
+        Args:
+            kwargs: Change context."""
         state = self.getStateFromNode(kwargs)
         if not state:
             return
@@ -754,6 +1231,10 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def getNodeDescription(self):
+        """Get node description/help text.
+        
+        Returns:
+            Description string."""
         node = hou.pwd()
         if self.core.separateOutputVersionStack:
             version = self.getWriteVersionFromNode(node)
@@ -764,7 +1245,7 @@ class Prism_Houdini_Filecache(object):
         else:
             fileName = self.core.getCurrentFileName()
             fnameData = self.core.getScenefileData(fileName)
-            if fnameData.get("type") in ["asset", "shot"]:
+            if fnameData.get("type") in ["asset", "shot"] and "version" in fnameData:
                 version = fnameData["version"]
             else:
                 version = self.core.versionFormat % self.core.lowestVersion
@@ -779,13 +1260,33 @@ class Prism_Houdini_Filecache(object):
 
     @err_catcher(name=__name__)
     def isSingleFrame(self, node):
+        """Check if node exports single frame.
+        
+        Args:
+            node: Node to check.
+            
+        Returns:
+            True if single frame mode."""
         rangeType = node.parm("framerange").evalAsString()
         isSingle = rangeType == "Save Current Frame"
         return isSingle
 
 
 class Farm_Submitter(QDialog):
-    def __init__(self, origin, state, kwargs):
+    """Dialog for submitting Filecache jobs to render farm.
+    
+    Provides UI for configuring farm submission parameters and executing
+    the submission through the configured render manager.
+    """
+    
+    def __init__(self, origin: Any, state: Any, kwargs: Dict[str, Any]) -> None:
+        """Initialize farm submission dialog.
+        
+        Args:
+            origin: Filecache node manager instance.
+            state: State Manager state.
+            kwargs: Node context dictionary.
+        """
         super(Farm_Submitter, self).__init__()
         self.origin = origin
         self.plugin = self.origin.plugin
@@ -801,7 +1302,8 @@ class Farm_Submitter(QDialog):
         self.setupUi()
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Set up the farm submission dialog UI elements and layout."""
         self.setWindowTitle("Prism Farm Submitter - %s" % self.state.ui.node.path())
         self.lo_main = QVBoxLayout()
         self.setLayout(self.lo_main)
@@ -820,7 +1322,12 @@ class Farm_Submitter(QDialog):
         self.b_submit.clicked.connect(self.submit)
 
     @err_catcher(name=__name__)
-    def closeEvent(self, event):
+    def closeEvent(self, event: Any) -> None:
+        """Handle dialog close event.
+        
+        Args:
+            event: Qt close event.
+        """
         curItem = self.core.sm.getCurrentItem(self.core.sm.activeList)
         if curItem and self.state and (id(self.state) == id(curItem)):
             self.core.sm.showState()
@@ -831,7 +1338,8 @@ class Farm_Submitter(QDialog):
         event.accept()
 
     @err_catcher(name=__name__)
-    def submit(self):
+    def submit(self) -> None:
+        """Submit the filecache job to the render farm."""
         self.hide()
         self.state.ui.gb_submit.setCheckable(True)
         self.state.ui.gb_submit.setChecked(True)
@@ -842,6 +1350,7 @@ class Farm_Submitter(QDialog):
         incrementScene = saveScene and bool(
             self.kwargs["node"].parm("incrementScene").eval()
         )
+        comment = self.kwargs["node"].parm("comment").eval()
 
         sm = self.core.getStateManager()
         result = sm.publish(
@@ -853,6 +1362,7 @@ class Farm_Submitter(QDialog):
             incrementScene=incrementScene,
             sanityChecks=sanityChecks,
             versionWarning=False,
+            comment=comment,
         )
         if result:
             msg = "Job submitted successfully."
@@ -862,10 +1372,21 @@ class Farm_Submitter(QDialog):
 
 
 class EntityDlg(QDialog):
+    """Dialog for selecting output entity (asset/shot) context.
+    
+    Provides tree widget navigation for selecting target asset or shot
+    for cache export context.
+    """
 
     entitySelected = Signal(object)
 
-    def __init__(self, origin, parent=None):
+    def __init__(self, origin: Any, parent: Optional[Any] = None) -> None:
+        """Initialize entity selection dialog.
+        
+        Args:
+            origin: Filecache node manager instance.
+            parent: Optional parent widget.
+        """
         super(EntityDlg, self).__init__()
         self.origin = origin
         self.parentDlg = parent
@@ -874,7 +1395,8 @@ class EntityDlg(QDialog):
         self.setupUi()
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Set up the entity dialog UI with entity tree widget and buttons."""
         title = "Select entity"
 
         self.setWindowTitle(title)
@@ -901,11 +1423,24 @@ class EntityDlg(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def itemDoubleClicked(self, item, column):
+    def itemDoubleClicked(self, item: Any, column: int) -> None:
+        """Handle tree item double-click.
+        
+        Args:
+            item: Clicked tree widget item.
+            column: Column index.
+        """
         self.buttonClicked("select")
 
     @err_catcher(name=__name__)
-    def buttonClicked(self, button):
+    def buttonClicked(self, button: Any) -> None:
+        """Handle dialog button click.
+        
+        Emits entitySelected signal with selected entity data on OK.
+        
+        Args:
+            button: Clicked button widget.
+        """
         if button == "select" or button.text() == "Select":
             entities = self.w_entities.getCurrentData()
             if isinstance(entities, dict):
@@ -928,5 +1463,10 @@ class EntityDlg(QDialog):
         self.close()
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> Any:
+        """Get preferred dialog size.
+        
+        Returns:
+            QSize for dialog dimensions.
+        """
         return QSize(400, 400)

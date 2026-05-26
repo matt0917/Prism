@@ -2,3 +2,10 @@
 Prism/Python37/
 Prism/PythonLibs/
 Prism/Tools/
+Prism/Python311/
+Prism/PythonLibs/
+Prism/Tools/
+
+
+*.zip
+

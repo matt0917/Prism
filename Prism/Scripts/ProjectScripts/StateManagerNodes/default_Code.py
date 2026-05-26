@@ -31,9 +31,12 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing import Any, Optional, Dict, List
+
 import os
 import sys
 import logging
+import traceback
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -48,10 +51,42 @@ logger = logging.getLogger(__name__)
 
 
 class CodeClass(object):
+    """State Manager node for executing Python code snippets.
+    
+    Provides functionality to write and execute custom Python code within the
+    State Manager. Code can be saved as presets and executed on demand or as
+    part of a state execution sequence.
+    
+    Attributes:
+        className (str): Node type identifier ("Code")
+        listType (str): State list type ("Export")
+        core (Any): Reference to PrismCore instance
+        state (Any): Reference to QTreeWidgetItem representing this state
+        stateManager (Any): Reference to StateManager instance
+        canSetVersion (bool): Whether this state supports version control
+    """
     className = "Code"
     listType = "Export"
 
-    def setup(self, state, core, stateManager, stateData=None):
+    def setup(
+        self, 
+        state: Any, 
+        core: Any, 
+        stateManager: Any, 
+        stateData: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Initialize the code execution state.
+        
+        Sets up the code state with core references, UI components,
+        and loads saved state data if provided.
+        
+        Args:
+            state (Any): QTreeWidgetItem representing this state in the state tree
+            core (Any): PrismCore instance for accessing Prism functionality
+            stateManager (Any): StateManager instance managing this state
+            stateData (Dict[str, Any], optional): Saved state configuration to restore.
+                Defaults to None.
+        """
         self.core = core
         self.state = state
         self.stateManager = stateManager
@@ -66,25 +101,37 @@ class CodeClass(object):
             self.loadData(stateData)
 
     @err_catcher(name=__name__)
-    def loadData(self, data):
+    def loadData(self, data: Dict[str, Any]) -> None:
+        """Load saved state settings from data dictionary.
+        
+        Restores code state settings including name, code content,
+        and enable state from previously saved data.
+        
+        Args:
+            data (Dict[str, Any]): Dictionary containing saved state settings with keys:
+                - statename (str, optional): Name of the state
+                - code (str, optional): Python code content
+                - stateenabled (int, optional): Check state value
+        """
         if "statename" in data:
             self.e_name.setText(data["statename"])
         if "code" in data:
             self.te_code.setPlainText(data["code"])
         if "stateenabled" in data and self.listType == "Export":
-            self.state.setCheckState(
-                0,
-                eval(
-                    data["stateenabled"]
-                    .replace("PySide.QtCore.", "")
-                    .replace("PySide2.QtCore.", "")
-                ),
-            )
+            if type(data["stateenabled"]) == int:
+                self.state.setCheckState(
+                    0, Qt.CheckState(data["stateenabled"]),
+                )
 
         self.core.callback("onStateSettingsLoaded", self, data)
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect UI widget signals to handler methods.
+        
+        Sets up connections between UI controls and their handler methods
+        for code editing, preset management, and execution.
+        """
         self.e_name.textChanged.connect(self.nameChanged)
         self.e_name.editingFinished.connect(self.stateManager.saveStatesToScene)
         self.te_code.textChanged.connect(self.stateManager.saveStatesToScene)
@@ -92,15 +139,35 @@ class CodeClass(object):
         self.b_execute.clicked.connect(self.executePressed)
 
     @err_catcher(name=__name__)
-    def nameChanged(self, text):
+    def nameChanged(self, text: str) -> None:
+        """Handle state name changes.
+        
+        Updates the tree widget item text when the state name is changed.
+        
+        Args:
+            text (str): New state name
+        """
         self.state.setText(0, text)
 
     @err_catcher(name=__name__)
-    def updateUi(self):
+    def updateUi(self) -> bool:
+        """Update the UI state.
+        
+        Called when the UI needs to be refreshed. For code states, no
+        action is needed.
+        
+        Returns:
+            bool: Always returns True indicating success
+        """
         return True
 
     @err_catcher(name=__name__)
-    def showPresets(self):
+    def showPresets(self) -> None:
+        """Display a context menu of available code presets.
+        
+        Shows a menu listing all saved code presets, allowing the user
+        to select one to load or open the preset manager.
+        """
         menu = QMenu(self)
 
         presets = self.core.projects.getCodePresets()
@@ -116,60 +183,111 @@ class CodeClass(object):
         menu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def getPresets(self):
+    def getPresets(self) -> List[Dict[str, str]]:
+        """Get all available code presets.
+        
+        Returns:
+            List[Dict[str, str]]: List of preset dictionaries with 'name' and 'code' keys
+        """
         return self.core.projects.getPresets()
 
     @err_catcher(name=__name__)
-    def managePresets(self):
+    def managePresets(self) -> None:
+        """Open the preset management dialog.
+        
+        Opens a dialog for creating, editing, and deleting code presets.
+        Creates the dialog on first use and shows it.
+        """
         if not hasattr(self, "dlg_manage"):
             self.dlg_manage = ManagePresetsDlg(self)
 
         self.dlg_manage.show()
 
     @err_catcher(name=__name__)
-    def getCode(self):
+    def getCode(self) -> str:
+        """Get the current code from the text editor.
+        
+        Returns:
+            str: Python code content
+        """
         return self.te_code.toPlainText()
 
     @err_catcher(name=__name__)
-    def setCode(self, code):
+    def setCode(self, code: str) -> None:
+        """Set code content in the text editor.
+        
+        Args:
+            code (str): Python code content to set
+        """
         return self.te_code.setPlainText(code)
 
     @err_catcher(name=__name__)
-    def executePressed(self):
+    def executePressed(self) -> None:
+        """Handle execute button press.
+        
+        Executes the code and displays a result popup showing success
+        or error messages along with any output.
+        """
         result = self.executeCode()
         if result["result"] == "success":
             msg = "Code executed successfully."
             if result["val"] is not None:
                 msg += "\n\n%s" % result["val"]
 
-            self.core.popup(msg, severity="info")
+            if result.get("showPopup", True):
+                self.core.popup(msg, severity="info")
         else:
             msg = "Failed to execute the code:\n\n%s" % result["error"]
+            if result["val"] is not None:
+                msg += "\n\n%s" % result["val"]
+
             self.core.popup(msg)
 
     @err_catcher(name=__name__)
-    def executeCode(self):
+    def executeCode(self) -> Dict[str, Any]:
+        """Execute the Python code with output capture.
+        
+        Executes the code in a controlled environment with access to 'pcore'
+        (PrismCore instance) and 'state' (this state object). Captures stdout
+        output and any exceptions.
+        
+        Returns:
+            Dict[str, Any]: Dictionary with keys:
+                - result (str): "success" or "error"
+                - val (str): Captured stdout output
+                - error (str, optional): Error traceback if execution failed
+                - showPopup (bool, optional): Whether to show result popup
+        """
         if sys.version[0] == "3":
             from io import StringIO
         else:
             from cStringIO import StringIO
 
+        showPopup = True
         code = self.getCode()
         old_stdout = sys.stdout
         redirected_output = sys.stdout = StringIO()
+        _globals = {"pcore": self.core, "state": self}
+        _locals = locals()
 
         try:
-            exec(code, {"pcore": self.core, "state": self})
+            exec(code, _globals, _locals)
         except Exception as e:
             sys.stdout = old_stdout
-            return {"result": "error", "error": e, "val": redirected_output.getvalue()}
+            return {"result": "error", "error": traceback.format_exc(), "val": redirected_output.getvalue()}
 
         sys.stdout = old_stdout
-
-        return {"result": "success", "val": redirected_output.getvalue()}
+        return {"result": "success", "val": redirected_output.getvalue(), "showPopup": _locals["showPopup"]}
 
     @err_catcher(name=__name__)
-    def preExecuteState(self):
+    def preExecuteState(self) -> List[Any]:
+        """Check for warnings before execution.
+        
+        Validates that code is specified before execution.
+        
+        Returns:
+            List[Any]: List containing [state_name, [warnings]]
+        """
         warnings = []
 
         if not self.getCode():
@@ -178,7 +296,16 @@ class CodeClass(object):
         return [self.state.text(0), warnings]
 
     @err_catcher(name=__name__)
-    def executeState(self, parent, useVersion="next"):
+    def executeState(self, parent: Any, useVersion: str = "next") -> List[str]:
+        """Execute the code state as part of a state execution sequence.
+        
+        Args:
+            parent (Any): Parent state for context
+            useVersion (str, optional): Version strategy. Defaults to "next".
+        
+        Returns:
+            List[str]: List containing status message (success or error)
+        """
         result = self.executeCode()
         if result["result"] == "success":
             return [self.state.text(0) + " - success"]
@@ -189,20 +316,46 @@ class CodeClass(object):
             ]
 
     @err_catcher(name=__name__)
-    def getStateProps(self):
+    def getStateProps(self) -> Dict[str, Any]:
+        """Get current state settings for saving.
+        
+        Collects all code state settings including name, code content,
+        and enable state for serialization.
+        
+        Returns:
+            Dict[str, Any]: Dictionary containing state settings with keys:
+                - statename (str): Name of the state
+                - code (str): Python code content
+                - stateenabled (int): Check state value
+        """
         stateProps = {}
         stateProps.update(
             {
                 "statename": self.e_name.text(),
                 "code": self.te_code.toPlainText(),
-                "stateenabled": str(self.state.checkState(0)),
+                "stateenabled": self.core.getCheckStateValue(self.state.checkState(0)),
             }
         )
         return stateProps
 
 
 class ManagePresetsDlg(QDialog):
-    def __init__(self, origin):
+    """Dialog for managing code presets.
+    
+    Provides a UI for creating, editing, viewing, and deleting code presets.
+    Displays a list of presets on the left and code content on the right.
+    
+    Attributes:
+        origin (CodeClass): Parent code state instance
+        core (Any): Reference to PrismCore instance
+    """
+    
+    def __init__(self, origin: Any) -> None:
+        """Initialize the preset management dialog.
+        
+        Args:
+            origin (Any): Parent CodeClass instance
+        """
         super(ManagePresetsDlg, self).__init__()
         self.origin = origin
         self.core = self.origin.core
@@ -211,11 +364,22 @@ class ManagePresetsDlg(QDialog):
         self.refreshUI()
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Provide a default window size hint.
+        
+        Returns:
+            QSize object with dimensions (550, 350)
+        """
         return QSize(550, 350)
 
     @err_catcher(name=__name__)
-    def setupUI(self):
+    def setupUI(self) -> None:
+        """Create and configure the dialog UI.
+        
+        Sets up a split view with preset list on the left and code editor
+        on the right. Includes buttons for adding/removing presets and
+        save/cancel buttons.
+        """
         self.setWindowTitle("Manage Presets")
         self.lo_main = QVBoxLayout()
         self.setLayout(self.lo_main)
@@ -288,7 +452,12 @@ class ManagePresetsDlg(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def refreshUI(self):
+    def refreshUI(self) -> None:
+        """Refresh the preset list.
+        
+        Reloads all presets from the project and updates the list widget,
+        maintaining the current selection if possible.
+        """
         names = [item.text() for item in self.lw_presets.selectedItems()]
         self.lw_presets.clear()
         presets = self.core.projects.getCodePresets()
@@ -300,7 +469,14 @@ class ManagePresetsDlg(QDialog):
                 item.setSelected(True)
 
     @err_catcher(name=__name__)
-    def rclPreset(self, pos):
+    def rclPreset(self, pos: QPoint) -> None:
+        """Handle right-click context menu on preset list.
+        
+        Shows a context menu with options to add or remove presets.
+        
+        Args:
+            pos (QPoint): Mouse click position
+        """
         rcmenu = QMenu(self)
 
         exp = QAction("Add Preset", self)
@@ -316,7 +492,12 @@ class ManagePresetsDlg(QDialog):
         rcmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def refreshCode(self):
+    def refreshCode(self) -> None:
+        """Refresh code editor with selected preset content.
+        
+        Updates the code editor to display the code from the currently
+        selected preset. Clears the editor if multiple or no presets are selected.
+        """
         self.te_code.blockSignals(True)
         self.te_code.clear()
 
@@ -330,7 +511,12 @@ class ManagePresetsDlg(QDialog):
         self.te_code.blockSignals(False)
 
     @err_catcher(name=__name__)
-    def presetChanged(self):
+    def presetChanged(self) -> None:
+        """Handle code editor changes.
+        
+        Updates the selected preset code when the code editor content
+        is modified.
+        """
         items = self.lw_presets.selectedItems()
         if len(items) != 1:
             return
@@ -341,7 +527,12 @@ class ManagePresetsDlg(QDialog):
         items[0].setData(Qt.UserRole, data)
 
     @err_catcher(name=__name__)
-    def selectPresets(self, names):
+    def selectPresets(self, names: List[str]) -> None:
+        """Select presets by name in the list.
+        
+        Args:
+            names (List[str]): List of preset names to select
+        """
         self.lw_presets.clearSelection()
         for idx in range(self.lw_presets.count()):
             item = self.lw_presets.item(idx)
@@ -349,11 +540,22 @@ class ManagePresetsDlg(QDialog):
                 item.setSelected(True)
 
     @err_catcher(name=__name__)
-    def showEvent(self, event):
+    def showEvent(self, event: QEvent) -> None:
+        """Handle dialog show event.
+        
+        Adjusts the code label height to match the header height.
+        
+        Args:
+            event (QEvent): Show event
+        """
         self.l_code.setMinimumHeight(self.w_header.height())
 
     @err_catcher(name=__name__)
-    def dialogAccepted(self):
+    def dialogAccepted(self) -> None:
+        """Handle dialog acceptance.
+        
+        Saves all preset changes to the project configuration.
+        """
         presets = []
         for idx in range(self.lw_presets.count()):
             item = self.lw_presets.item(idx)
@@ -364,7 +566,12 @@ class ManagePresetsDlg(QDialog):
         self.accept()
 
     @err_catcher(name=__name__)
-    def createPresetDlg(self):
+    def createPresetDlg(self) -> None:
+        """Open dialog to create a new preset.
+        
+        Shows a dialog prompting for a preset name and creates a new
+        empty preset when confirmed.
+        """
         if hasattr(self, "newItem") and self.newItem.isVisible():
             self.newItem.close()
 
@@ -379,7 +586,12 @@ class ManagePresetsDlg(QDialog):
         self.newItem.show()
 
     @err_catcher(name=__name__)
-    def createPreset(self):
+    def createPreset(self) -> None:
+        """Create a new preset with the specified name.
+        
+        Validates that the preset name is unique, creates the preset,
+        and selects it in the list.
+        """
         name = self.newItem.e_item.text()
         presets = self.core.projects.getCodePresets()
         presetNames = [f["name"] for f in presets]
@@ -393,7 +605,12 @@ class ManagePresetsDlg(QDialog):
         self.selectPresets([name])
 
     @err_catcher(name=__name__)
-    def removePreset(self):
+    def removePreset(self) -> None:
+        """Remove selected presets.
+        
+        Deletes all currently selected presets from the project configuration
+        and refreshes the list.
+        """
         names = [item.text() for item in self.lw_presets.selectedItems()]
         for name in names:
             self.core.projects.removeCodePreset(name)

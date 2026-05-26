@@ -36,6 +36,7 @@ import sys
 import platform
 import shutil
 import glob
+from typing import Any, List, Optional, Union
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -51,7 +52,27 @@ from PrismUtils.Decorators import err_catcher_plugin as err_catcher
 
 
 class Prism_Houdini_Integration(object):
-    def __init__(self, core, plugin):
+    """Houdini integration management.
+    
+    Handles installation and removal of Prism integration files in
+    Houdini preferences folders, including package files and initialization
+    scripts.
+    
+    Attributes:
+        core: PrismCore instance.
+        plugin: Houdini plugin instance.
+        examplePath: Example installation path for reference.
+    """
+    
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize Houdini integration manager.
+        
+        Sets example paths based on available Houdini installations.
+        
+        Args:
+            core: PrismCore instance.
+            plugin: Houdini plugin instance.
+        """
         self.core = core
         self.plugin = plugin
         prefPaths = self.getPreferencesPaths()
@@ -61,7 +82,12 @@ class Prism_Houdini_Integration(object):
             self.examplePath = self.getPreferencesBasePath() + "19.5"
 
     @err_catcher(name=__name__)
-    def getExecutable(self):
+    def getExecutable(self) -> str:
+        """Get Houdini executable path.
+        
+        Returns:
+            Path to houdini.exe on Windows, empty string otherwise.
+        """
         execPath = ""
         if platform.system() == "Windows":
             defaultpath = os.path.join(self.getHoudiniPath(), "bin", "houdini.exe")
@@ -71,7 +97,12 @@ class Prism_Houdini_Integration(object):
         return execPath
 
     @err_catcher(name=__name__)
-    def getHoudiniPath(self):
+    def getHoudiniPath(self) -> str:
+        """Get Houdini installation path from Windows registry.
+        
+        Returns:
+            Installation path if found in registry, empty string otherwise.
+        """
         try:
             key = _winreg.OpenKey(
                 _winreg.HKEY_LOCAL_MACHINE,
@@ -94,7 +125,14 @@ class Prism_Houdini_Integration(object):
             return ""
 
     @err_catcher(name=__name__)
-    def getPreferencesPaths(self):
+    def getPreferencesPaths(self) -> List[str]:
+        """Get all available Houdini preferences folder paths.
+        
+        Searches for Houdini version folders in the preferences directory.
+        
+        Returns:
+            List of Houdini preferences folder paths.
+        """
         houdiniPaths = []
         basepath = self.getPreferencesBasePath()
 
@@ -108,7 +146,12 @@ class Prism_Houdini_Integration(object):
 
         return houdiniPaths
 
-    def getPreferencesBasePath(self):
+    def getPreferencesBasePath(self) -> str:
+        """Get base path for Houdini preferences folder.
+        
+        Returns:
+            Base path to Houdini preferences folder for the current platform.
+        """
         if platform.system() == "Windows":
             basepath = self.core.getWindowsDocumentsPath() + "\\houdini"
         elif platform.system() == "Linux":
@@ -128,25 +171,40 @@ class Prism_Houdini_Integration(object):
 
         return basepath
 
-    def addIntegration(self, installPath):
+    def addIntegration(self, installPath: str) -> bool:
+        """Install Prism integration into Houdini.
+        
+        Copies integration files and creates package configuration.
+        
+        Args:
+            installPath: Path to Houdini preferences folder.
+        
+        Returns:
+            True if installation succeeded, False otherwise.
+        """
         try:
+            confirmed = False
             if not os.path.exists(installPath):
-                msg = "Invalid Houdini path: %s.\n\nThe path has to be the Houdini preferences folder, which usually looks like this: (with your Houdini version):\n\n%s" % (installPath, self.examplePath)
-                self.core.popup(msg)
-                return False
+                msg = "Houdini path doesn't exist:\n\n%s\n\nThe path has to be the Houdini preferences folder, which usually looks like this: (with your Houdini version):\n\n%s" % (installPath, self.examplePath)
+                result = self.core.popupQuestion(msg, buttons=["Continue", "Cancel"], icon=QMessageBox.Warning, default="Continue")
+                if result != "Continue":
+                    return False
+
+                confirmed = True
 
             houPath = os.path.join(installPath, "bin")
-            if os.path.exists(houPath):
+            if os.path.exists(houPath) and not confirmed:
                 msg = "The selected folder seems to be the Houdini installation folder. The Prism integration has to be installed to your Houdini preferences folder. Are you sure you want to continue?\n\n%s" % installPath
                 result = self.core.popupQuestion(msg, icon=QMessageBox.Warning, default="No")
                 if result == "No":
-                    return
+                    return False
 
             addedFiles = []
 
             integrationBase = os.path.join(
                 os.path.dirname(os.path.dirname(__file__)), "Integration"
             )
+            integrationBase = os.path.realpath(integrationBase)
 
             packagePath = os.path.join(installPath, "packages", "Prism.json")
 
@@ -189,7 +247,17 @@ class Prism_Houdini_Integration(object):
             QMessageBox.warning(self.core.messageParent, "Prism Integration", msgStr)
             return False
 
-    def removeIntegration(self, installPath):
+    def removeIntegration(self, installPath: str) -> bool:
+        """Remove Prism integration from Houdini.
+        
+        Removes integration files and cleans up modified scripts.
+        
+        Args:
+            installPath: Path to Houdini preferences folder.
+        
+        Returns:
+            True if removal succeeded, False otherwise.
+        """
         try:
             if os.path.exists(os.path.join(installPath, "houdini", "python2.7libs")):
                 installBase = os.path.join(installPath, "houdini")
@@ -250,7 +318,18 @@ class Prism_Houdini_Integration(object):
             QMessageBox.warning(self.core.messageParent, "Prism Integration", msgStr)
             return False
 
-    def updateInstallerUI(self, userFolders, pItem):
+    def updateInstallerUI(self, userFolders: Any, pItem: Any) -> Optional[bool]:
+        """Update installer UI with Houdini installation options.
+        
+        Adds Houdini versions to installer tree widget.
+        
+        Args:
+            userFolders: User folders object.
+            pItem: Parent tree widget item.
+            
+        Returns:
+            None on success, False on error.
+        """
         try:
             houItem = QTreeWidgetItem(["Houdini"])
             houItem.setCheckState(0, Qt.Checked)
@@ -293,7 +372,18 @@ class Prism_Houdini_Integration(object):
             )
             return False
 
-    def installerExecute(self, houItem, result):
+    def installerExecute(self, houItem: Any, result: dict) -> Union[List[str], bool]:
+        """Execute Houdini integration installation.
+        
+        Installs integration for all checked Houdini versions.
+        
+        Args:
+            houItem: Houdini tree widget item.
+            result: Result dictionary to update.
+        
+        Returns:
+            List of successfully installed paths, or False on error.
+        """
         try:
             houPaths = []
             installLocs = []

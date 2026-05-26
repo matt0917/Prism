@@ -37,6 +37,8 @@ import sys
 import shutil
 import platform
 import subprocess
+import logging
+from typing import Any, Optional, List, Dict, Tuple
 
 prismRoot = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 scriptPath = os.path.join(prismRoot, "Scripts")
@@ -66,18 +68,33 @@ from PrismUtils.Decorators import err_catcher
 from UserInterfacesPrism import PrismInstaller_ui
 
 
+logger = logging.getLogger(__name__)
+
+
 class PrismSetup(QDialog):
+    """Setup wizard dialog for Prism installation.
+    
+    Provides multi-page guided setup for installing startmenu entries,
+    DCC integrations, and uninstaller.
+    """
 
     signalShowing = Signal()
 
-    def __init__(self, core):
+    def __init__(self, core: Any) -> None:
+        """Initialize setup wizard.
+        
+        Args:
+            core (Any): PrismCore instance.
+        """
         QDialog.__init__(self)
         self.core = core
+        self.silent = False
         self.loadLayout()
         self.connectEvents()
         self.setFocus()
 
-    def loadLayout(self):
+    def loadLayout(self) -> None:
+        """Load and configure wizard page layout."""
         self.setWindowTitle("Prism Setup")
         self.lo_main = QVBoxLayout()
         self.lo_main.setContentsMargins(0, 0, 0, 0)
@@ -97,45 +114,80 @@ class PrismSetup(QDialog):
 
         self.resize(800, 450)
 
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect page signals to navigation slots."""
         self.w_pageStart.signalNext.connect(self.nextClicked)
         self.w_pageStartmenu.signalNext.connect(self.nextClicked)
         self.w_pageIntegrations.signalNext.connect(self.nextClicked)
         self.w_pageFinished.signalBack.connect(self.backClicked)
         self.sw_main.currentChanged.connect(self.pageChanged)
 
-    def backClicked(self):
+    def backClicked(self) -> None:
+        """Navigate to previous wizard page."""
         curIdx = self.sw_main.currentIndex()
         if curIdx == 0:
             return
 
         self.sw_main.setCurrentIndex(curIdx-1)
 
-    def nextClicked(self):
+    def nextClicked(self) -> None:
+        """Navigate to next wizard page."""
         curIdx = self.sw_main.currentIndex()
         if curIdx == (self.sw_main.count() - 1):
             return
 
         self.sw_main.setCurrentIndex(curIdx+1)
 
-    def showEvent(self, event):
+    def showEvent(self, event: Any) -> None:
+        """Handle dialog show event.
+        
+        Args:
+            event (Any): Show event.
+        """
         self.signalShowing.emit()
         self.activateWindow()
         self.raise_()
 
-    def pageChanged(self, idx):
+    def pageChanged(self, idx: int) -> None:
+        """Trigger entered callback when page changes.
+        
+        Args:
+            idx (int): New page index.
+        """
         self.sw_main.widget(idx).entered()
+
+    def run(self, silent: bool = False) -> None:
+        """Start the setup wizard.
+        
+        Args:
+            silent (bool, optional): Run without user interaction. Defaults to False.
+        """
+        self.silent = silent
+        self.nextClicked()
 
 
 class Page_Start(QWidget):
+    """Initial setup page for component selection.
+    
+    Allows user to select which components to install (startmenu, integrations, uninstaller).
+    """
 
     signalNext = Signal()
 
-    def __init__(self, parent):
+    def __init__(self, parent: Any) -> None:
+        """Initialize start page.
+        
+        Args:
+            parent (Any): Parent widget.
+        """
         super(Page_Start, self).__init__()
         self.setupUi()
 
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Set up the start page UI components.
+        
+        Creates layout with checkboxes for component selection (startmenu, integrations, uninstaller).
+        """
         self.lo_main = QVBoxLayout()
         self.lo_main.setContentsMargins(20, 20, 20, 20)
         self.setLayout(self.lo_main)
@@ -162,8 +214,12 @@ class Page_Start(QWidget):
         self.chb_startmenu.setChecked(True)
         self.chb_integrations = QCheckBox("DCC integrations")
         self.chb_integrations.setChecked(True)
+        self.chb_uninstaller = QCheckBox("Create Uninstaller")
+        self.chb_uninstaller.setChecked(False)
         self.lo_options.addWidget(self.chb_startmenu)
         self.lo_options.addWidget(self.chb_integrations)
+        if platform.system() == "Windows":
+            self.lo_options.addWidget(self.chb_uninstaller)
 
         self.w_footer = QWidget()
         self.lo_footer = QHBoxLayout()
@@ -179,15 +235,25 @@ class Page_Start(QWidget):
 
 
 class Page_Startmenu(QWidget):
+    """Setup page for creating startmenu entries and uninstaller.
+    
+    Automatically executes setup tasks when page is entered.
+    """
 
     signalNext = Signal()
 
-    def __init__(self, parent):
+    def __init__(self, parent: Any) -> None:
+        """Initialize startmenu page.
+        
+        Args:
+            parent (Any): Parent widget.
+        """
         super(Page_Startmenu, self).__init__()
         self.parent = parent
         self.setupUi()
 
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Set up the user interface for startmenu setup page."""
         self.lo_main = QVBoxLayout()
         self.lo_main.setContentsMargins(20, 50, 20, 20)
         self.l_header = QLabel("Creating startmenu. Please wait...")
@@ -198,10 +264,16 @@ class Page_Startmenu(QWidget):
         self.lo_main.addStretch()
         self.setLayout(self.lo_main)
 
-    def entered(self):
+    def entered(self) -> None:
+        """Execute setup tasks when page is entered.
+        
+        Creates startmenu entries and uninstaller if selected.
+        """
         QApplication.processEvents()
         if self.parent.w_pageStart.chb_startmenu.isChecked():
             self.parent.core.setupStartMenu(quiet=True)
+
+        if self.parent.w_pageStart.chb_uninstaller.isChecked():
             self.l_header.setText("Creating uninstaller. Please wait...")
             QApplication.processEvents()
             self.parent.core.setupUninstaller(quiet=True)
@@ -211,15 +283,25 @@ class Page_Startmenu(QWidget):
 
 
 class Page_Integrations(QWidget):
+    """Setup page for DCC integration installation.
+    
+    Displays PrismInstaller widget for selecting and installing integrations.
+    """
 
     signalNext = Signal()
 
-    def __init__(self, parent):
+    def __init__(self, parent: Any) -> None:
+        """Initialize integrations page.
+        
+        Args:
+            parent (Any): Parent widget.
+        """
         super(Page_Integrations, self).__init__()
         self.parent = parent
         self.setupUi()
 
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Set up the user interface for integrations page."""
         self.lo_main = QVBoxLayout()
         self.lo_main.setContentsMargins(20, 20, 20, 20)
         self.setLayout(self.lo_main)
@@ -240,17 +322,20 @@ class Page_Integrations(QWidget):
         self.b_skip.clicked.connect(self.skipClicked)
         self.b_install.clicked.connect(self.installClicked)
 
-    def skipClicked(self):
+    def skipClicked(self) -> None:
+        """Skip integration installation and proceed to next page."""
         self.signalNext.emit()
 
-    def installClicked(self):
+    def installClicked(self) -> None:
+        """Install selected DCC integrations."""
         core = self.parent.core
         core.uiAvailable = True
         self.w_integrations.install(successPopup=False)
         core.uiAvailable = False
         self.signalNext.emit()
 
-    def entered(self):
+    def entered(self) -> None:
+        """Load integration installer when page is entered."""
         if not self.parent.w_pageStart.chb_integrations.isChecked():
             self.signalNext.emit()
             return
@@ -271,6 +356,9 @@ class Page_Integrations(QWidget):
 
             self.w_integrations.buttonBox.setVisible(False)
             self.lo_main.insertWidget(0, self.w_integrations)
+            if self.parent.silent:
+                self.installClicked()
+
         except Exception as e:
             self.l_error = QLabel("Failed to load Prism:\n\n%s\n\nPlease contact the support" % e)
             self.sp_main = QSpacerItem(0, 0, QSizePolicy.Fixed, QSizePolicy.Expanding)
@@ -286,16 +374,26 @@ class Page_Integrations(QWidget):
 
 
 class Page_Finished(QWidget):
+    """Final setup page displaying completion status.
+    
+    Allows user to launch Prism after installation.
+    """
 
     signalBack = Signal()
     signalNext = Signal()
 
-    def __init__(self, parent):
+    def __init__(self, parent: Any) -> None:
+        """Initialize finished page.
+        
+        Args:
+            parent (Any): Parent widget.
+        """
         super(Page_Finished, self).__init__()
         self.parent = parent
         self.setupUi()
 
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Set up the user interface for completion page."""
         self.l_success = QLabel("")
         self.l_success.setAlignment(Qt.AlignHCenter)
         self.chb_launchPrism = QCheckBox("Launch Prism")
@@ -331,33 +429,54 @@ class Page_Finished(QWidget):
         self.b_back.clicked.connect(self.backClicked)
         self.b_finish.clicked.connect(self.finish)
 
-    def backClicked(self):
+    def backClicked(self) -> None:
+        """Navigate back to previous page."""
         self.signalBack.emit()
 
-    def finish(self):
+    def finish(self) -> None:
+        """Complete setup wizard.
+        
+        Launches Prism if checkbox is selected, then closes dialog.
+        """
         if not self.chb_launchPrism.isHidden() and self.chb_launchPrism.isChecked():
             self.launchPrism()
 
         QDialog.accept(self.parent)
 
-    def launchPrism(self):
+    def launchPrism(self) -> None:
+        """Launch Prism Project Browser."""
         target = self.parent.core.prismRoot
         exe = os.path.join(target, self.parent.core.pythonVersion, "Prism.exe")
         script = os.path.join(target, "Scripts", "PrismTray.py")
         subprocess.Popen([exe, script, "projectBrowser"])
 
-    def entered(self):
+    def entered(self) -> None:
+        """Update UI when page is entered."""
         if not self.parent.w_pageStart.chb_integrations.isChecked():
             self.b_back.setVisible(False)
 
         msg = "Prism %s was installed successfully!" % self.parent.core.version
         self.l_success.setText(msg)
+        logger.info(msg)
 
 
 class PrismInstaller(QDialog, PrismInstaller_ui.Ui_dlg_installer):
-    def __init__(self, core, plugins=None):
+    """Dialog for installing DCC plugin integrations.
+    
+    Displays available plugins and allows user to select integration paths.
+    """
+    
+    def __init__(self, core: Any, plugins: Optional[List[str]] = None, parent: Optional[Any] = None) -> None:
+        """Initialize installer dialog.
+        
+        Args:
+            core (Any): PrismCore instance.
+            plugins (Optional[List[str]]): List of plugin names. Defaults to all plugins.
+            parent (Optional[Any]): Parent widget.
+        """
         QDialog.__init__(self)
         self.core = core
+        self.core.parentWindow(self, parent=parent)
         if not plugins:
             plugins = self.core.getPluginNames()
 
@@ -382,7 +501,13 @@ class PrismInstaller(QDialog, PrismInstaller_ui.Ui_dlg_installer):
             msg = "Errors occurred during the installation.\n\n%s\n%s\n%s" % (str(e), exc_type, exc_tb.tb_lineno)
             self.core.popup(msg, parent=self)
 
-    def openBrowse(self, item, column):
+    def openBrowse(self, item: Any, column: int) -> None:
+        """Open folder browser for custom integration paths.
+        
+        Args:
+            item (Any): Tree widget item.
+            column (int): Column index.
+        """
         if (
             item.parent() is not None
             and item.parent().text(0) != "DCC integrations"
@@ -406,7 +531,13 @@ class PrismInstaller(QDialog, PrismInstaller_ui.Ui_dlg_installer):
             item.setToolTip(1, path)
             item.setCheckState(0, Qt.Checked)
 
-    def CompItemClicked(self, item, column):
+    def CompItemClicked(self, item: Any, column: int) -> None:
+        """Handle tree item click to enable/disable child items.
+        
+        Args:
+            item (Any): Tree widget item clicked.
+            column (int): Column index.
+        """
         if item.text(0) in ["DCC integrations"] or item.childCount == 0:
             return
 
@@ -418,7 +549,8 @@ class PrismInstaller(QDialog, PrismInstaller_ui.Ui_dlg_installer):
             else:
                 item.child(i).setFlags(item.child(i).flags() & ~Qt.ItemIsEnabled)
 
-    def refreshUI(self):
+    def refreshUI(self) -> None:
+        """Refresh UI with available plugins and integration paths."""
         try:
             if platform.system() == "Windows":
                 userFolders = {
@@ -449,7 +581,12 @@ class PrismInstaller(QDialog, PrismInstaller_ui.Ui_dlg_installer):
             self.core.popup(msg, parent=self)
             return False
 
-    def getEnteredIntegrations(self):
+    def getEnteredIntegrations(self) -> Dict[str, List[str]]:
+        """Get integration paths entered by user.
+        
+        Returns:
+            Dict[str, List[str]]: Dictionary mapping plugin names to lists of install paths.
+        """
         dccItems = self.tw_components.findItems(
             "DCC integrations", Qt.MatchExactly | Qt.MatchRecursive
         )
@@ -483,7 +620,17 @@ class PrismInstaller(QDialog, PrismInstaller_ui.Ui_dlg_installer):
 
         return result
 
-    def install(self, patch=False, documents="", successPopup=True):
+    def install(self, patch: bool = False, documents: str = "", successPopup: bool = True) -> Any:
+        """Install selected DCC integrations.
+        
+        Args:
+            patch (bool, optional): Unused parameter. Defaults to False.
+            documents (str, optional): Unused parameter. Defaults to "".
+            successPopup (bool, optional): Show success message. Defaults to True.
+            
+        Returns:
+            Any: False on error, None on success.
+        """
         try:
             # print "\n\nInstalling - please wait.."
 
@@ -528,19 +675,31 @@ class PrismInstaller(QDialog, PrismInstaller_ui.Ui_dlg_installer):
             self.core.popup(msg, parent=self)
             return False
 
-    def closeEvent(self, event):
+    def closeEvent(self, event: Any) -> None:
+        """Handle dialog close event.
+        
+        Args:
+            event (Any): Close event.
+        """
         event.accept()
 
 
 class Uninstaller(QDialog):
-    def __init__(self):
+    """Dialog for uninstalling Prism and its components.
+    
+    Handles removal of DCC integrations, plugins, preferences, and core files.
+    """
+    
+    def __init__(self) -> None:
+        """Initialize uninstaller dialog."""
         super(Uninstaller, self).__init__()
         self.conn = None
         self.listener = None
         self.setupUi()
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Set up the user interface for uninstaller dialog."""
         self.setWindowTitle("Prism Uninstaller")
         msg = "Please select the components, which you want to uninstall:"
         lo_uninstall = QVBoxLayout()
@@ -578,23 +737,37 @@ class Uninstaller(QDialog):
         self.resize(650, 400)
 
     @err_catcher(name=__name__)
-    def onUninstallClicked(self):
-        waitPopup = self.waitPopup(self, "Uninstalling. Please wait...", parent=self)
+    def onUninstallClicked(self) -> None:
+        """Handle uninstall button click."""
+        self.run()
+
+    @err_catcher(name=__name__)
+    def run(self, silent: bool = False) -> None:
+        """Execute uninstallation process.
+        
+        Args:
+            silent (bool, optional): Run without UI feedback. Defaults to False.
+        """
+        waitPopup = self.waitPopup(self, "Uninstalling. Please wait...", parent=self, hidden=silent)
         with waitPopup:
             feedback = self.le_feedback.toPlainText()
             if feedback:
-                text = "Sending feedback. Please wait..."
-                waitPopup.msg.setText(text)
-                QCoreApplication.processEvents()
+                if not silent:
+                    text = "Sending feedback. Please wait..."
+                    waitPopup.msg.setText(text)
+                    QCoreApplication.processEvents()
+
                 self.sendFeedback()
 
             postDeletePaths = []
 
             result = {}
             if self.chb_integrations.isChecked():
-                text = "Removing integrations. Please wait..."
-                waitPopup.msg.setText(text)
-                QCoreApplication.processEvents()
+                if not silent:
+                    text = "Removing integrations. Please wait..."
+                    waitPopup.msg.setText(text)
+                    QCoreApplication.processEvents()
+
                 result.update(self.removeIntegrations())
 
             if self.chb_prefs.isChecked():
@@ -609,29 +782,38 @@ class Uninstaller(QDialog):
             self.closePrismProcesses()
 
             if self.chb_plugins.isChecked():
-                text = "Removing plugins. Please wait..."
-                waitPopup.msg.setText(text)
-                QCoreApplication.processEvents()
+                if not silent:
+                    text = "Removing plugins. Please wait..."
+                    waitPopup.msg.setText(text)
+                    QCoreApplication.processEvents()
+
                 result["Local Plugins"] = self.removeLocalPlugins()
 
             if self.chb_prefs.isChecked():
-                text = "Removing preferences. Please wait..."
-                waitPopup.msg.setText(text)
-                QCoreApplication.processEvents()
+                if not silent:
+                    text = "Removing preferences. Please wait..."
+                    waitPopup.msg.setText(text)
+                    QCoreApplication.processEvents()
+
                 result["Prism Preferences"] = self.removePrismPreferences()
 
             if self.chb_prism.isChecked():
-                text = "Removing Prism. Please wait..."
-                waitPopup.msg.setText(text)
-                QCoreApplication.processEvents()
+                if not silent:
+                    text = "Removing Prism. Please wait..."
+                    waitPopup.msg.setText(text)
+                    QCoreApplication.processEvents()
+
                 result["Prism Files"] = self.removePrismFiles(postDeletePaths)
 
         if False not in result.values():
             msgStr = "Prism was uninstalled successfully."
-            if postDeletePaths:
-                msgStr += "\nThe last remaining files will be removed after closing this window."
+            logger.info(msgStr)
+            if not silent:
+                if postDeletePaths:
+                    msgStr += "\nThe last remaining files will be removed after closing this window."
 
-            QMessageBox.information(self, "Prism Uninstallation", msgStr)
+                QMessageBox.information(self, "Prism Uninstallation", msgStr)
+
             self.finalize(postDeletePaths)
         else:
             msgString = "Some parts failed to uninstall:\n\n"
@@ -644,24 +826,36 @@ class Uninstaller(QDialog):
                 .replace("Prism Files:", "Prism Files:\t")
                 .replace("Local Plugins:", "Local Plugins:\t")
             )
+            logger.warning(msgStr)
 
-            QMessageBox.warning(
-                self, "Prism Installation", msgString
-            )
-            sys.exit(0)
+            if not silent:
+                QMessageBox.warning(
+                    self, "Prism Installation", msgString
+                )
+                sys.exit(0)
 
     @err_catcher(name=__name__)
-    def closeEvent(self, event):
+    def closeEvent(self, event: Any) -> None:
+        """Handle dialog close event.
+        
+        Args:
+            event (Any): Close event.
+        """
         self.shutDownConnection()
 
     @err_catcher(name=__name__)
-    def getPrismConnection(self):
+    def getPrismConnection(self) -> Any:
+        """Get or create connection to running Prism instance.
+        
+        Returns:
+            Any: Connection object.
+        """
         if not self.conn:
             address = ("localhost", 6551)
             from multiprocessing.connection import Listener
             self.listener = Listener(address, authkey=b'gfjdbfs')
 
-            cmd = "import sys;sys.path.append('%s');import PrismCore;core = PrismCore.create();core.startCommunication(port=6550, key=b'gfjdbfs')" % os.path.dirname(__file__)
+            cmd = "import sys;sys.path.append('%s');import PrismCore;core = PrismCore.create();core.startCommunication(port=6550, key=b'gfjdbfs')" % os.path.dirname(__file__).replace("\\", "\\\\")
             subprocess.Popen([sys.executable, "-c", cmd])
 
             self.sconn = self.listener.accept()
@@ -673,7 +867,12 @@ class Uninstaller(QDialog):
         return self.conn
 
     @err_catcher(name=__name__)
-    def getAnswer(self):
+    def getAnswer(self) -> Any:
+        """Receive answer from Prism instance.
+        
+        Returns:
+            Any: Answer data from Prism instance.
+        """
         try:
             answer = self.sconn.recv()
         except Exception:
@@ -689,7 +888,8 @@ class Uninstaller(QDialog):
         return answer.get("data")
 
     @err_catcher(name=__name__)
-    def shutDownConnection(self):
+    def shutDownConnection(self) -> None:
+        """Close connection to Prism instance."""
         if self.listener:
             self.listener.close()
 
@@ -702,12 +902,22 @@ class Uninstaller(QDialog):
             self.conn.close()
 
     @err_catcher(name=__name__)
-    def sendData(self, data):
+    def sendData(self, data: Dict[str, Any]) -> None:
+        """Send data to Prism instance.
+        
+        Args:
+            data (Dict[str, Any]): Data to send.
+        """
         conn = self.getPrismConnection()
         conn.send(data)
 
     @err_catcher(name=__name__)
-    def finalize(self, postDeletePaths):
+    def finalize(self, postDeletePaths: List[str]) -> None:
+        """Finalize uninstallation and schedule file deletion.
+        
+        Args:
+            postDeletePaths (List[str]): Paths to delete after exit.
+        """
         if postDeletePaths:
             cmd = "timeout /t 5 /nobreak > nul"
             for path in postDeletePaths:
@@ -719,14 +929,20 @@ class Uninstaller(QDialog):
         sys.exit(0)
 
     @err_catcher(name=__name__)
-    def sendFeedback(self):
+    def sendFeedback(self) -> None:
+        """Send user feedback about uninstallation reason."""
         feedback = self.le_feedback.toPlainText()
         feedback = "I'm uninstalling Prism because...\n\n" + feedback
         self.sendData({"name": "sendFeedback", "data": feedback})
         self.getAnswer()
 
     @err_catcher(name=__name__)
-    def removeIntegrations(self):
+    def removeIntegrations(self) -> Dict[str, bool]:
+        """Remove all DCC integrations.
+        
+        Returns:
+            Dict[str, bool]: Result of integration removal.
+        """
         self.sendData({"name": "removeAllIntegrations"})
         answer = self.getAnswer()
         if not answer and answer != {}:
@@ -735,7 +951,12 @@ class Uninstaller(QDialog):
         return answer
 
     @err_catcher(name=__name__)
-    def removeLocalPlugins(self):
+    def removeLocalPlugins(self) -> bool:
+        """Remove local user plugins.
+        
+        Returns:
+            bool: True if successful.
+        """
         if not self.userPluginPath:
             return False
 
@@ -752,7 +973,12 @@ class Uninstaller(QDialog):
         return result
 
     @err_catcher(name=__name__)
-    def removePrismPreferences(self):
+    def removePrismPreferences(self) -> bool:
+        """Remove Prism user preferences.
+        
+        Returns:
+            bool: True if successful.
+        """
         if not self.userPrefPath:
             return False
 
@@ -797,7 +1023,8 @@ class Uninstaller(QDialog):
         return result
 
     @err_catcher(name=__name__)
-    def closePrismProcesses(self):
+    def closePrismProcesses(self) -> None:
+        """Close all running Prism processes."""
         try:
             import psutil
         except:
@@ -820,7 +1047,15 @@ class Uninstaller(QDialog):
                         pass
 
     @err_catcher(name=__name__)
-    def removePrismFiles(self, postDeletePaths):
+    def removePrismFiles(self, postDeletePaths: List[str]) -> bool:
+        """Remove Prism core files.
+        
+        Args:
+            postDeletePaths (List[str]): List to append paths requiring delayed deletion.
+            
+        Returns:
+            bool: True if successful.
+        """
         try:
             if platform.system() == "Windows":
                 result = self.removeWindowsSpecificData()
@@ -844,7 +1079,12 @@ class Uninstaller(QDialog):
             return False
 
     @err_catcher(name=__name__)
-    def removeWindowsSpecificData(self):
+    def removeWindowsSpecificData(self) -> bool:
+        """Remove Windows-specific Prism data (startmenu, shortcuts, registry).
+        
+        Returns:
+            bool: True if successful.
+        """
         basepath = os.path.join(
             os.environ["appdata"],
             "Microsoft",
@@ -881,7 +1121,12 @@ class Uninstaller(QDialog):
         return result
 
     @err_catcher(name=__name__)
-    def removeUninstallerFromWindowsRegistry(self):
+    def removeUninstallerFromWindowsRegistry(self) -> bool:
+        """Remove uninstaller entry from Windows registry.
+        
+        Returns:
+            bool: True if successful.
+        """
         try:
             _winreg.DeleteKey(
                 _winreg.HKEY_LOCAL_MACHINE,
@@ -894,7 +1139,12 @@ class Uninstaller(QDialog):
         return True
 
     @err_catcher(name=__name__)
-    def removeLinuxSpecificData(self):
+    def removeLinuxSpecificData(self) -> bool:
+        """Remove Linux-specific Prism data (desktop files, menu entries).
+        
+        Returns:
+            bool: True if successful.
+        """
         trayStartup = "/etc/xdg/autostart/PrismTray.desktop"
         trayStartMenu = "/usr/share/applications/PrismTray.desktop"
         pbStartMenu = "/usr/share/applications/PrismProjectBrowser.desktop"
@@ -930,7 +1180,12 @@ class Uninstaller(QDialog):
         return True
 
     @err_catcher(name=__name__)
-    def removeMacSpecificData(self):
+    def removeMacSpecificData(self) -> bool:
+        """Remove macOS-specific Prism data (LaunchAgents, desktop shortcuts).
+        
+        Returns:
+            bool: True if successful.
+        """
         userName = (
             os.environ["SUDO_USER"]
             if "SUDO_USER" in os.environ
@@ -954,15 +1209,30 @@ class Uninstaller(QDialog):
     @err_catcher(name=__name__)
     def popup(
         self,
-        text,
-        title=None,
-        severity="warning",
-        notShowAgain=False,
-        parent=None,
-        modal=True,
-        widget=None,
-        show=True,
-    ):
+        text: str,
+        title: Optional[str] = None,
+        severity: str = "warning",
+        notShowAgain: bool = False,
+        parent: Optional[Any] = None,
+        modal: bool = True,
+        widget: Optional[Any] = None,
+        show: bool = True,
+    ) -> Optional[Dict[str, bool]]:
+        """Display popup message dialog.
+        
+        Args:
+            text (str): Message text.
+            title (Optional[str]): Dialog title.
+            severity (str): Severity level ("warning", "info", "error").
+            notShowAgain (bool): Show "Don't show again" checkbox.
+            parent (Optional[Any]): Parent widget.
+            modal (bool): Modal dialog.
+            widget (Optional[Any]): Additional widget to display.
+            show (bool): Show dialog immediately.
+            
+        Returns:
+            Optional[Dict[str, bool]]: Dictionary with notShowAgain checkbox state if applicable.
+        """
         if title is None:
             if severity == "warning":
                 title = "Prism - Warning"
@@ -1017,15 +1287,30 @@ class Uninstaller(QDialog):
     @err_catcher(name=__name__)
     def popupQuestion(
         self,
-        text,
-        title=None,
-        buttons=None,
-        default=None,
-        icon=None,
-        widget=None,
-        parent=None,
-        escapeButton=None,
-    ):
+        text: str,
+        title: Optional[str] = None,
+        buttons: Optional[List[str]] = None,
+        default: Optional[str] = None,
+        icon: Optional[Any] = None,
+        widget: Optional[Any] = None,
+        parent: Optional[Any] = None,
+        escapeButton: Optional[str] = None,
+    ) -> str:
+        """Display question dialog with custom buttons.
+        
+        Args:
+            text (str): Question text.
+            title (Optional[str]): Dialog title.
+            buttons (Optional[List[str]]): Button labels.
+            default (Optional[str]): Default button label.
+            icon (Optional[Any]): Dialog icon.
+            widget (Optional[Any]): Additional widget.
+            parent (Optional[Any]): Parent widget.
+            escapeButton (Optional[str]): Escape button label.
+            
+        Returns:
+            str: Clicked button text.
+        """
         text = str(text)
         title = str(title or "Prism")
         buttons = buttons or ["Yes", "No"]
@@ -1061,14 +1346,28 @@ class Uninstaller(QDialog):
     @err_catcher(name=__name__)
     def popupNoButton(
         self,
-        text,
-        title=None,
-        buttons=None,
-        default=None,
-        icon=None,
-        parent=None,
-        show=True,
-    ):
+        text: str,
+        title: Optional[str] = None,
+        buttons: Optional[List[str]] = None,
+        default: Optional[str] = None,
+        icon: Optional[Any] = None,
+        parent: Optional[Any] = None,
+        show: bool = True,
+    ) -> Any:
+        """Display message dialog without standard buttons.
+        
+        Args:
+            text (str): Message text.
+            title (Optional[str]): Dialog title.
+            buttons (Optional[List[str]]): Unused parameter.
+            default (Optional[str]): Unused parameter.
+            icon (Optional[Any]): Dialog icon.
+            parent (Optional[Any]): Parent widget.
+            show (bool): Show dialog immediately.
+            
+        Returns:
+            Any: Message box widget.
+        """
         text = str(text)
         title = str(title or "Prism")
         parent = parent or self
@@ -1091,26 +1390,42 @@ class Uninstaller(QDialog):
         return msg
 
     class waitPopup(QObject):
-        """
-        with self.core.waitPopup(self.core, text):
-
+        """Context manager for displaying wait/progress popups during uninstallation.
+        
+        Usage:
+            with self.waitPopup(self, "Uninstalling..."):
+                # long running operation
         """
 
         canceled = Signal()
 
         def __init__(
             self,
-            core,
-            text,
-            title=None,
-            buttons=None,
-            default=None,
-            icon=None,
-            hidden=False,
-            parent=None,
-            allowCancel=False,
-            activate=True,
-        ):
+            core: Any,
+            text: str,
+            title: Optional[str] = None,
+            buttons: Optional[List[str]] = None,
+            default: Optional[str] = None,
+            icon: Optional[Any] = None,
+            hidden: bool = False,
+            parent: Optional[Any] = None,
+            allowCancel: bool = False,
+            activate: bool = True,
+        ) -> None:
+            """Initialize wait popup.
+            
+            Args:
+                core (Any): Core instance.
+                text (str): Message text.
+                title (Optional[str]): Dialog title.
+                buttons (Optional[List[str]]): Button labels.
+                default (Optional[str]): Default button.
+                icon (Optional[Any]): Dialog icon.
+                hidden (bool): Don't show popup.
+                parent (Optional[Any]): Parent widget.
+                allowCancel (bool): Allow cancellation.
+                activate (bool): Activate window when shown.
+            """
             self.core = core
             super(self.core.waitPopup, self).__init__()
             self.parent = parent
@@ -1124,14 +1439,29 @@ class Uninstaller(QDialog):
             self.activate = activate
             self.msg = None
 
-        def __enter__(self):
+        def __enter__(self) -> 'waitPopup':
+            """Enter context manager.
+            
+            Returns:
+                waitPopup: Self.
+            """
             if not self.hidden:
                 self.show()
+            
+            return self
 
-        def __exit__(self, type, value, traceback):
+        def __exit__(self, type: Any, value: Any, traceback: Any) -> None:
+            """Exit context manager.
+            
+            Args:
+                type (Any): Exception type.
+                value (Any): Exception value.
+                traceback (Any): Traceback object.
+            """
             self.close()
 
-        def createPopup(self):
+        def createPopup(self) -> None:
+            """Create popup widget."""
             self.msg = self.core.popupNoButton(
                 self.text,
                 title=self.title,
@@ -1144,12 +1474,14 @@ class Uninstaller(QDialog):
             if not self.activate:
                 self.msg.setAttribute(Qt.WA_ShowWithoutActivating)
 
-        def show(self):
+        def show(self) -> None:
+            """Show popup dialog."""
             self.createPopup()
             self.msg.show()
             QCoreApplication.processEvents()
 
-        def exec_(self):
+        def exec_(self) -> None:
+            """Execute popup modally."""
             self.createPopup()
             for button in self.msg.buttons():
                 button.setVisible(self.allowCancel)
@@ -1161,15 +1493,21 @@ class Uninstaller(QDialog):
             if result:
                 self.cancel()
 
-        def close(self):
+        def close(self) -> None:
+            """Close popup dialog."""
             if self.msg and self.msg.isVisible():
                 self.msg.close()
 
-        def cancel(self):
+        def cancel(self) -> None:
+            """Cancel operation and emit signal."""
             self.canceled.emit()
 
 
-def force_elevated():
+def force_elevated() -> None:
+    """Force script to run with elevated privileges on Windows.
+    
+    Relaunches script with admin rights if not already elevated.
+    """
     try:
         if sys.argv[-1] != "asadmin":
             script = os.path.abspath(sys.argv[0])
@@ -1190,31 +1528,105 @@ def force_elevated():
         print(ex)
 
 
-def startInstaller_Windows():
-    if len(sys.argv) >= 2 and "uninstall" in sys.argv:
-        qApp = QApplication.instance()
-        wIcon = QIcon(
-            os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                "UserInterfacesPrism",
-                "p_tray.png",
-            )
-        )
-        qApp.setWindowIcon(wIcon)
+def startInstaller_Windows(silent: bool = False, setupShortcuts: bool = True, dccIntegrations: bool = True, createUninstaller: bool = False) -> None:
+    """Start Prism installer on Windows.
+    
+    Args:
+        silent (bool, optional): Run without UI. Defaults to False.
+        setupShortcuts (bool, optional): Create startmenu shortcuts. Defaults to True.
+        dccIntegrations (bool, optional): Install DCC integrations. Defaults to True.
+        createUninstaller (bool, optional): Create uninstaller. Defaults to False.
+    """
+    import PrismCore
+    pc = PrismCore.create()
+    dlg = pc.openSetup(silent=silent)
+    dlg.w_pageStart.chb_startmenu.setChecked(setupShortcuts)
+    dlg.w_pageStart.chb_startmenu.setChecked(dccIntegrations)
+    dlg.w_pageStart.chb_startmenu.setChecked(createUninstaller)
+    if silent:
+        dlg.run(silent=True)
 
-        from UserInterfacesPrism.stylesheets import blue_moon
-        qApp.setStyleSheet(blue_moon.load_stylesheet(pyside=True))
+
+def startUninstaller_Windows(silent: bool = False, removeCore: bool = True, removePlugins: bool = True, removeDccIntegrations: bool = True, removePreferences: bool = False) -> None:
+    """Start Prism uninstaller on Windows.
+    
+    Args:
+        silent (bool, optional): Run without UI. Defaults to False.
+        removeCore (bool, optional): Remove core files. Defaults to True.
+        removePlugins (bool, optional): Remove local plugins. Defaults to True.
+        removeDccIntegrations (bool, optional): Remove DCC integrations. Defaults to True.
+        removePreferences (bool, optional): Remove user preferences. Defaults to False.
+    """
+    qApp = QApplication.instance()
+    wIcon = QIcon(
+        os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "UserInterfacesPrism",
+            "p_tray.png",
+        )
+    )
+    qApp.setWindowIcon(wIcon)
+
+    from UserInterfacesPrism.stylesheets import blue_moon
+    qApp.setStyleSheet(blue_moon.load_stylesheet(pyside=True))
+
+    dlg = Uninstaller()
+    dlg.chb_prism.setChecked(removeCore)
+    dlg.chb_plugins.setChecked(removePlugins)
+    dlg.chb_integrations.setChecked(removeDccIntegrations)
+    dlg.chb_prefs.setChecked(removePreferences)
+    if silent:
+        dlg.run(silent=True)
+    else:
+        dlg.exec_()
+        sys.exit()
+
+
+def startInstaller_Linux() -> None:
+    """Start Prism installer on Linux."""
+    try:
+        if not checkRootUser():
+            return
+
+        import PrismCore
+
+        pc = PrismCore.PrismCore()
+        if sys.argv[-1] == "uninstall":
+            dlg = Uninstaller()
+            dlg.exec_()
+        else:
+            pc.openSetup()
+
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        QMessageBox.warning(
+            QWidget(),
+            "Prism Installation",
+            "Errors occurred during the installation.\n The installation is possibly incomplete.\n\n%s\n%s\n%s"
+            % (str(e), exc_type, exc_tb.tb_lineno),
+        )
+
+
+def startUninstaller_Linux() -> None:
+    """Start Prism uninstaller on Linux."""
+    try:
+        if not checkRootUser():
+            return
 
         dlg = Uninstaller()
         dlg.exec_()
-        sys.exit()
-    else:
-        import PrismCore
-        pc = PrismCore.create()
-        pc.openSetup()
+    except Exception as e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        QMessageBox.warning(
+            QWidget(),
+            "Prism Installation",
+            "Errors occurred during the installation.\n The installation is possibly incomplete.\n\n%s\n%s\n%s"
+            % (str(e), exc_type, exc_tb.tb_lineno),
+        )
 
 
-def startInstaller_Linux():
+def startInstaller_Mac() -> None:
+    """Start Prism installer on macOS."""
     try:
         if not checkRootUser():
             return
@@ -1238,20 +1650,14 @@ def startInstaller_Linux():
         )
 
 
-def startInstaller_Mac():
+def startUninstaller_Mac() -> None:
+    """Start Prism uninstaller on macOS."""
     try:
         if not checkRootUser():
             return
 
-        import PrismCore
-
-        pc = PrismCore.PrismCore()
-        if sys.argv[-1] == "uninstall":
-            dlg = Uninstaller()
-            dlg.exec_()
-        else:
-            pc.openSetup()
-
+        dlg = Uninstaller()
+        dlg.exec_()
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
         QMessageBox.warning(
@@ -1262,7 +1668,12 @@ def startInstaller_Mac():
         )
 
 
-def checkRootUser():
+def checkRootUser() -> bool:
+    """Check if running as root user on Linux/Mac and show warning if appropriate.
+    
+    Returns:
+        bool: True if root or user chooses to continue, False otherwise.
+    """
     if os.getuid() != 0:
         warnStr = """The installer was not started as root user.
 
@@ -1293,15 +1704,59 @@ If you continue Prism will skip these features.
     return True
 
 
+def install(silent: bool = False, setupShortcuts: bool = True, dccIntegrations: bool = True, createUninstaller: bool = False) -> None:
+    """Platform-independent installer entry point.
+    
+    Args:
+        silent (bool, optional): Run without UI. Defaults to False.
+        setupShortcuts (bool, optional): Create shortcuts. Defaults to True.
+        dccIntegrations (bool, optional): Install DCC integrations. Defaults to True.
+        createUninstaller (bool, optional): Create uninstaller. Defaults to False.
+    """
+    if platform.system() == "Windows":
+        startInstaller_Windows(
+            silent=silent,
+            setupShortcuts=setupShortcuts,
+            dccIntegrations=dccIntegrations,
+            createUninstaller=createUninstaller
+        )
+    elif platform.system() == "Linux":
+        startInstaller_Linux()
+    elif platform.system() == "Darwin":
+        startInstaller_Mac()
+
+
+def uninstall(silent: bool = False, removeCore: bool = True, removePlugins: bool = True, removeDccIntegrations: bool = True, removePreferences: bool = False) -> None:
+    """Platform-independent uninstaller entry point.
+    
+    Args:
+        silent (bool, optional): Run without UI. Defaults to False.
+        removeCore (bool, optional): Remove core files. Defaults to True.
+        removePlugins (bool, optional): Remove local plugins. Defaults to True.
+        removeDccIntegrations (bool, optional): Remove DCC integrations. Defaults to True.
+        removePreferences (bool, optional): Remove user preferences. Defaults to False.
+    """
+    if platform.system() == "Windows":
+        startUninstaller_Windows(
+            silent=silent,
+            removeCore=removeCore,
+            removePlugins=removePlugins,
+            removeDccIntegrations=removeDccIntegrations,
+            removePreferences=removePreferences
+        )
+    elif platform.system() == "Linux":
+        startUninstaller_Linux()
+    elif platform.system() == "Darwin":
+        startUninstaller_Mac()
+
+
 if __name__ == "__main__":
     qApp = QApplication(sys.argv)
     try:
-        if platform.system() == "Windows":
-            startInstaller_Windows()
-        elif platform.system() == "Linux":
-            startInstaller_Linux()
-        elif platform.system() == "Darwin":
-            startInstaller_Mac()
+        if len(sys.argv) >= 2 and "uninstall" in sys.argv:
+            uninstall()
+        else:
+            install()
 
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()

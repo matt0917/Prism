@@ -32,16 +32,19 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from __future__ import annotations
+
 import os
 import sys
 import logging
 import shutil
 import platform
 import time
+import fnmatch
 import glob
 import re
 from collections import OrderedDict
-from distutils.dir_util import copy_tree
+from typing import Optional, Dict, List, Any, Union, Tuple
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -54,17 +57,81 @@ logger = logging.getLogger(__name__)
 
 
 class Projects(object):
-    def __init__(self, core):
+    """Manages project operations including creation, loading, and configuration.
+    
+    This class handles all project-related functionality in Prism, including
+    project creation, loading, switching, structure management, and configuration.
+    It maintains project state, environment variables, and provides interfaces
+    for project browser and settings.
+    
+    Attributes:
+        core: Reference to PrismCore instance
+        dlg_settings: Project settings dialog instance
+        extraStructureItems (OrderedDict): Additional folder structure items
+        environmentVariables (List[Dict]): Project environment variables
+        validVariables (Dict): Valid project variables and their allowed values
+        invalidVariables (Dict): Invalid project variables and their values
+        previewWidth (int): Width for project preview images
+        previewHeight (int): Height for project preview images
+        
+    Example:
+        ```python
+        projects = Projects(core)
+        projects.createProject(name="MyProject", path="/path/to/project")
+        projects.changeProject("/path/to/project/00_Pipeline/pipeline.yml")
+        ```
+    """
+
+    def __init__(self, core: Any) -> None:
+        """Initialize the Projects manager.
+        
+        Args:
+            core: PrismCore instance providing core functionality
+        """
         super(Projects, self).__init__()
         self.core = core
         self.dlg_settings = None
         self.extraStructureItems = OrderedDict([])
         self.environmentVariables = []
-        self.previewWidth = 640
-        self.previewHeight = 360
+        self.validVariables = {}
+        self.invalidVariables = {}
+        self.previewWidth = 1280
+        self.previewHeight = 720
+        self.core.registerProtocolHandler("projects", self.protocolHandler)
 
     @err_catcher(name=__name__)
-    def setProject(self, startup=None, openUi=""):
+    def protocolHandler(self, path: str, qs: Dict[str, List[str]]) -> None:
+        """Handle project protocol URLs for opening projects.
+        
+        Args:
+            path: Protocol path (e.g., "/open")
+            qs: Query string parameters dictionary
+            
+        Example:
+            prism://projects/open?path=D%3A%5Cprojects%5Canim
+        """
+        if path == "/open":
+            # urllib.parse.quote("D:\\projects\\anim")
+            # prism://projects/open?path=D%3A%5Cprojects%5Canim
+            if "path" not in qs:
+                logger.warning("no path provided")
+                return
+
+            path = qs["path"][0]
+            self.changeProject(path)
+            self.core.projectBrowser()
+            if not bool(QEventLoop().isRunning()):
+                qapp = QApplication.instance()
+                qapp.exec_()
+
+    @err_catcher(name=__name__)
+    def setProject(self, startup: Optional[bool] = None, openUi: str = "") -> None:
+        """Open the project selection dialog.
+        
+        Args:
+            startup: Whether this is called during startup. Defaults to None.
+            openUi: UI to open after project selection. Defaults to empty string.
+        """
         if eval(os.getenv("PRISM_DEBUG", "False")):
             try:
                 del sys.modules["ProjectWidgets"]
@@ -93,7 +160,12 @@ class Projects(object):
         self.dlg_setProject.raise_()
 
     @err_catcher(name=__name__)
-    def setPrism1Compatibility(self, state):
+    def setPrism1Compatibility(self, state: bool) -> None:
+        """Enable or disable Prism 1.x compatibility mode.
+        
+        Args:
+            state: True to enable Prism 1.x compatibility, False to disable
+        """
         if state:
             self.core.prism1Compatibility = True
             logger.debug("activating Prism 1 compatibility")
@@ -102,7 +174,15 @@ class Projects(object):
             logger.debug("deactivating Prism 1 compatibility")
 
     @err_catcher(name=__name__)
-    def isPrism1Project(self, path):
+    def isPrism1Project(self, path: str) -> bool:
+        """Check if a project path is a Prism 1.x project.
+        
+        Args:
+            path: Path to project folder or config file
+            
+        Returns:
+            True if this is a Prism 1.x project, False otherwise
+        """
         if os.path.splitext(path)[1]:
             path = os.path.dirname(path)
 
@@ -122,7 +202,12 @@ class Projects(object):
         return False
 
     @err_catcher(name=__name__)
-    def openProject(self, parent=None):
+    def openProject(self, parent: Optional[QWidget] = None) -> None:
+        """Open a file dialog to browse and select an existing project.
+        
+        Args:
+            parent: Parent widget for the dialog. Defaults to None.
+        """
         parent = parent or self.core.messageParent
         if self.core.prismIni == "":
             path = QFileDialog.getExistingDirectory(
@@ -164,7 +249,28 @@ class Projects(object):
             self.core.popup(msg, parent=parent)
 
     @err_catcher(name=__name__)
-    def changeProject(self, configPath=None, openUi="", settingsTab=None, settingsType=None, unset=False):
+    def changeProject(
+        self,
+        configPath: Optional[str] = None,
+        openUi: str = "",
+        settingsTab: Optional[Union[int, str]] = None,
+        settingsType: Optional[str] = None,
+        unset: bool = False,
+        writeToConfig: Optional[bool] = None
+    ) -> Optional[str]:
+        """Change the active project.
+        
+        Args:
+            configPath: Path to project config file. Defaults to None.
+            openUi: UI to open after loading. Can be "projectBrowser", "stateManager", or "prismSettings". Defaults to empty string.
+            settingsTab: Settings tab to open (if openUi="prismSettings"). Defaults to None.
+            settingsType: Settings type to open. Defaults to None.
+            unset: If True, unload the current project without loading a new one. Defaults to False.
+            writeToConfig: Whether to write to config. Defaults to None.
+            
+        Returns:
+            Project path if successful, None otherwise
+        """
         if not unset:
             if configPath is None:
                 return
@@ -196,17 +302,12 @@ class Projects(object):
                 return
 
             configPath = self.core.fixPath(configPath)
-            projectPath = str(os.path.abspath(
-                os.path.join(configPath, os.pardir, os.pardir)
-            ))
-            if not projectPath.endswith(os.sep):
-                projectPath += os.sep
-
             configData = self.core.getConfig(configPath=configPath)
             if configData is None:
                 logger.debug("unable to read project config: %s" % configPath)
                 return
 
+            projectPath = self.getProjectFolderFromConfigPath(configPath)
             projectName = self.core.getConfig(
                 "globals", "project_name", configPath=configPath
             )
@@ -248,6 +349,16 @@ class Projects(object):
                 msg += "\n".join(missing)
                 self.core.popup(msg)
                 return
+
+            disabledPlugins = self.core.getConfig("globals", "disabled_plugins", configPath=configPath) or []
+            for disabledPlugin in disabledPlugins:
+                if not disabledPlugin:
+                    continue
+
+                plug = self.core.getPlugin(disabledPlugin)
+                if plug:
+                    logger.debug("disabling plugin %s because it's disabled in this project" % disabledPlugin)
+                    self.core.plugins.unloadPlugin(plugin=plug)
 
         delModules = []
 
@@ -356,7 +467,7 @@ class Projects(object):
             QApplication.setQuitOnLastWindowClosed(quitOnLastWindowClosed)
             return
 
-        if configPath != self.core.getConfig("globals", "current project") and self.core.uiAvailable:
+        if configPath != self.core.getConfig("globals", "current project") and (self.core.uiAvailable or writeToConfig):
             self.core.setConfig("globals", "current project", configPath)
 
         self.core.versionPadding = self.core.getConfig(
@@ -383,10 +494,22 @@ class Projects(object):
             dft=False,
             configPath=configPath,
         )
+        self.refreshUseEpisode(configPath=configPath)
+
+        expPath = self.core.getConfig(
+            "globals",
+            "expectedPrjPath",
+            dft="",
+            configPath=configPath,
+        )
+        if expPath and expPath.strip("\\") != self.core.projectPath.strip("\\") and os.getenv("PRISM_SKIP_PROJECT_PATH_WARNING", "0") != "1":
+            msg = "This project should be loaded from the following path:\n\n%s\n\nCurrently it is loaded from this path:\n\n%s\n\nContinuing can have unexpected consequences." % (expPath, self.core.projectPath)
+            self.core.popup(msg)
 
         self.core._scenePath = None
         self.core._shotPath = None
         self.core._sequencePath = None
+        self.core._episodePath = None
         self.core._assetPath = None
         self.core._texturePath = None
 
@@ -400,6 +523,8 @@ class Projects(object):
                 function=self.core.products.checkMasterVersions,
                 label="Check Product Master Versions..."
             )
+        else:
+            self.core.entities.removeEntityAction("masterVersionCheckProducts")
 
         if self.core.mediaProducts.getUseMaster():
             self.core.entities.addEntityAction(
@@ -408,6 +533,8 @@ class Projects(object):
                 function=self.core.mediaProducts.checkMasterVersions,
                 label="Check Media Master Versions..."
             )
+        else:
+            self.core.entities.removeEntityAction("masterVersionCheckMedia")
 
         logger.debug("Loaded project " + self.core.projectPath)
 
@@ -415,14 +542,18 @@ class Projects(object):
         if not os.path.exists(modulePath):
             try:
                 os.makedirs(modulePath)
-            except FileExistsError:
+            except Exception as e:
                 pass
 
-        sys.path.append(modulePath)
+        if os.path.exists(modulePath) and modulePath not in sys.path:
+            sys.path.append(modulePath)
 
         pluginPath = self.getPluginFolder()
         if os.path.exists(pluginPath):
-            self.core.plugins.loadPlugins(directories=[pluginPath], recursive=True)
+            if os.getenv("PRISM_LOAD_PRJ_PLUGINS_RECURSIVE", "0") == "1":
+                self.core.plugins.loadPlugins(directories=[pluginPath], recursive=True)
+            else:
+                self.core.plugins.loadPlugins(directories=[pluginPath], recursive=False, singleFilePlugins=True)
 
         self.setRecentPrj(configPath)
         self.core.checkCommands()
@@ -454,7 +585,57 @@ class Projects(object):
         return self.core.projectPath
 
     @err_catcher(name=__name__)
-    def refreshLocalFiles(self):
+    def getUseEpisodes(self) -> bool:
+        """Get whether episodes are enabled for this project.
+        
+        Returns:
+            True if episodes are enabled, False otherwise
+        """
+        useEpisodes = self.core.getConfig(
+            "globals",
+            "useEpisodes",
+            config="project",
+        ) or False
+        return useEpisodes
+
+    @err_catcher(name=__name__)
+    def refreshUseEpisode(self, configPath: Optional[str] = None) -> None:
+        """Refresh the episodes project structure based on project config.
+        
+        Args:
+            configPath: Path to config file. Uses current project if None. Defaults to None.
+        """
+        if configPath:
+            config = None
+        else:
+            config = "project"
+
+        useEpisodes = self.core.getConfig(
+            "globals",
+            "useEpisodes",
+            dft=False,
+            configPath=configPath,
+            config=config
+        )
+        if useEpisodes:
+            data = {
+                "label": "Episodes",
+                "key": "@episode_path@",
+                "value": "@project_path@/03_Production/Shots/@episode@",
+                "requires": ["project_path"],
+                "idx": 2,
+            }
+            self.core.projects.addProjectStructureItem("episodes", data)
+        else:
+            self.core.projects.removeProjectStructureItem("episodes")
+
+    @err_catcher(name=__name__)
+    def refreshLocalFiles(self) -> bool:
+        """Refresh local files settings and paths.
+        
+        Returns:
+            True if successful, False if operation was cancelled
+        """
         self.core.useLocalFiles = self.getUseLocalFiles()
         if self.core.useLocalFiles:
             if self.core.getConfig("localfiles", self.core.projectName) is not None:
@@ -474,7 +655,12 @@ class Projects(object):
         return True
 
     @err_catcher(name=__name__)
-    def unloadProjectEnvironment(self, beforeRefresh=False):
+    def unloadProjectEnvironment(self, beforeRefresh: bool = False) -> None:
+        """Unload project environment variables.
+        
+        Args:
+            beforeRefresh: Whether this is called before refreshing environment. Defaults to False.
+        """
         for item in self.environmentVariables:
             if item["orig"] is None:
                 if item["key"] in os.environ:
@@ -485,11 +671,25 @@ class Projects(object):
         self.core.callback(name="updatedEnvironmentVars", args=["unloadProject", self.environmentVariables, beforeRefresh])
 
     @err_catcher(name=__name__)
-    def refreshProjectEnvironment(self):
+    def getProjectEnvironment(self, appPluginName: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get project environment variables.
+        
+        Args:
+            appPluginName: Name of application plugin. Uses current app if None. Defaults to None.
+            
+        Returns:
+            List of environment variable dictionaries with keys: 'key', 'value', 'orig'
+        """
         variables = self.core.getConfig(
             "environmentVariables", config="project", dft={}
         )
-        self.environmentVariables = []
+        envVars = []
+        if not appPluginName:
+            if getattr(self.core, "appPlugin", None):
+                appPluginName = self.core.appPlugin.pluginName
+            else:
+                appPluginName = ""
+
         for key in variables:
             val = os.path.expandvars(str(variables[key]))
             res = self.core.callback(name="expandEnvVar", args=[val])
@@ -497,7 +697,7 @@ class Projects(object):
                 if r:
                     val = r
 
-            if key.lower().startswith("ocio") and self.core.appPlugin and self.core.appPlugin.pluginName.lower() == key.split("_")[-1]:
+            if key.lower().startswith("ocio") and appPluginName.lower() == key.split("_")[-1]:
                 key = "OCIO"
 
             item = {
@@ -505,13 +705,31 @@ class Projects(object):
                 "value": val,
                 "orig": os.getenv(key),
             }
-            self.environmentVariables.append(item)
-            os.environ[str(key)] = val
+            envVars.append(item)
+
+        return envVars
+
+    @err_catcher(name=__name__)
+    def refreshProjectEnvironment(self) -> None:
+        """Refresh and apply project environment variables."""
+        self.environmentVariables = []
+        envVars = self.getProjectEnvironment()
+        for envVar in envVars:
+            self.environmentVariables.append(envVar)
+            os.environ[envVar["key"]] = envVar["value"]
 
         self.core.callback(name="updatedEnvironmentVars", args=["refreshProject", self.environmentVariables])
 
     @err_catcher(name=__name__)
-    def getUseLocalFiles(self, projectConfig=None):
+    def getUseLocalFiles(self, projectConfig: Optional[str] = None) -> bool:
+        """Get whether local files are enabled for this project.
+        
+        Args:
+            projectConfig: Path to project config. Uses current project if None. Defaults to None.
+            
+        Returns:
+            True if local files are enabled, False otherwise
+        """
         if not projectConfig:
             projectConfig = self.core.prismIni
 
@@ -531,7 +749,15 @@ class Projects(object):
         return useLocal
 
     @err_catcher(name=__name__)
-    def getDefaultLocalPath(self, projectName=None):
+    def getDefaultLocalPath(self, projectName: Optional[str] = None) -> str:
+        """Get the default local files path for a project.
+        
+        Args:
+            projectName: Project name. Uses current project if None. Defaults to None.
+            
+        Returns:
+            Default local path string
+        """
         if not projectName:
             if hasattr(self.core, "projectName"):
                 projectName = self.core.projectName
@@ -539,22 +765,54 @@ class Projects(object):
                 projectName = ""
 
         if platform.system() == "Windows":
-            defaultLocalPath = os.path.join(
-                self.core.getWindowsDocumentsPath(), "LocalProjects", projectName
+            base = os.path.join(
+                self.core.getWindowsDocumentsPath(), "LocalProjects"
             )
         elif platform.system() == "Linux":
-            defaultLocalPath = os.path.join(
-                os.path.expanduser("~"), "Documents", "LocalProjects", projectName
+            base = os.path.join(
+                os.path.expanduser("~"), "Documents", "LocalProjects"
             )
         elif platform.system() == "Darwin":
-            defaultLocalPath = os.path.join(
-                os.path.expanduser("~"), "Documents", "LocalProjects", projectName
+            base = os.path.join(
+                os.path.expanduser("~"), "Documents", "LocalProjects"
             )
 
+        envDft = os.getenv("PRISM_DFT_LOCAL_PATH")
+        if envDft:
+            base = envDft
+
+        defaultLocalPath = os.path.normpath(os.path.join(base, projectName))
         return defaultLocalPath
 
     @err_catcher(name=__name__)
-    def setRecentPrj(self, path, action="add"):
+    def setFaroriteProject(self, path: str, favorite: bool = True) -> None:
+        """Mark a project as favorite or unfavorite.
+        
+        Args:
+            path: Path to project config file
+            favorite: True to mark as favorite, False to unmark. Defaults to True.
+        """
+        path = self.core.fixPath(path)
+        changed = False
+        projects = self.core.getConfig("recent_projects", config="user", dft=[])
+        for project in projects:
+            if project["configPath"] == path and project.get("favorite", False) != favorite:
+                project["favorite"] = favorite
+                changed = True
+
+        if changed:
+            self.core.setConfig(
+                param="recent_projects", val=projects, config="user"
+            )
+
+    @err_catcher(name=__name__)
+    def setRecentPrj(self, path: str, action: str = "add") -> None:
+        """Add or remove a project from recent projects list.
+        
+        Args:
+            path: Path to project config file
+            action: "add" to add to recent, "remove" to remove. Defaults to "add".
+        """
         path = self.core.fixPath(path)
 
         recentProjects = self.getRecentProjects(includeCurrent=True)
@@ -594,7 +852,16 @@ class Projects(object):
         self.core.setConfig(param="recent_projects", val=newRecenetProjects)
 
     @err_catcher(name=__name__)
-    def getRecentProjects(self, includeCurrent=False):
+    def getRecentProjects(self, includeCurrent: bool = False) -> List[Dict[str, Any]]:
+        """Get list of recent projects.
+        
+        Args:
+            includeCurrent: Whether to include currently active project. Defaults to False.
+            
+        Returns:
+            List of project dictionaries with keys: 'configPath', 'name', 'date', 'favorite'
+        """
+        favProjects = []
         validProjects = []
         deprecated = False
         projects = self.core.getConfig("recent_projects", config="user", dft=[])
@@ -627,8 +894,12 @@ class Projects(object):
                 if not includeCurrent and project["configPath"] == self.core.prismIni:
                     continue
 
-                validProjects.append(project)
+                if project.get("favorite", False):
+                    favProjects.append(project)
+                else:
+                    validProjects.append(project)
 
+        validProjects = favProjects + validProjects
         if deprecated:
             self.core.setConfig(
                 param="recent_projects", val=validProjects, config="user"
@@ -637,7 +908,15 @@ class Projects(object):
         return validProjects
 
     @err_catcher(name=__name__)
-    def getAvailableProjects(self, includeCurrent=False):
+    def getAvailableProjects(self, includeCurrent: bool = False) -> List[Dict[str, Any]]:
+        """Get list of available projects.
+        
+        Args:
+            includeCurrent: Whether to include currently active project. Defaults to False.
+            
+        Returns:
+            List of project dictionaries
+        """
         projects = self.getRecentProjects(includeCurrent=includeCurrent)
         for project in projects:
             project["source"] = "recent"
@@ -645,7 +924,24 @@ class Projects(object):
         return projects
 
     @err_catcher(name=__name__)
-    def createProjectDialog(self, name=None, path=None, settings=None):
+    def createProjectDialog(
+        self,
+        name: Optional[str] = None,
+        path: Optional[str] = None,
+        settings: Optional[Dict] = None,
+        enforcedSettings: Optional[Dict] = None
+    ) -> Any:
+        """Open the create project dialog or create project directly.
+        
+        Args:
+            name: Project name. Defaults to None.
+            path: Project path. Defaults to None.
+            settings: Project settings. Defaults to None.
+            enforcedSettings: Settings that cannot be changed. Defaults to None.
+            
+        Returns:
+            CreateProject dialog instance
+        """
         settings = settings or {}
         if eval(os.getenv("PRISM_DEBUG", "False")):
             try:
@@ -662,7 +958,7 @@ class Projects(object):
 
         if name is not None and path is not None:
             return ProjectWidgets.CreateProject(
-                core=self.core, name=name, path=path, settings=settings
+                core=self.core, name=name, path=path, settings=settings, enforcedSettings=enforcedSettings
             )
         else:
             self.cp = ProjectWidgets.CreateProject(core=self.core)
@@ -671,7 +967,12 @@ class Projects(object):
         return self.cp
 
     @err_catcher(name=__name__)
-    def getDefaultProjectSettings(self):
+    def getDefaultProjectSettings(self) -> OrderedDict:
+        """Get default project settings with standard structure and configuration.
+        
+        Returns:
+            OrderedDict containing default project settings
+        """
         dftDepsAsset = [
             {"name": "Concept", "abbreviation": "cpt", "defaultTasks": ["Concept"]},
             {"name": "Modeling", "abbreviation": "mod", "defaultTasks": ["Modeling"]},
@@ -682,11 +983,14 @@ class Projects(object):
         dftDepsShot = [
             {"name": "Layout", "abbreviation": "lay", "defaultTasks": ["Layout"]},
             {"name": "Animation", "abbreviation": "anm", "defaultTasks": ["Animation"]},
-            {"name": "FX", "abbreviation": "fx", "defaultTasks": ["Effects"]},
             {"name": "CharFX", "abbreviation": "cfx", "defaultTasks": ["CharacterEffects"]},
+            {"name": "FX", "abbreviation": "fx", "defaultTasks": ["Effects"]},
             {"name": "Lighting", "abbreviation": "lgt", "defaultTasks": ["Lighting"]},
             {"name": "Compositing", "abbreviation": "cmp", "defaultTasks": ["Compositing"]},
         ]
+        dftTaskPresetsAsset = self.getDftAssetTaskPresets()
+        dftTaskPresetsShot = self.getDftShotTaskPresets()
+        dftProductTags = self.core.products.getDefaultProjectProductTags()
 
         structure = self.getStructureValues(self.getDefaultProjectStructure())
         settings = OrderedDict(
@@ -699,6 +1003,8 @@ class Projects(object):
                             ("prism_version", self.core.version),
                             ("departments_asset", dftDepsAsset),
                             ("departments_shot", dftDepsShot),
+                            ("taskpresets_asset", dftTaskPresetsAsset),
+                            ("taskpresets_shot", dftTaskPresetsShot),
                             ("uselocalfiles", False),
                             ("track_dependencies", "publish"),
                             ("checkframerange", True),
@@ -717,6 +1023,11 @@ class Projects(object):
                                     "640x360",
                                 ],
                             ),
+                            ("requirePublishComment", True),
+                            ("publishCommentLength", 3),
+                            ("versionPadding", 4),
+                            ("defaultImportStateName", "{entity}_{product}_{version}{#}"),
+                            ("useStrictAssetDetection", False),
                         ]
                     ),
                 ),
@@ -724,6 +1035,14 @@ class Projects(object):
                 (
                     "defaultpasses",
                     OrderedDict([]),
+                ),
+                (
+                    "products",
+                    OrderedDict(
+                        [
+                            ("tags", dftProductTags)
+                        ]
+                    ),
                 ),
             ]
         )
@@ -737,8 +1056,29 @@ class Projects(object):
 
     @err_catcher(name=__name__)
     def createProject(
-        self, name, path, settings=None, preset="Default", image=None, structure=None, parent=None
-    ):
+        self,
+        name: str,
+        path: str,
+        settings: Optional[Dict] = None,
+        preset: str = "Default",
+        image: Optional[QPixmap] = None,
+        structure: Optional[Dict] = None,
+        parent: Optional[QWidget] = None
+    ) -> Optional[str]:
+        """Create a new Prism project.
+        
+        Args:
+            name: Project name
+            path: Path where project will be created
+            settings: Project settings dictionary. Defaults to None.
+            preset: Preset name to use. Defaults to "Default".
+            image: Preview image for project. Defaults to None.
+            structure: Folder structure. Defaults to None.
+            parent: Parent widget for dialogs. Defaults to None.
+            
+        Returns:
+            Path to created config file if successful, None otherwise
+        """
         prjName = name
         prjPath = path.strip(" ")
         settings = settings or {}
@@ -749,7 +1089,7 @@ class Projects(object):
         else:
             projectSettings = {}
 
-        projectSettings.update(settings)
+        self.core.configs.updateNestedDicts(projectSettings, settings)
         projectSettings["globals"]["project_name"] = prjName
         projectSettings["globals"]["prism_version"] = self.core.version
 
@@ -766,22 +1106,23 @@ class Projects(object):
 
         # check valid project name
         if not prjName:
-            self.core.popup("The project name is invalid")
+            self.core.popup("The project name is invalid.")
             return
 
         # create project folder
         if not os.path.isabs(prjPath):
-            self.core.popup("The project path is invalid")
+            self.core.popup("The project path is invalid.")
             return
 
         if not os.path.exists(prjPath):
             try:
                 os.makedirs(prjPath)
-            except:
-                self.core.popup("The project folder could not be created", parent=parent)
+            except Exception as e:
+                self.core.popup("The project folder could not be created.\n\n(%s)" % str(e), parent=parent)
                 return
+
         elif os.listdir(prjPath):
-            msg = "The project folder is not empty. How do you want to continue?"
+            msg = "The project folder is not empty:\n\n%s\n\nHow do you want to continue?" % prjPath
             result = self.core.popupQuestion(
                 msg,
                 icon=QMessageBox.Warning,
@@ -795,7 +1136,43 @@ class Projects(object):
             if result == "Cancel":
                 return
             elif result == "Clear folder before creating the project":
+                while self.core.countFilesInFolder(prjPath, maximum=1000) >= 1000:
+                    msg = "There are more than 1000 files in the project folder.\n\n%s\n\nAs a security measurement Prism cannot delete this folder.\nDelete the folder manually in your file explorer to continue." % prjPath
+                    result = self.core.popupQuestion(
+                        msg,
+                        icon=QMessageBox.Warning,
+                        buttons=["Continue", "Cancel"],
+                        parent=parent
+                    )
+                    if result == "Continue":
+                        continue
+                    elif result == "Cancel":
+                        return
+
+                while (self.core.getFolderSize(prjPath)["size"] / 1024.0 / 1024.0) >= 1:
+                    msg = "The project folder size is more than 1 GB.\n\n%s\n\nAs a security measurement Prism cannot delete this folder.\nDelete the folder manually in your file explorer to continue." % prjPath
+                    result = self.core.popupQuestion(
+                        msg,
+                        icon=QMessageBox.Warning,
+                        buttons=["Continue", "Cancel"],
+                        parent=parent
+                    )
+                    if result == "Continue":
+                        continue
+                    elif result == "Cancel":
+                        return
+
                 while os.path.exists(prjPath):
+                    msg = "Are you really sure you want to delete this folder?\n\n%s\n\nThis will PERMANENTLY REMOVE the folder and it's content.\nThis cannot be undone!" % prjPath
+                    result = self.core.popupQuestion(
+                        msg,
+                        icon=QMessageBox.Warning,
+                        buttons=["Yes", "No"],
+                        parent=parent
+                    )
+                    if result != "Yes":
+                        return False
+
                     try:
                         shutil.rmtree(prjPath)
                     except Exception as e:
@@ -816,7 +1193,7 @@ class Projects(object):
                 return
         else:
             try:
-                copy_tree(preset["path"], prjPath)
+                self.core.copyFolder(preset["path"], prjPath)
             except Exception as e:
                 logger.debug(e)
                 self.core.popup(
@@ -844,7 +1221,16 @@ class Projects(object):
         return configPath
 
     @err_catcher(name=__name__)
-    def getFolderStructureFromPath(self, projectPath, simple=False):
+    def getFolderStructureFromPath(self, projectPath: str, simple: bool = False) -> Dict[str, Any]:
+        """Build a folder structure dictionary from an existing project path.
+        
+        Args:
+            projectPath: Path to project root
+            simple: If True, include only essential folders. Defaults to False.
+            
+        Returns:
+            Dictionary representing folder structure with 'name' and 'children' keys
+        """
         rootEntity = {
             "name": "root",
             "children": [],
@@ -886,7 +1272,16 @@ class Projects(object):
         return rootEntity
 
     @err_catcher(name=__name__)
-    def createProjectStructure(self, path, entity):
+    def createProjectStructure(self, path: str, entity: Dict[str, Any]) -> bool:
+        """Recursively create project folder structure.
+        
+        Args:
+            path: Base path for structure
+            entity: Entity dictionary with 'name' and 'children' keys
+            
+        Returns:
+            True if successful, False otherwise
+        """
         if not os.path.exists(path):
             try:
                 os.makedirs(path)
@@ -907,7 +1302,15 @@ class Projects(object):
         return True
 
     @err_catcher(name=__name__)
-    def ensureProject(self, openUi=""):
+    def ensureProject(self, openUi: str = "") -> bool:
+        """Ensure a project is loaded, prompting user if needed.
+        
+        Args:
+            openUi: UI to open after loading project. Defaults to empty string.
+            
+        Returns:
+            True if project is loaded, False otherwise
+        """
         if getattr(self.core, "projectPath", None) and os.path.exists(
             self.core.prismIni
         ):
@@ -931,11 +1334,21 @@ class Projects(object):
         return hasPrj
 
     @err_catcher(name=__name__)
-    def hasActiveProject(self):
+    def hasActiveProject(self) -> bool:
+        """Check if a project is currently active.
+        
+        Returns:
+            True if a project is active, False otherwise
+        """
         return hasattr(self.core, "projectPath")
 
     @err_catcher(name=__name__)
-    def getProjectResolution(self):
+    def getProjectResolution(self) -> Optional[List[int]]:
+        """Get project resolution if forced resolution is enabled.
+        
+        Returns:
+            List of [width, height] if forced, None otherwise
+        """
         forceRes = self.core.getConfig(
             "globals", "forceResolution", configPath=self.core.prismIni
         )
@@ -948,7 +1361,12 @@ class Projects(object):
         return pRes
 
     @err_catcher(name=__name__)
-    def getResolutionPresets(self):
+    def getResolutionPresets(self) -> List[str]:
+        """Get available resolution presets for the project.
+        
+        Returns:
+            List of resolution preset strings (e.g., "1920x1080")
+        """
         dftResPresets = [
             "3840x2160",
             "1920x1080",
@@ -972,8 +1390,25 @@ class Projects(object):
 
     @err_catcher(name=__name__)
     def openProjectSettings(
-        self, tab=0, restart=False, reload_module=False, config=None, projectData=None
-    ):
+        self,
+        tab: Union[int, str] = 0,
+        restart: bool = False,
+        reload_module: bool = False,
+        config: Optional[str] = None,
+        projectData: Optional[Dict] = None
+    ) -> Any:
+        """Open the project settings dialog.
+        
+        Args:
+            tab: Tab to open (index or name). Defaults to 0.
+            restart: Force restart of dialog. Defaults to False.
+            reload_module: Reload the settings module. Defaults to False.
+            config: Path to config file. Defaults to None.
+            projectData: Project data dictionary. Defaults to None.
+            
+        Returns:
+            ProjectSettings dialog instance
+        """
         if not projectData:
             config = config or self.core.prismIni
 
@@ -1004,14 +1439,28 @@ class Projects(object):
         return self.dlg_settings
 
     @err_catcher(name=__name__)
-    def getDefaultPipelineFolder(self):
+    def getDefaultPipelineFolder(self) -> str:
+        """Get the default pipeline folder name.
+        
+        Returns:
+            Pipeline folder name ("00_Pipeline" for Prism 1.x or from environment)
+        """
         if self.core.prism1Compatibility:
             return "00_Pipeline"
 
         return os.getenv("PRISM_PROJECT_PIPELINE_FOLDER", "00_Pipeline")
 
     @err_catcher(name=__name__)
-    def getPipelineFolder(self, projectPath=None, structure=None):
+    def getPipelineFolder(self, projectPath: Optional[str] = None, structure: Optional[Dict] = None) -> str:
+        """Get the full path to the pipeline folder.
+        
+        Args:
+            projectPath: Project path. Uses current project if None. Defaults to None.
+            structure: Project structure. Defaults to None.
+            
+        Returns:
+            Full path to pipeline folder
+        """
         if not projectPath:
             if not hasattr(self.core, "projectPath"):
                 return ""
@@ -1031,13 +1480,46 @@ class Projects(object):
         return folderpath
 
     @err_catcher(name=__name__)
-    def getProjectFolderFromConfigPath(self, configPath):
-        folder = os.path.dirname(configPath)
-        folder = folder.replace(self.getDefaultPipelineFolder(), "")
-        return folder
+    def getProjectFolderFromConfigPath(self, configPath: str, norm: bool = False) -> str:
+        """Extract project folder path from config file path.
+        
+        Args:
+            configPath: Path to config file
+            norm: Whether to normalize the path. Defaults to False.
+            
+        Returns:
+            Project folder path
+        """
+        projectPath = None
+        projectStructure = self.core.getConfig(
+            "folder_structure", configPath=configPath
+        )
+        if projectStructure:
+            pipelineTemplate = projectStructure["pipeline"]["value"]
+            data = self.extractKeysFromPath(os.path.dirname(configPath), pipelineTemplate)
+            if data and data.get("project_path"):
+                projectPath = data["project_path"]
+        
+        if not projectPath:
+            projectPath = str(os.path.abspath(
+                os.path.join(configPath, os.pardir, os.pardir)
+            ))
+
+        if not projectPath.endswith(os.sep):
+            projectPath += os.sep
+
+        if norm:
+            projectPath = os.path.normpath(projectPath)
+
+        return projectPath
 
     @err_catcher(name=__name__)
-    def getPluginFolder(self):
+    def getPluginFolder(self) -> str:
+        """Get the project plugins folder path.
+        
+        Returns:
+            Path to project plugins folder, empty string if no project loaded
+        """
         if not getattr(self.core, "projectPath", None):
             pluginPath = ""
         else:
@@ -1046,23 +1528,48 @@ class Projects(object):
         return pluginPath
 
     @err_catcher(name=__name__)
-    def getHookFolder(self):
+    def getHookFolder(self) -> str:
+        """Get the project hooks folder path.
+        
+        Returns:
+            Path to hooks folder
+        """
         return os.path.join(self.getPipelineFolder(), "Hooks")
 
     @err_catcher(name=__name__)
-    def getFallbackFolder(self):
+    def getFallbackFolder(self) -> str:
+        """Get the project fallbacks folder path.
+        
+        Returns:
+            Path to fallbacks folder
+        """
         return os.path.join(self.getPipelineFolder(), "Fallbacks")
 
     @err_catcher(name=__name__)
-    def getConfigFolder(self):
+    def getConfigFolder(self) -> str:
+        """Get the project configs folder path.
+        
+        Returns:
+            Path to configs folder
+        """
         return os.path.join(self.getPipelineFolder(), "Configs")
 
     @err_catcher(name=__name__)
-    def getPresetFolder(self):
+    def getPresetFolder(self) -> str:
+        """Get the project presets folder path.
+        
+        Returns:
+            Path to presets folder
+        """
         return os.path.join(self.getPipelineFolder(), "Presets")
 
     @err_catcher(name=__name__)
-    def getDefaultProjectStructure(self):
+    def getDefaultProjectStructure(self) -> OrderedDict:
+        """Get the default project folder structure template.
+        
+        Returns:
+            OrderedDict containing default folder structure definitions
+        """
         structure = OrderedDict([])
         structure["pipeline"] = {
             "label": "Pipeline",
@@ -1080,7 +1587,7 @@ class Projects(object):
             "label": "Sequences",
             "key": "@sequence_path@",
             "value": "@project_path@/03_Production/Shots/@sequence@",
-            "requires": ["project_path", "sequence"],
+            "requires": ["sequence"],
         }
         structure["shots"] = {
             "label": "Shots",
@@ -1175,13 +1682,13 @@ class Projects(object):
         structure["renderFilesAssets"] = {
             "label": "Asset Renderfiles",
             "key": "@renderfile_path@",
-            "value": "[expression,#  available variables:\n#  \"core\" - PrismCore\n#  \"context\" - dict\n\nif context.get(\"mediaType\") == \"2drenders\":\n\ttemplate = \"@aov_path@/@asset@_@identifier@_@version@@.(frame)@@extension@\"\nelse:\n\ttemplate = \"@aov_path@/@asset@_@identifier@_@version@_@aov@@.(frame)@@extension@\"]",
+            "value": "[expression,#  available variables:\n#  \"core\" - PrismCore\n#  \"context\" - dict\n\nif context.get(\"mediaType\") == \"2drenders\":\n\ttemplate = \"@aov_path@/@asset@_@identifier@_@version@@.(frame)@@extension@\"\nelse:\n\ttemplate = \"@aov_path@/@asset@_@identifier@_@version@@._(layer)@_@aov@@.(frame)@@extension@\"]",
             "requires": ["aov_path"],
         }
         structure["renderFilesShots"] = {
             "label": "Shot Renderfiles",
             "key": "@renderfile_path@",
-            "value": "[expression,#  available variables:\n#  \"core\" - PrismCore\n#  \"context\" - dict\n\nif context.get(\"mediaType\") == \"2drenders\":\n\ttemplate = \"@aov_path@/@sequence@-@shot@_@identifier@_@version@@.(frame)@@extension@\"\nelse:\n\ttemplate = \"@aov_path@/@sequence@-@shot@_@identifier@_@version@_@aov@@.(frame)@@extension@\"]",
+            "value": "[expression,#  available variables:\n#  \"core\" - PrismCore\n#  \"context\" - dict\n\nif context.get(\"mediaType\") == \"2drenders\":\n\ttemplate = \"@aov_path@/@sequence@-@shot@_@identifier@_@version@@.(frame)@@extension@\"\nelse:\n\ttemplate = \"@aov_path@/@sequence@-@shot@_@identifier@_@version@@_(layer)@_@aov@@.(frame)@@extension@\"]",
             "requires": ["aov_path"],
         }
         structure["playblasts"] = {
@@ -1209,12 +1716,29 @@ class Projects(object):
             "requires": ["playblastversion_path"],
         }
         for key in self.extraStructureItems:
-            structure[key] = self.extraStructureItems[key].copy()
+            data = self.extraStructureItems[key].copy()
+            if "idx" in data:
+                structure[key] = data
+                structure.move_to_end(key, last=False)
+                revstruct = reversed(structure)
+                start = -(data["idx"]+1)
+                for idx, skey in enumerate(list(revstruct)[start:]):
+                    if idx >= data["idx"]:
+                        break
+
+                    structure.move_to_end(skey, last=False)
+            else:
+                structure[key] = data
 
         return structure
 
     @err_catcher(name=__name__)
-    def getPrism1ProjectStructure(self):
+    def getPrism1ProjectStructure(self) -> Dict[str, Dict[str, str]]:
+        """Get the Prism 1.x project folder structure.
+        
+        Returns:
+            Dictionary containing Prism 1.x folder structure definitions
+        """
         folderStructure = {
             "pipeline": {
                 "value": "@project_path@/00_Pipeline"
@@ -1223,7 +1747,7 @@ class Projects(object):
                 "value": "@project_path@/03_Workflow/Assets/@asset_path@"
             },
             "sequences": {
-                "value": "@project_path@/03_Workflow/Shots/@sequence@"
+                "value": "@project_path@/03_Workflow/Shots/@sequence@-@shot@"
             }, 
             "shots": {
                 "value": "@project_path@/03_Workflow/Shots/@sequence@-@shot@"
@@ -1299,12 +1823,50 @@ class Projects(object):
         return folderStructure
 
     @err_catcher(name=__name__)
-    def addProjectStructureItem(self, key, value):
+    def addProjectStructureItem(self, key: str, value: Dict[str, Any]) -> bool:
+        """Add a custom item to the project structure.
+        
+        Args:
+            key: Unique key for the structure item
+            value: Structure item dictionary with label, key, value, and requires fields
+            
+        Returns:
+            True on success
+        """
         self.extraStructureItems[key] = value
         return True
 
     @err_catcher(name=__name__)
-    def getProjectStructure(self, projectPath=None, projectStructure=None):
+    def removeProjectStructureItem(self, key: str) -> bool:
+        """Remove a custom item from the project structure.
+        
+        Args:
+            key: Key of the structure item to remove
+            
+        Returns:
+            True if item was removed, False if not found
+        """
+        if key in self.extraStructureItems:
+            self.extraStructureItems.pop(key)
+            return True
+        else:
+            return False
+
+    @err_catcher(name=__name__)
+    def getProjectStructure(
+        self,
+        projectPath: Optional[str] = None,
+        projectStructure: Optional[Dict] = None
+    ) -> OrderedDict:
+        """Get the project folder structure with custom overrides.
+        
+        Args:
+            projectPath: Project path. Uses current project if None. Defaults to None.
+            projectStructure: Custom structure to merge. Defaults to None.
+            
+        Returns:
+            OrderedDict containing complete project structure
+        """
         structure = self.getDefaultProjectStructure()
         if not projectStructure:
             if self.core.prism1Compatibility:
@@ -1326,7 +1888,15 @@ class Projects(object):
         return structure
 
     @err_catcher(name=__name__)
-    def getStructureValues(self, structure):
+    def getStructureValues(self, structure: OrderedDict) -> Dict[str, Dict[str, str]]:
+        """Extract just the values from a structure definition.
+        
+        Args:
+            structure: Full structure OrderedDict
+            
+        Returns:
+            Dictionary containing only 'value' fields
+        """
         struct = {}
         for key in structure:
             struct[key] = {"value": structure[key]["value"]}
@@ -1334,7 +1904,15 @@ class Projects(object):
         return struct
 
     @err_catcher(name=__name__)
-    def validateFolderStructure(self, structure):
+    def validateFolderStructure(self, structure: OrderedDict) -> Union[bool, Dict[str, List[str]]]:
+        """Validate project folder structure for errors.
+        
+        Args:
+            structure: Structure OrderedDict to validate
+            
+        Returns:
+            True if valid, dictionary of errors by key otherwise
+        """
         errors = {}
         for skey in structure:
             item = structure[skey]
@@ -1352,7 +1930,16 @@ class Projects(object):
             return True
 
     @err_catcher(name=__name__)
-    def validateFolderKey(self, path, item):
+    def validateFolderKey(self, path: str, item: Dict[str, Any]) -> Union[bool, str]:
+        """Validate a single folder structure key.
+        
+        Args:
+            path: Template path string
+            item: Structure item dictionary
+            
+        Returns:
+            True if valid, error message string otherwise
+        """
         missing = []
         reqKeys = item.get("requires", [])
 
@@ -1397,16 +1984,25 @@ class Projects(object):
         return True
 
     @err_catcher(name=__name__)
-    def validateExpression(self, expression):
+    def validateExpression(self, expression: str) -> Dict[str, Any]:
+        """Validate a Python expression used in folder structure.
+        
+        Args:
+            expression: Python code string to validate
+            
+        Returns:
+            Dictionary with 'valid' boolean and optional 'error' message
+        """
         context = {}
         core = self.core
+        lcls = locals().copy()
         try:
-            exec(expression, locals(), None)
+            exec(expression, lcls, None)
         except Exception as e:
             result = {"valid": False, "error": str(e)}
             return result
         else:
-            if "template" in locals():
+            if "template" in lcls:
                 result = {"valid": True}
                 return result
 
@@ -1414,7 +2010,16 @@ class Projects(object):
         return result
 
     @err_catcher(name=__name__)
-    def getTemplatesFromExpression(self, expression, context=None):
+    def getTemplatesFromExpression(self, expression: str, context: Optional[Dict] = None) -> Optional[List[str]]:
+        """Execute expression and extract template paths.
+        
+        Args:
+            expression: Python expression string
+            context: Context variables for expression. Defaults to None.
+            
+        Returns:
+            List of template strings if successful, None on error
+        """
         context = context or {}
         core = self.core
 
@@ -1423,21 +2028,33 @@ class Projects(object):
             if expression.endswith("]"):
                 expression = expression[:-1]
 
+        lcls = locals().copy()
         try:
-            exec(expression, locals(), None)
+            exec(expression, lcls, None)
         except Exception as e:
-            logger.warning(e)
+            logger.warning("Error while evaluating expression:\n\n%s\n\nExpression: %s\n\nContext: %s" % (str(e), expression, context))
             return
         else:
-            if "template" in locals():
-                t = locals()["template"]
+            if "template" in lcls:
+                t = lcls["template"]
                 if self.core.isStr(t):
                     t = [t]
 
                 return t
 
+            logger.warning("expression doesn't define any template: %s - context: %s" % (expression, context))
+
     @err_catcher(name=__name__)
-    def getTemplatePath(self, key, default=False):
+    def getTemplatePath(self, key: str, default: bool = False) -> Optional[str]:
+        """Get template path for a structure key.
+        
+        Args:
+            key: Structure key name
+            default: If True, use default structure, else use project structure. Defaults to False.
+            
+        Returns:
+            Template path string, None if key not found
+        """
         if default:
             structure = self.getDefaultProjectStructure()
         else:
@@ -1450,7 +2067,16 @@ class Projects(object):
         return item["value"]
 
     @err_catcher(name=__name__)
-    def setTemplatePath(self, key, value):
+    def setTemplatePath(self, key: str, value: str) -> Optional[bool]:
+        """Set template path for a structure key.
+        
+        Args:
+            key: Structure key name
+            value: New template path
+            
+        Returns:
+            True on success, None if key invalid
+        """
         structure = self.getProjectStructure()
         item = structure.get(key)
         if not item:
@@ -1462,16 +2088,50 @@ class Projects(object):
         return True
 
     @err_catcher(name=__name__)
-    def getResolvedProjectStructurePath(self, key, context=None, structure=None, fallback=None):
+    def getResolvedProjectStructurePath(
+        self,
+        key: str,
+        context: Optional[Dict] = None,
+        structure: Optional[OrderedDict] = None,
+        fallback: Optional[str] = None
+    ) -> str:
+        """Get a single resolved path from project structure.
+        
+        Args:
+            key: Structure key to resolve
+            context: Context variables for resolution. Defaults to None.
+            structure: Structure definition. Defaults to None.
+            fallback: Fallback value if resolution fails. Defaults to None.
+            
+        Returns:
+            Resolved path string, or False/fallback if key not found
+        """
         resolvedPaths = self.getResolvedProjectStructurePaths(key, context, structure, fallback)
         if not resolvedPaths:
-            return resolvedPaths
+            return ""
 
         resolvedPath = resolvedPaths[0]
         return resolvedPath
 
     @err_catcher(name=__name__)
-    def getResolvedProjectStructurePaths(self, key, context=None, structure=None, fallback=None):
+    def getResolvedProjectStructurePaths(
+        self,
+        key: str,
+        context: Optional[Dict] = None,
+        structure: Optional[OrderedDict] = None,
+        fallback: Optional[str] = None
+    ) -> List[str]:
+        """Get all resolved paths for a structure key.
+        
+        Args:
+            key: Structure key to resolve
+            context: Context variables. Defaults to None.
+            structure: Structure definition. Defaults to None.
+            fallback: Fallback value. Defaults to None.
+            
+        Returns:
+            List of resolved paths, or False if key not found
+        """
         context = context or {}
         if context.get("project_path"):
             prjPath = self.core.convertPath(context["project_path"], "global")
@@ -1488,7 +2148,7 @@ class Projects(object):
 
         item = structure.get(key)
         if not item:
-            return False
+            return []
 
         if key in [
             "assetScenefiles",
@@ -1510,23 +2170,47 @@ class Projects(object):
         return resolvedPaths
 
     @err_catcher(name=__name__)
-    def resolveStructurePath(self, path, context=None, structure=None, addProjectPath=True, fillContextKeys=True, fallback=None):
+    def resolveStructurePath(
+        self,
+        path: str,
+        context: Optional[Dict] = None,
+        structure: Optional[OrderedDict] = None,
+        addProjectPath: bool = True,
+        fillContextKeys: bool = True,
+        fallback: Optional[str] = None
+    ) -> List[str]:
+        """Resolve a template path string with context variables.
+        
+        Args:
+            path: Template path with @key@ placeholders
+            context: Context variables for resolution. Defaults to None.
+            structure: Structure definition. Defaults to None.
+            addProjectPath: Whether to add project_path to context. Defaults to True.
+            fillContextKeys: Whether to fill keys from context. Defaults to True.
+            fallback: Fallback for unresolved keys. Defaults to None.
+            
+        Returns:
+            List of resolved path strings
+        """
         context = context or {}
+        prjPath = None
         if "project_path" in context:
             if structure is None:
                 prjPath = self.core.convertPath(context["project_path"], "global")
-        elif addProjectPath:
-            context["project_path"] = os.path.normpath(self.core.projectPath)
-            prjPath = context["project_path"]
-        else:
-            if structure is None:
-                prjPath = os.path.normpath(self.core.projectPath)
+        elif getattr(self.core, "projectPath", None):
+            if addProjectPath:
+                context["project_path"] = os.path.normpath(self.core.projectPath)
+                prjPath = context["project_path"]
+            else:
+                if structure is None:
+                    prjPath = os.path.normpath(self.core.projectPath)
 
         if "project_path" in context and "project_name" not in context:
-            if hasattr(self.core, "projectPath") and context["project_path"] == self.core.projectPath:
+            glbPrjPath = self.core.convertPath(context["project_path"], "global")
+            if hasattr(self.core, "projectPath") and glbPrjPath == self.core.projectPath:
                 context["project_name"] = self.core.projectName
             else:
-                cfgPath = self.core.configs.getProjectConfigPath(context["project_path"])
+                cfgPath = self.core.configs.getProjectConfigPath(glbPrjPath)
                 context["project_name"] = self.core.getConfig("globals", "project_name", configPath=cfgPath) or ""
 
         if structure is None:
@@ -1555,15 +2239,13 @@ class Projects(object):
                     for resolvedPiece in resolvedPieces:
                         for resolvedPath in resolvedPaths:
                             if resolvedPiece is None:
-                                print(piece)
-                                print(context)
+                                logger.warning("couldn't resolve. piece: %s context: %s" % (piece, context))
                             try:
                                 newPath = resolvedPath + resolvedPiece
                             except:
-                                print(piece)
-                                print(context)
-                                print(resolvedPath)
-                                print(resolvedPiece)
+                                logger.warning("couldn't resolve. piece: %s context: %s resolvedPath: %s resolvedPiece %s" % (piece, context, resolvedPath, resolvedPiece))
+                                continue
+
                             newResolvedPaths.append(newPath)
 
                     resolvedPaths = newResolvedPaths
@@ -1581,7 +2263,26 @@ class Projects(object):
         return newPaths
 
     @err_catcher(name=__name__)
-    def resolveStructurePiece(self, key, structure, context, fillContextKeys=True, fallback=None):
+    def resolveStructurePiece(
+        self,
+        key: str,
+        structure: OrderedDict,
+        context: Dict,
+        fillContextKeys: bool = True,
+        fallback: Optional[str] = None
+    ) -> List[str]:
+        """Resolve a single key piece from structure.
+        
+        Args:
+            key: Key to resolve
+            structure: Structure definition
+            context: Context variables
+            fillContextKeys: Whether to fill from context. Defaults to True.
+            fallback: Fallback value. Defaults to None.
+            
+        Returns:
+            List of resolved values for the key
+        """
         if "(" in key and ")" in key:
             cleanKey = key[key.find("(")+1:key.find(")")]
         else:
@@ -1633,11 +2334,29 @@ class Projects(object):
         return paths
 
     @err_catcher(name=__name__)
-    def getTemplateKeys(self, template):
+    def getTemplateKeys(self, template: str) -> List[str]:
+        """Extract all keys from a template path.
+        
+        Args:
+            template: Template path string with @key@ placeholders
+            
+        Returns:
+            List of key names (without @ symbols)
+        """
         return template.split("@")[1::2]
 
     @err_catcher(name=__name__)
-    def extractKeysFromPath(self, path, template, context=None):
+    def extractKeysFromPath(self, path: str, template: str, context: Optional[Dict] = None) -> Dict[str, str]:
+        """Extract key values from a path based on a template.
+        
+        Args:
+            path: Actual path string
+            template: Template path with @key@ placeholders
+            context: Context for template resolution. Defaults to None.
+            
+        Returns:
+            Dictionary mapping keys to their extracted values
+        """
         template = self.resolveStructurePath(template, context=context, addProjectPath=False, fillContextKeys=False)[0]
         template = os.path.normpath(template)
         path = os.path.normpath(path)
@@ -1683,13 +2402,43 @@ class Projects(object):
         return data
 
     @err_catcher(name=__name__)
-    def getMatchingPaths(self, template):
+    def espaceBrackets(self, path: str) -> str:
+        """Escape square brackets in a path for glob matching.
+        
+        Args:
+            path: Path string that may contain square brackets
+            
+        Returns:
+            Path with escaped brackets
+        """
+        escapedPath = ""
+        for char in path:
+            if char == "[":
+                escapedPath += "[[]"
+            elif char == "]":
+                escapedPath += "[]]"
+            else:
+                escapedPath += char
+
+        return escapedPath
+
+    @err_catcher(name=__name__)
+    def getMatchingPaths(self, template: str) -> List[Dict[str, str]]:
+        """Find all filesystem paths matching a template.
+        
+        Args:
+            template: Template path with @key@ placeholders
+            
+        Returns:
+            List of dictionaries containing extracted key values and 'path'
+        """
         template = os.path.normpath(template)
         keys = self.getTemplateKeys(template)
         globPath = template
         for key in keys:
             globPath = globPath.replace("@%s@" % key, "*")
 
+        globPath = self.espaceBrackets(globPath)
         matches = glob.glob(globPath)
 
         extKey = "@extension@"
@@ -1716,6 +2465,10 @@ class Projects(object):
             rePath = rePath.replace(re.escape("@%s@" % key), reval, 1)
             usedKeys.append(key)
 
+        if self.core.prism1Compatibility:
+            if "(?P<sequence>.*)-(?P<shot>.*)" in rePath:
+                rePath = rePath.replace("(?P<sequence>.*)-(?P<shot>.*)", "(?P<sequence>[^-]+)-(?P<shot>.*)")
+
         pathData = []
         for match in matches:
             origMatch = match
@@ -1731,51 +2484,179 @@ class Projects(object):
             if hasext:
                 data["extension"] = extension
 
-            pathData.append(data)
+            if self.validateMatchedData(data):
+                pathData.append(data)
 
         return pathData
 
     @err_catcher(name=__name__)
-    def getProjectImage(self, projectPath=None, projectConfig=None, validate=True, structure=None):
+    def validateMatchedData(self, data: Dict[str, str]) -> bool:
+        """Validate extracted data from a matched path.
+        
+        Args:
+            data: Dictionary of extracted key values
+            
+        Returns:
+            True if data is valid, False otherwise
+        """
+        for validVar in self.validVariables:
+            if validVar in data:
+                val = data[validVar]
+                validVarValues = self.validVariables[validVar]
+                if not any(fnmatch.fnmatch(val, pattern) for pattern in validVarValues):
+                    logger.debug("skipping path with invalid value. variable: %s value: %s" % (validVar, val))
+                    return False
+                
+        for invalidVar in self.invalidVariables:
+            if invalidVar in data:
+                val = data[invalidVar]
+                invalidVarValues = self.invalidVariables[invalidVar]
+                if any(fnmatch.fnmatch(val, pattern) for pattern in invalidVarValues):
+                    logger.debug("skipping path with invalid value. variable: %s value: %s" % (invalidVar, val))
+                    return False
+
+        return True
+
+    @err_catcher(name=__name__)
+    def addValidVariables(self, variable: str, value: str) -> None:
+        """Add valid variable patterns for path validation.
+        
+        Args:
+            variable: Variable name to validate
+            value: Pattern that variable value must match to be considered valid
+        """
+        if variable not in self.validVariables:
+            self.validVariables[variable] = []
+
+        self.validVariables[variable].append(value)
+
+    @err_catcher(name=__name__)
+    def addInvalidVariables(self, variable: str, value: str) -> None:
+        """Add invalid variable patterns for path validation.
+        
+        Args:
+            variable: Variable name to validate
+            value: Pattern that variable value must match to be considered invalid
+        """
+        if variable not in self.invalidVariables:
+            self.invalidVariables[variable] = []
+
+        self.invalidVariables[variable].append(value)
+
+    @err_catcher(name=__name__)
+    def getProjectImagePath(
+        self,
+        projectPath: Optional[str] = None,
+        projectConfig: Optional[str] = None,
+        structure: Optional[OrderedDict] = None
+    ) -> str:
+        """Get the path where project image is stored.
+        
+        Args:
+            projectPath: Project root path. Defaults to None.
+            projectConfig: Project config path. Defaults to None.
+            structure: Project structure. Defaults to None.
+            
+        Returns:
+            Path to project.jpg file
+        """
         if not projectPath and projectConfig:
             projectPath = self.getProjectFolderFromConfigPath(projectConfig)
 
         pipeDir = self.getPipelineFolder(projectPath=projectPath, structure=structure)
         path = os.path.join(pipeDir, "project.jpg")
+        return path
+
+    @err_catcher(name=__name__)
+    def getProjectImage(
+        self,
+        projectPath: Optional[str] = None,
+        projectConfig: Optional[str] = None,
+        validate: bool = True,
+        structure: Optional[OrderedDict] = None
+    ) -> Optional[str]:
+        """Get project image path if it exists.
+        
+        Args:
+            projectPath: Project root path. Defaults to None.
+            projectConfig: Project config path. Defaults to None.
+            validate: Check if file exists. Defaults to True.
+            structure: Project structure. Defaults to None.
+            
+        Returns:
+            Path to image file if exists (and validate=True), None otherwise
+        """
+        path = self.getProjectImagePath(projectPath, projectConfig, structure)
         if not validate or os.path.exists(path):
             return path
         else:
             return
 
     @err_catcher(name=__name__)
-    def saveProjectImage(self, projectPath=None, projectConfig=None, image=None):
+    def saveProjectImage(
+        self,
+        projectPath: Optional[str] = None,
+        projectConfig: Optional[str] = None,
+        image: Optional[QPixmap] = None
+    ) -> str:
+        """Save project preview image.
+        
+        Args:
+            projectPath: Project root path. Defaults to None.
+            projectConfig: Project config path. Defaults to None.
+            image: Image pixmap to save. Defaults to None.
+            
+        Returns:
+            Path where image was saved
+        """
         if not projectPath and projectConfig:
             projectPath = self.getProjectFolderFromConfigPath(projectConfig)
 
-        imagePath = self.getProjectImage(projectPath, validate=False)
+        imagePath = self.getProjectImagePath(projectPath)
         self.core.media.savePixmap(image, imagePath)
         return imagePath
 
     @err_catcher(name=__name__)
-    def getRootPresetPath(self):
+    def getRootPresetPath(self) -> str:
+        """Get path to Prism root preset folder.
+        
+        Returns:
+            Path to root presets directory
+        """
         path = os.path.join(self.core.prismRoot, "Presets", "Projects")
         return path
 
     @err_catcher(name=__name__)
-    def getUserPresetPath(self):
+    def getUserPresetPath(self) -> str:
+        """Get path to user preset folder.
+        
+        Returns:
+            Path to user presets directory
+        """
         dft = os.path.join(os.path.dirname(self.core.userini), "Presets", "Projects")
         path = os.getenv("PRISM_PROJECT_PRESETS_PATH", dft)
         return path
 
     @err_catcher(name=__name__)
-    def getPresetPaths(self):
+    def getPresetPaths(self) -> List[str]:
+        """Get all preset directory paths.
+        
+        Returns:
+            List of preset directory paths
+        """
         paths = []
         paths.append(self.getRootPresetPath())
         paths.append(self.getUserPresetPath())
+        self.core.callback("getProjectPresetPaths", args=[paths])
         return paths
 
     @err_catcher(name=__name__)
-    def getPresets(self):
+    def getPresets(self) -> List[Dict[str, Any]]:
+        """Get all available project presets.
+        
+        Returns:
+            List of preset dictionaries with 'name', 'path', and 'settings' keys
+        """
         presets = []
         presetPaths = self.getPresetPaths()
         for presetPath in presetPaths:
@@ -1791,7 +2672,16 @@ class Projects(object):
         return presets
 
     @err_catcher(name=__name__)
-    def getPreset(self, name=None, path=None):
+    def getPreset(self, name: Optional[str] = None, path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Get a specific project preset by name or path.
+        
+        Args:
+            name: Preset name. Defaults to None.
+            path: Preset path. Defaults to None.
+            
+        Returns:
+            Preset dictionary or None if not found
+        """
         if not path:
             presetPaths = self.getPresetPaths()
             for presetPath in presetPaths:
@@ -1814,7 +2704,16 @@ class Projects(object):
         return data
 
     @err_catcher(name=__name__)
-    def deletePreset(self, name=None, path=None):
+    def deletePreset(self, name: Optional[str] = None, path: Optional[str] = None) -> bool:
+        """Delete a project preset.
+        
+        Args:
+            name: Preset name. Defaults to None.
+            path: Preset path. Defaults to None.
+            
+        Returns:
+            True if deleted successfully, False otherwise
+        """
         if not path:
             path = os.path.join(self.getUserPresetPath(), name)
             if not os.path.exists(path):
@@ -1838,7 +2737,16 @@ class Projects(object):
         return True
 
     @err_catcher(name=__name__)
-    def createPresetFromFolder(self, name, path):
+    def createPresetFromFolder(self, name: str, path: str) -> bool:
+        """Create a preset by copying an existing project folder.
+        
+        Args:
+            name: New preset name
+            path: Path to source project folder
+            
+        Returns:
+            True on success, False on failure
+        """
         presetsPath = self.getUserPresetPath()
         presetPath = os.path.join(presetsPath, name)
         if os.path.exists(presetPath):
@@ -1858,7 +2766,24 @@ class Projects(object):
         return True
 
     @err_catcher(name=__name__)
-    def createPresetFromSettings(self, name, settings, structure, dft=None):
+    def createPresetFromSettings(
+        self,
+        name: str,
+        settings: Dict,
+        structure: Dict,
+        dft: Optional[str] = None
+    ) -> Optional[bool]:
+        """Create a preset from settings dictionary.
+        
+        Args:
+            name: Preset name
+            settings: Project settings dictionary
+            structure: Project structure
+            dft: Default button for validation dialog. Defaults to None.
+            
+        Returns:
+            True on success, False on failure, None if preset exists
+        """
         presetsPath = self.getUserPresetPath()
         presetPath = os.path.join(presetsPath, name)
         if os.path.exists(presetPath):
@@ -1882,7 +2807,17 @@ class Projects(object):
             return True
 
     @err_catcher(name=__name__)
-    def validateProjectPresetConfig(self, presetPath, configPath, dft=None):
+    def validateProjectPresetConfig(self, presetPath: str, configPath: str, dft: Optional[str] = None) -> bool:
+        """Validate that preset config location matches expected location.
+        
+        Args:
+            presetPath: Path to preset folder
+            configPath: Path to config file
+            dft: Default button choice. Defaults to None.
+            
+        Returns:
+            True if valid, False if user cancels
+        """
         dftConfig = self.core.configs.getProjectConfigPath(presetPath, useEnv=False)
         if dftConfig != configPath:
             cfgRelPath = os.path.normpath(configPath).replace(os.path.normpath(presetPath), "")
@@ -1903,7 +2838,12 @@ class Projects(object):
         return True
 
     @err_catcher(name=__name__)
-    def getProjectDepartments(self):
+    def getProjectDepartments(self) -> Dict:
+        """Get legacy pipeline steps (deprecated).
+        
+        Returns:
+            Dictionary of pipeline steps
+        """
         steps = self.core.getConfig(
             "globals", "pipeline_steps", configPath=self.core.prismIni
         )
@@ -1916,7 +2856,15 @@ class Projects(object):
         return steps
 
     @err_catcher(name=__name__)
-    def getAssetDepartments(self, configData=None):
+    def getAssetDepartments(self, configData: Optional[Dict] = None) -> List[Dict[str, Any]]:
+        """Get asset departments configuration.
+        
+        Args:
+            configData: Config dictionary. Uses project config if None. Defaults to None.
+            
+        Returns:
+            List of department dictionaries
+        """
         if configData:
             deps = configData.get("globals", {}).get("departments_asset")
         else:
@@ -1931,13 +2879,22 @@ class Projects(object):
 
         if not deps:
             deps = self.getProjectDepartments()
-            deps = [{"name": d[1], "abbreviation": d[0], "defaultTasks": [d[1]]} for d in list(deps.items())]
-            self.setDepartments("asset", deps, configData)
+            if deps:
+                deps = [{"name": d[1], "abbreviation": d[0], "defaultTasks": [d[1]]} for d in list(deps.items())]
+                self.setDepartments("asset", deps, configData)
 
         return deps
 
     @err_catcher(name=__name__)
-    def getShotDepartments(self, configData=None):
+    def getShotDepartments(self, configData: Optional[Dict] = None) -> List[Dict[str, Any]]:
+        """Get shot departments configuration.
+        
+        Args:
+            configData: Config dictionary. Uses project config if None. Defaults to None.
+            
+        Returns:
+            List of department dictionaries
+        """
         if configData:
             deps = configData.get("globals", {}).get("departments_shot")
         else:
@@ -1952,13 +2909,33 @@ class Projects(object):
 
         if not deps:
             deps = self.getProjectDepartments()
-            deps = [{"name": d[1], "abbreviation": d[0], "defaultTasks": [d[1]]} for d in list(deps.items())]
-            self.setDepartments("shot", deps, configData)
+            if deps:
+                deps = [{"name": d[1], "abbreviation": d[0], "defaultTasks": [d[1]]} for d in list(deps.items())]
+                self.setDepartments("shot", deps, configData)
 
         return deps
 
     @err_catcher(name=__name__)
-    def addDepartment(self, entity, name, abbreviation, defaultTasks=None, configData=None):
+    def addDepartment(
+        self,
+        entity: str,
+        name: str,
+        abbreviation: str,
+        defaultTasks: Optional[List[str]] = None,
+        configData: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        """Add or update a department.
+        
+        Args:
+            entity: "asset" or "shot"
+            name: Department name
+            abbreviation: Short abbreviation
+            defaultTasks: List of default task names. Defaults to None.
+            configData: Config dictionary. Defaults to None.
+            
+        Returns:
+            Department dictionary
+        """
         if entity == "asset":
             key = "departments_asset"
         elif entity in ["shot", "sequence"]:
@@ -1984,7 +2961,14 @@ class Projects(object):
         return dep
 
     @err_catcher(name=__name__)
-    def setDepartments(self, entity, departments, configData=None):
+    def setDepartments(self, entity: str, departments: List[Dict], configData: Optional[Dict] = None) -> None:
+        """Set all departments for entity type.
+        
+        Args:
+            entity: "asset" or "shot"
+            departments: List of department dictionaries
+            configData: Config dictionary. Defaults to None.
+        """
         if entity == "asset":
             key = "departments_asset"
         elif entity in ["shot", "sequence"]:
@@ -1998,7 +2982,293 @@ class Projects(object):
             )
 
     @err_catcher(name=__name__)
-    def getDefaultCodePresets(self):
+    def getAssetTaskPresets(self, configData: Optional[Dict] = None) -> List[Dict[str, Any]]:
+        """Get asset task presets.
+        
+        Args:
+            configData: Config dictionary. Defaults to None.
+            
+        Returns:
+            List of task preset dictionaries
+        """
+        if configData:
+            presets = configData.get("globals", {}).get("taskpresets_asset")
+        else:
+            presets = self.core.getConfig(
+                "globals", "taskpresets_asset", configPath=self.core.prismIni
+            )
+
+        if presets is None:
+            presets = self.getDftAssetTaskPresets()
+            self.setTaskPresets("asset", presets, configData)
+
+        try:
+            presets = list(presets)
+        except:
+            presets = []
+
+        return presets
+
+    @err_catcher(name=__name__)
+    def getDftAssetTaskPresets(self) -> List[Dict[str, Any]]:
+        """Get default asset task presets.
+        
+        Returns:
+            List of default task preset dictionaries
+        """
+        presets = [
+            {
+                "name": "All",
+                "departments": [
+                    {
+                        "name": "Concept",
+                        "tasks": ["Concept"]
+                    },
+                    {
+                        "name": "Modeling",
+                        "tasks": ["Modeling"]
+                    },
+                    {
+                        "name": "Surfacing",
+                        "tasks": ["Surfacing"]
+                    },
+                    {
+                        "name": "Rigging",
+                        "tasks": ["Rigging"]
+                    }
+                ]
+            },
+            {
+                "name": "Character",
+                "departments": [
+                    {
+                        "name": "Modeling",
+                        "tasks": ["Modeling"]
+                    },
+                    {
+                        "name": "Surfacing",
+                        "tasks": ["Surfacing"]
+                    },
+                    {
+                        "name": "Rigging",
+                        "tasks": ["Rigging"]
+                    }
+                ]
+            },
+            {
+                "name": "Prop",
+                "departments": [
+                    {
+                        "name": "Modeling",
+                        "tasks": ["Modeling"]
+                    },
+                    {
+                        "name": "Surfacing",
+                        "tasks": ["Surfacing"]
+                    }
+                ]
+            },
+            {
+                "name": "Environment",
+                "departments": [
+                    {
+                        "name": "Modeling",
+                        "tasks": ["Layout"]
+                    }
+                ]
+            }
+        ]
+        return presets
+
+    @err_catcher(name=__name__)
+    def getShotTaskPresets(self, configData: Optional[Dict] = None) -> List[Dict[str, Any]]:
+        """Get shot task presets.
+        
+        Args:
+            configData: Config dictionary. Defaults to None.
+            
+        Returns:
+            List of task preset dictionaries
+        """
+        if configData:
+            presets = configData.get("globals", {}).get("taskpresets_shot")
+        else:
+            presets = self.core.getConfig(
+                "globals", "taskpresets_shot", configPath=self.core.prismIni
+            )
+
+        if presets is None:
+            presets = self.getDftShotTaskPresets()
+            self.setTaskPresets("shot", presets, configData)
+
+        try:
+            presets = list(presets)
+        except:
+            presets = []
+
+        return presets
+
+    @err_catcher(name=__name__)
+    def getDftShotTaskPresets(self) -> List[Dict[str, Any]]:
+        """Get default shot task presets.
+        
+        Returns:
+            List of default task preset dictionaries
+        """
+        presets = [
+            {
+                "name": "All",
+                "departments": [
+                    {
+                        "name": "Layout",
+                        "tasks": ["Layout"]
+                    },
+                    {
+                        "name": "Animation",
+                        "tasks": ["Animation"]
+                    },
+                    {
+                        "name": "CharFX",
+                        "tasks": ["CharacterEffects"]
+                    },
+                    {
+                        "name": "FX",
+                        "tasks": ["Effects"]
+                    },
+                    {
+                        "name": "Lighting",
+                        "tasks": ["Lighting"]
+                    },
+                    {
+                        "name": "Compositing",
+                        "tasks": ["Compositing"]
+                    }
+                ]
+            },
+            {
+                "name": "Default",
+                "departments": [
+                    {
+                        "name": "Layout",
+                        "tasks": ["Layout"]
+                    },
+                    {
+                        "name": "Animation",
+                        "tasks": ["Animation"]
+                    },
+                    {
+                        "name": "Lighting",
+                        "tasks": ["Lighting"]
+                    },
+                    {
+                        "name": "Compositing",
+                        "tasks": ["Compositing"]
+                    }
+                ]
+            },
+            {
+                "name": "Simple",
+                "departments": [
+                    {
+                        "name": "Animation",
+                        "tasks": ["Animation"]
+                    },
+                    {
+                        "name": "Lighting",
+                        "tasks": ["Lighting"]
+                    },
+                    {
+                        "name": "Compositing",
+                        "tasks": ["Compositing"]
+                    }
+                ]
+            },
+            {
+                "name": "Minimal",
+                "departments": [
+                    {
+                        "name": "Lighting",
+                        "tasks": ["Lighting"]
+                    }
+                ]
+            }
+        ]
+        return presets
+
+    @err_catcher(name=__name__)
+    def addTaskPreset(
+        self,
+        entity: str,
+        name: str,
+        departments: Optional[List[Dict]] = None,
+        configData: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        """Add or update a task preset.
+        
+        Args:
+            entity: "asset" or "shot"
+            name: Preset name
+            departments: List of department dictionaries. Defaults to None.
+            configData: Config dictionary. Defaults to None.
+            
+        Returns:
+            Preset dictionary
+        """
+        departments = departments or []
+        if entity == "asset":
+            key = "taskpresets_asset"
+        elif entity in ["shot", "sequence"]:
+            key = "taskpresets_shot"
+
+        if configData:
+            presets = configData.get("globals", {}).get(key, [])
+        else:
+            presets = self.core.getConfig(
+                "globals", key, configPath=self.core.prismIni, dft=[]
+            )
+
+        validPresets = []
+        for preset in presets:
+            if preset["name"] != name:
+                validPresets.append(preset)
+
+        preset = {"name": name, "departments": departments}
+        validPresets.append(preset)
+
+        self.setTaskPresets(entity, validPresets, configData)
+        return preset
+
+    @err_catcher(name=__name__)
+    def setTaskPresets(self, entity: str, presets: List[Dict], configData: Optional[Dict] = None) -> None:
+        """Set all task presets for entity type.
+        
+        Args:
+            entity: "asset" or "shot"
+            presets: List of preset dictionaries
+            configData: Config dictionary. Defaults to None.
+        """
+        if entity == "asset":
+            key = "taskpresets_asset"
+        elif entity in ["shot", "sequence"]:
+            key = "taskpresets_shot"
+
+        if configData:
+            if "globals" not in configData:
+                configData["globals"] = {}
+
+            configData["globals"][key] = presets
+        else:
+            self.core.setConfig(
+                "globals", key, presets, configPath=self.core.prismIni
+            )
+
+    @err_catcher(name=__name__)
+    def getDefaultCodePresets(self) -> List[Dict[str, str]]:
+        """Get default code presets.
+        
+        Returns:
+            List of code preset dictionaries with 'name' and 'code' keys
+        """
         presets = [
             {
                 "name": "Show Message",
@@ -2008,18 +3278,40 @@ class Projects(object):
         return presets
 
     @err_catcher(name=__name__)
-    def getCodePresets(self):
+    def getCodePresets(self) -> List[Dict[str, str]]:
+        """Get all code presets.
+        
+        Returns:
+            List of code preset dictionaries
+        """
         dft = self.getDefaultCodePresets()
         data = self.core.getConfig(config="codePresets", location="project", dft=dft)
         return data
 
     @err_catcher(name=__name__)
-    def setCodePresets(self, presets):
+    def setCodePresets(self, presets: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        """Save code presets.
+        
+        Args:
+            presets: List of code preset dictionaries
+            
+        Returns:
+            The saved presets list
+        """
         self.core.setConfig(data=presets, config="codePresets", location="project")
         return presets
 
     @err_catcher(name=__name__)
-    def addCodePreset(self, name, code=""):
+    def addCodePreset(self, name: str, code: str = "") -> List[Dict[str, str]]:
+        """Add or update a code preset.
+        
+        Args:
+            name: Preset name
+            code: Python code string. Defaults to empty string.
+            
+        Returns:
+            Updated list of presets
+        """
         presets = self.getCodePresets()
         presets = [p for p in presets if p.get("name", "") != name]
         newPreset = {"name": name, "code": code}
@@ -2028,14 +3320,27 @@ class Projects(object):
         return presets
 
     @err_catcher(name=__name__)
-    def removeCodePreset(self, name):
+    def removeCodePreset(self, name: str) -> List[Dict[str, str]]:
+        """Remove a code preset.
+        
+        Args:
+            name: Preset name to remove
+            
+        Returns:
+            Updated list of presets
+        """
         presets = self.getCodePresets()
         presets = [p for p in presets if p.get("name", "") != name]
         self.setCodePresets(presets)
         return presets
 
     @err_catcher(name=__name__)
-    def getFps(self):
+    def getFps(self) -> Optional[float]:
+        """Get project frames per second if forced FPS is enabled.
+        
+        Returns:
+            FPS value if forced, None otherwise
+        """
         forceFPS = self.core.getConfig(
             "globals", "forcefps", config="project"
         )
@@ -2046,10 +3351,31 @@ class Projects(object):
         return pFps
 
     class ProjectListWidget(QDialog):
+        """Dialog widget for displaying and selecting from available projects.
+        
+        This widget shows a grid of project cards that users can browse,
+        search, and select from. It provides options to create new projects
+        or open existing ones.
+        
+        Attributes:
+            signalShowing (Signal): Emitted when widget is shown
+            origin: Parent widget
+            core: PrismCore instance
+            projectWidgets (List): List of ProjectWidget instances
+            allowClose (bool): Whether widget can be closed
+            allowDeselect (bool): Whether items can be deselected
+            allowMultiSelection (bool): Whether multiple items can be selected
+            dirty (bool): Whether widget needs refresh
+        """
 
         signalShowing = Signal()
 
-        def __init__(self, origin):
+        def __init__(self, origin: Any) -> None:
+            """Initialize ProjectListWidget.
+            
+            Args:
+                origin: Parent widget
+            """
             super(Projects.ProjectListWidget, self).__init__()
             self.origin = origin
             self.core = origin.core
@@ -2057,22 +3383,61 @@ class Projects(object):
             self.allowClose = True
             self.allowDeselect = True
             self.allowMultiSelection = True
+            self.dirty = False
             self.core.parentWindow(self, parent=origin)
             self.setupUi()
             self.refreshUi()
             self.core.callback(name="onProjectListStartup", args=[self])
 
         @err_catcher(name=__name__)
-        def focusInEvent(self, event):
+        def focusInEvent(self, event: Any) -> None:
+            """Handle focus in event by activating window.
+            
+            Args:
+                event: Focus event
+            """
             self.activateWindow()
 
         @err_catcher(name=__name__)
-        def focusOutEvent(self, event):
-            if self.allowClose:
-                self.close()
+        def focusOutEvent(self, event: Any) -> None:
+            """Handle focus out event, close if focus moved outside widget.
+            
+            Args:
+                event: Focus event
+            """
+            new_focus = QApplication.focusWidget()
+            if new_focus and self.isAncestorOf(new_focus):
+                # Focus moved to a child → do NOT close
+                event.ignore()
+            else:
+                if self.allowClose:
+                    self.close()
 
         @err_catcher(name=__name__)
-        def showWidget(self):
+        def eventFilter(self, watched: Any, event: Any) -> bool:
+            """Filter events for child widgets, close on focus out.
+            
+            Args:
+                watched: Widget being watched
+                event: Event to filter
+                
+            Returns:
+                Whether event was handled
+            """
+            if event.type() == QEvent.FocusOut:
+                new_focus = QApplication.focusWidget()
+                if not (new_focus and self.isAncestorOf(new_focus)):
+                    self.close()
+
+            return super().eventFilter(watched, event)
+
+        @err_catcher(name=__name__)
+        def showWidget(self) -> None:
+            """Configure widget display style and select current project.
+            
+            Sets frameless window, stays on top, applies border style,
+            and pre-selects current project widget.
+            """
             self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
             self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
             self.setStyleSheet("QDialog { border: 1px solid rgb(70, 90, 120); }")
@@ -2081,20 +3446,60 @@ class Projects(object):
                 if widget.data.get("configPath", None) == self.core.prismIni:
                     widget.select()
 
+            if self.dirty:
+                self.refreshUi()
+                self.dirty = False
+
             self.show()
             QApplication.processEvents()
-            self.setFocus()
+            self.e_search.setFocus()
             self.resize(self.w_projects.width() + self.lo_projects.contentsMargins().left() * 2, self.height())        
 
         @err_catcher(name=__name__)
-        def setupUi(self):
+        def setupUi(self) -> None:
+            """Set up project list UI with search, create/open buttons, and scrollable grid.
+            
+            Creates header with search bar and action buttons, grid layout for project
+            widgets, and scroll area for navigation.
+            """
             self.setFocusPolicy(Qt.StrongFocus)
+
+            self.w_header = QWidget()
+            self.lo_header = QHBoxLayout(self.w_header)
+            self.e_search = QLineEdit()
+            self.e_search.setPlaceholderText("Search Projects...")
+            self.e_search.setClearButtonEnabled(True)
+            self.e_search.installEventFilter(self)
+            self.e_search.textChanged.connect(lambda text: self.refreshUi())
+            self.b_create = QPushButton()
+            path = os.path.join(self.core.prismRoot, "Scripts", "UserInterfacesPrism", "create.png")
+            icon = self.core.media.getColoredIcon(path)
+            self.b_create.setIcon(icon)
+            self.b_create.setText(" Create")
+            self.b_create.setToolTip("Create New Project...")
+            self.b_create.setFocusPolicy(Qt.NoFocus)
+            self.b_create.clicked.connect(self.preCreate)
+
+            self.b_open = QPushButton()
+            path = os.path.join(self.core.prismRoot, "Scripts", "UserInterfacesPrism", "browse.png")
+            icon = self.core.media.getColoredIcon(path)
+            self.b_open.setIcon(icon)
+            self.b_open.setText(" Open")
+            self.b_open.setToolTip("Browse and Open an existing Project...")
+            self.b_open.setFocusPolicy(Qt.NoFocus)
+            self.b_open.clicked.connect(self.close)
+            self.b_open.clicked.connect(lambda: self.core.projects.openProject(parent=self.origin))
+
+            self.lo_header.addWidget(self.e_search)
+            self.lo_header.addWidget(self.b_create)
+            self.lo_header.addWidget(self.b_open)
+            self.lo_header.setContentsMargins(9, 5, 9, 0)
 
             self.w_projects = QWidget()
             self.w_projects.setFocusProxy(self)
             self.lo_projects = QGridLayout()
             self.lo_projects.setSpacing(10)
-            self.lo_projects.setContentsMargins(15, 9, 15, 9)
+            self.lo_projects.setContentsMargins(0, 9, 20, 9)
             self.w_projects.setLayout(self.lo_projects)
             self.lo_main = QVBoxLayout()
             self.lo_main.setContentsMargins(0, 0, 0, 0)
@@ -2103,6 +3508,7 @@ class Projects(object):
             self.w_scrollParent = QWidget()
             self.w_scrollParent.setFocusProxy(self)
             self.lo_scrollParent = QHBoxLayout()
+            self.lo_scrollParent.setContentsMargins(0, 0, 0, 0)
             self.sa_projects = QScrollArea()
             self.sa_projects.setFocusProxy(self)
             self.sa_projects.setWidgetResizable(True)
@@ -2110,10 +3516,16 @@ class Projects(object):
             self.sa_projects.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             self.w_scrollParent.setLayout(self.lo_scrollParent)
             self.lo_scrollParent.addWidget(self.sa_projects)
+            self.lo_main.addWidget(self.w_header)
             self.lo_main.addWidget(self.w_scrollParent)
 
         @err_catcher(name=__name__)
-        def refreshUi(self):
+        def refreshUi(self) -> None:
+            """Refresh project list UI with current projects and search filter.
+            
+            Clears existing widgets, loads available projects, applies search filter,
+            creates project widgets in grid layout, and triggers callback.
+            """
             self.projectWidgets = []
             for idx in reversed(range(self.lo_projects.count())):
                 item = self.lo_projects.takeAt(idx)
@@ -2123,6 +3535,10 @@ class Projects(object):
                     w.deleteLater()
 
             self.projects = self.core.projects.getAvailableProjects(includeCurrent=True)
+            searchFilter = self.e_search.text().lower()
+            if searchFilter:
+                self.projects = [p for p in self.projects if searchFilter in (p.get("name") or "").lower()]
+
             for project in self.projects:
                 w_prj = Projects.ProjectWidget(self, project.copy(), minHeight=1, previewScale=0.5)
                 w_prj.setFocusProxy(self)
@@ -2136,45 +3552,6 @@ class Projects(object):
                     (self.lo_projects.count() % 3) + 1,
                 )
 
-            path = os.path.join(
-                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "add.png"
-            )
-            data = {"name": "Create New Project", "icon": path}
-            self.w_new = Projects.ProjectWidget(self, data)
-            self.w_new.lo_main.setContentsMargins(0, 10, 0, 0)
-            self.w_new.setFocusProxy(self)
-            self.w_new.signalDoubleClicked.connect(lambda x: self.preCreate())
-            self.w_new.signalSelect.connect(self.itemSelected)
-            self.projectWidgets.append(self.w_new)
-            self.lo_projects.addWidget(
-                self.w_new,
-                int(self.lo_projects.count() / 3),
-                (self.lo_projects.count() % 3) + 1,
-            )
-            sizePolicy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-            sizePolicy.setVerticalStretch(1)
-            self.w_new.setSizePolicy(sizePolicy)
-
-            path = os.path.join(
-                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "browse.png"
-            )
-            data = {"name": "Browse Projects", "icon": path}
-            self.w_open = Projects.ProjectWidget(self, data)
-            self.w_open.lo_main.setContentsMargins(0, 10, 0, 0)
-            self.w_open.setFocusProxy(self)
-            self.w_open.signalDoubleClicked.connect(lambda x: self.close())
-            self.w_open.signalDoubleClicked.connect(lambda x: self.core.projects.openProject(parent=self.origin))
-            self.w_open.signalSelect.connect(self.itemSelected)
-            self.projectWidgets.append(self.w_open)
-            self.lo_projects.addWidget(
-                self.w_open,
-                int(self.lo_projects.count() / 3),
-                (self.lo_projects.count() % 3) + 1,
-            )
-            sizePolicy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-            sizePolicy.setVerticalStretch(1)
-            self.w_open.setSizePolicy(sizePolicy)
-
             self.core.callback(name="onProjectListRefreshed", args=[self])
             self.sp_projectsR = QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Fixed)
             self.sp_projectsB = QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -2186,13 +3563,20 @@ class Projects(object):
             self.lo_projects.addWidget(self.w_spacer, self.lo_projects.rowCount(), 0)
 
         @err_catcher(name=__name__)
-        def preCreate(self):
+        def preCreate(self) -> None:
+            """Open project creation dialog and close project browser if visible."""
             self.core.projects.createProjectDialog()
             if getattr(self.core, "pb", None) and self.core.pb.isVisible():
                 self.core.pb.close()
 
         @err_catcher(name=__name__)
-        def itemSelected(self, item, event=None):
+        def itemSelected(self, item: Any, event: Optional[Any] = None) -> None:
+            """Handle item selection with multi-selection and modifier key support.
+            
+            Args:
+                item: Project widget being selected
+                event: Mouse event (optional)
+            """
             if not self.allowDeselect:
                 return
 
@@ -2209,7 +3593,12 @@ class Projects(object):
                     self.deselectItems(ignore=[item])
 
         @err_catcher(name=__name__)
-        def deselectItems(self, ignore=None):
+        def deselectItems(self, ignore: Optional[List[Any]] = None) -> None:
+            """Deselect all project widgets except ignored ones.
+            
+            Args:
+                ignore: List of widgets to skip deselecting
+            """
             for item in self.projectWidgets:
                 if ignore and item in ignore:
                     continue
@@ -2217,7 +3606,12 @@ class Projects(object):
                 item.deselect()
 
         @err_catcher(name=__name__)
-        def getSelectedProject(self):
+        def getSelectedProject(self) -> Optional[Any]:
+            """Get first selected project widget.
+            
+            Returns:
+                First selected ProjectWidget or None if none selected
+            """
             selectedProjects = [x for x in self.projectWidgets if x.isSelected()]
             if not selectedProjects:
                 return
@@ -2226,7 +3620,12 @@ class Projects(object):
             return prj
 
         @err_catcher(name=__name__)
-        def getSelectedItems(self):
+        def getSelectedItems(self) -> List[Any]:
+            """ Get list of selected project widgets.
+            
+            Returns:
+                List of selected ProjectWidget instances
+            """
             items = []
             for item in self.projectWidgets:
                 if item.isSelected():
@@ -2235,11 +3634,21 @@ class Projects(object):
             return items
 
         @err_catcher(name=__name__)
-        def showEvent(self, event):
+        def showEvent(self, event: Any) -> None:
+            """Handle show event by emitting signalShowing.
+            
+            Args:
+                event: Show event
+            """
             self.signalShowing.emit()
 
         @err_catcher(name=__name__)
-        def openProject(self, widget):
+        def openProject(self, widget: Any) -> None:
+            """Open selected project, close dialog and switch to new project.
+            
+            Args:
+                widget: Project widget to open
+            """
             path = widget.data["configPath"]
             if path == self.core.prismIni:
                 msg = "This project is already active."
@@ -2250,16 +3659,49 @@ class Projects(object):
             self.core.changeProject(path)
 
     class ProjectWidget(QWidget):
+        """Widget representing a single project in the project browser.
+        
+        Displays project preview image, name, and provides context menu
+        for project operations like opening, favoriting, or removing.
+        
+        Attributes:
+            signalSelect (Signal): Emitted when widget is selected
+            signalReleased (Signal): Emitted when mouse released
+            signalDoubleClicked (Signal): Emitted on double click
+            signalRemoved (Signal): Emitted when project removed
+            core: PrismCore instance
+            data (Dict): Project data dictionary
+            status (str): Selection status ("selected" or "deselected")
+        """
 
         signalSelect = Signal(object, object)
         signalReleased = Signal(object)
         signalDoubleClicked = Signal(object)
         signalRemoved = Signal()
+        signalPreviewImageLoaded = Signal(object)
 
-        def __init__(self, parent, data, minHeight=200, allowRemove=True, previewScale=1, useWidgetWidth=False):
+        def __init__(
+            self,
+            parent: "Projects.ProjectListWidget",
+            data: Dict[str, Any],
+            minHeight: int = 200,
+            allowRemove: bool = True,
+            previewScale: float = 1,
+            useWidgetWidth: bool = False
+        ) -> None:
+            """Initialize ProjectWidget.
+            
+            Args:
+                parent: Parent ProjectListWidget
+                data: Project data dictionary
+                minHeight: Minimum widget height. Defaults to 200.
+                allowRemove: Whether project can be removed. Defaults to True.
+                previewScale: Scale factor for preview. Defaults to 1.
+                useWidgetWidth: Use widget width for scaling. Defaults to False.
+            """
             super(Projects.ProjectWidget, self).__init__()
             self.core = parent.core
-            self.parent = parent
+            self._parent = parent
             self.data = data
             self.status = "deselected"
             self.minHeight = minHeight
@@ -2268,19 +3710,35 @@ class Projects(object):
             self.useWidgetWidth = useWidgetWidth
             self.previewWidth = int(200 * previewScale)
             self.previewHeight = int((200 * previewScale) / (16/9.0))
+            self.signalPreviewImageLoaded.connect(self.onPreviewImageLoaded)
             self.setupUi()
             self.refreshUi()
 
         @err_catcher(name=__name__)
-        def sizeHint(self):
+        def sizeHint(self) -> QSize:
+            """Return size hint for project widget.
+            
+            Returns:
+                QSize with minHeight
+            """
             return QSize(1, self.minHeight)
 
         @err_catcher(name=__name__)
-        def resizeEvent(self, event):
+        def resizeEvent(self, event: Any) -> None:
+            """Handle resize event by updating preview without reloading.
+            
+            Args:
+                event: Resize event
+            """
             self.updatePreview(load=False)
 
         @err_catcher(name=__name__)
-        def setupUi(self):
+        def setupUi(self) -> None:
+            """Set up project widget UI with preview, icon, name, and info labels.
+            
+            Creates rounded preview label, project name, favorite star, info icon,
+            and context menu. Configures layout and styling.
+            """
             self.setObjectName("texture")
             self.applyStyle()
             self.setAttribute(Qt.WA_StyledBackground, True)
@@ -2300,6 +3758,14 @@ class Projects(object):
             font.setPointSizeF(10)
             self.l_name.setFont(font)
             self.l_name.setAlignment(Qt.AlignHCenter)
+            self.l_fav = QLabel()
+            iconPath = os.path.join(
+                self.core.prismRoot, "Scripts", "UserInterfacesPrism", "favorite.png"
+            )
+            icon = self.core.media.getColoredIcon(iconPath, r=240, g=240, b=0)
+            self.l_fav.setPixmap(icon.pixmap(15, 15))
+            self.l_fav.setToolTip("Favorite")
+
             self.l_info = Projects.HelpLabel()
             self.l_info.setMouseTracking(True)
             self.lo_info = QVBoxLayout()
@@ -2346,39 +3812,93 @@ class Projects(object):
                 self.l_info.adjustSize()
                 # self.l_info.move(self.previewWidth - int(30 * self.previewScale), 10)
                 self.lo_footer.addStretch()
+                self.lo_footer.addWidget(self.l_fav)
                 self.lo_footer.addWidget(self.l_info)
                 self.l_info.setParent(self)
                 self.sp_left = QSpacerItem(self.l_info.width(), 0, QSizePolicy.Fixed, QSizePolicy.Fixed)
                 self.lo_footer.insertItem(0, self.sp_left)
             else:
                 self.lo_footer.addStretch()
+                self.lo_footer.addWidget(self.l_fav)
 
         @err_catcher(name=__name__)
-        def updatePreview_threaded(self):
+        def updatePreview_threaded(self) -> None:
+            """Start background thread to update preview image."""
             import threading
 
-            self.thread = threading.Thread(target=lambda: self.updatePreview(True))
+            self.thread = threading.Thread(target=self.loadPreviewImage)
             self.thread.start()
 
         @err_catcher(name=__name__)
-        def refreshUi(self):
+        def loadPreviewImage(self) -> None:
+            """Load preview QImage in a worker thread and emit it to GUI thread."""
+            imagePath = None
+            if "configPath" in self.data:
+                imagePath = self.core.projects.getProjectImage(
+                    projectConfig=self.data["configPath"]
+                )
+
+                if not imagePath:
+                    imagePath = os.path.join(
+                        self.core.prismRoot,
+                        "Presets/Projects/Default/00_Pipeline/Fallbacks/noFileBig.jpg",
+                    )
+
+            if not imagePath:
+                return
+
+            qimg = self.core.media.getQImageFromPath(imagePath)
+            self.signalPreviewImageLoaded.emit(qimg)
+
+        @err_catcher(name=__name__)
+        def onPreviewImageLoaded(self, qimg: Optional[QImage]) -> None:
+            """Convert loaded QImage to preview pixmap on the GUI thread."""
+            if not qimg or qimg.isNull():
+                return
+
+            pixmap = QPixmap.fromImage(qimg)
+            self.validPreview = pixmap
+            ppixmap = self.core.media.scalePixmap(
+                pixmap,
+                self.l_preview.width(),
+                self.previewHeight,
+                keepRatio=True,
+                fitIntoBounds=False,
+                crop=True,
+            )
+            if ppixmap and ppixmap != "loading":
+                self.l_preview.setPixmap(ppixmap)
+
+        @err_catcher(name=__name__)
+        def refreshUi(self) -> None:
+            """Refresh widget display with icon/preview, name, and favorite star.
+            
+            Loads icon or preview image (threaded if parent visible),
+            updates display name, and shows/hides favorite indicator.
+            """
             icon = self.getIcon()
             if icon:
                 self.l_icon.setPixmap(icon)
             else:
                 self.setLoadingPreview()
-                if self.parent.isVisible():
+                if self._parent.isVisible():
                     self.updatePreview_threaded()
                 else:
-                    self.parent.signalShowing.connect(self.updatePreview_threaded)
+                    self._parent.signalShowing.connect(self.updatePreview_threaded)
 
             name = self.getDisplayName()
             self.l_name.setText(name)
+            self.l_fav.setVisible(self.data.get("favorite", False))
 
         @err_catcher(name=__name__)
-        def updatePreview(self, load=True):
+        def updatePreview(self, load: bool = True) -> None:
+            """Update preview image with optional loading from disk.
+            
+            Args:
+                load: Whether to load image from disk. Defaults to True.
+            """
             if hasattr(self, "loadingGif"):
-                self.loadingGif.setScaledSize(QSize(self.l_preview.width(), self.l_preview.width() / (300/169.0)))
+                self.loadingGif.setScaledSize(QSize(self.l_preview.width(), int(self.l_preview.width() / (300/169.0))))
 
             ppixmap = self.getPreviewImage(load=load)
             if not ppixmap or ppixmap == "loading":
@@ -2387,7 +3907,8 @@ class Projects(object):
             self.l_preview.setPixmap(ppixmap)
 
         @err_catcher(name=__name__)
-        def setLoadingPreview(self):
+        def setLoadingPreview(self) -> None:
+            """Display animated loading indicator in preview label."""
             if hasattr(self, "loadingGif"):
                 return
 
@@ -2397,12 +3918,20 @@ class Projects(object):
             self.loadingGif = QMovie(path, QByteArray(), self) 
             self.loadingGif.setCacheMode(QMovie.CacheAll) 
             self.loadingGif.setSpeed(100) 
-            self.loadingGif.setScaledSize(QSize(self.l_preview.width(), self.l_preview.width() / (300/169.0)))
+            self.loadingGif.setScaledSize(QSize(self.l_preview.width(), int(self.l_preview.width() / (300/169.0))))
             self.l_preview.setMovie(self.loadingGif)
             self.loadingGif.start()
 
         @err_catcher(name=__name__)
-        def getPreviewImage(self, load=True):
+        def getPreviewImage(self, load: bool = True) -> Union[QPixmap, str, None]:
+            """Get preview image pixmap, loading from disk if needed.
+            
+            Args:
+                load: Whether to load image from disk if not cached. Defaults to True.
+                
+            Returns:
+                QPixmap, 'loading' string, or None
+            """
             if getattr(self, "validPreview", None):
                 pixmap = self.core.media.scalePixmap(self.validPreview, self.l_preview.width(), self.previewHeight, keepRatio=True, fitIntoBounds=False, crop=True)
                 return pixmap
@@ -2432,21 +3961,40 @@ class Projects(object):
             return pixmap
 
         @err_catcher(name=__name__)
-        def getIcon(self):
+        def getIcon(self) -> Optional[QPixmap]:
+            """Get project icon pixmap if available.
+            
+            Returns:
+                QPixmap icon or None
+            """
             if "icon" not in self.data:
                 return
 
-            icon = self.core.media.getColoredIcon(self.data["icon"], force=True)
+            if self.core.isStr(self.data["icon"]):
+                icon = self.core.media.getColoredIcon(self.data["icon"], force=True)
+            else:
+                icon = self.data["icon"]
+
             pixmap = icon.pixmap(30, 30)
             return pixmap
 
         @err_catcher(name=__name__)
-        def getDisplayName(self):
+        def getDisplayName(self) -> str:
+            """Get project display name from data.
+            
+            Returns:
+                Project name string
+            """
             name = self.data["name"]
             return name
 
         @err_catcher(name=__name__)
-        def applyStyle(self, styleType="deselected"):
+        def applyStyle(self, styleType: str = "deselected") -> None:
+            """Apply visual style based on selection and hover state.
+            
+            Args:
+                styleType: Style type - 'deselected', 'selected', 'hoverSelected', or 'hover'
+            """
             ssheet = """
                 QWidget#texture {
                     border: 1px solid rgb(70, 90, 120);
@@ -2493,31 +4041,57 @@ class Projects(object):
             self.setStyleSheet(ssheet)
 
         @err_catcher(name=__name__)
-        def mousePressEvent(self, event):
+        def mousePressEvent(self, event: Any) -> None:
+            """Handle mouse press by selecting widget.
+            
+            Args:
+                event: Mouse event
+            """
             self.select(event)
 
         @err_catcher(name=__name__)
-        def mouseReleaseEvent(self, event):
+        def mouseReleaseEvent(self, event: Any) -> None:
+            """Handle mouse release by emitting signalReleased.
+            
+            Args:
+                event: Mouse event
+            """
             self.signalReleased.emit(self)
 
         @err_catcher(name=__name__)
-        def enterEvent(self, event):
+        def enterEvent(self, event: Any) -> None:
+            """Handle mouse enter by applying hover style.
+            
+            Args:
+                event: Enter event
+            """
             if self.isSelected():
                 self.applyStyle("hoverSelected")
             else:
                 self.applyStyle("hover")
 
         @err_catcher(name=__name__)
-        def leaveEvent(self, event):
+        def leaveEvent(self, event: Any) -> None:
+            """Handle mouse leave by restoring current style.
+            
+            Args:
+                event: Leave event
+            """
             self.applyStyle(self.status)
 
         @err_catcher(name=__name__)
-        def deselect(self):
+        def deselect(self) -> None:
+            """Deselect widget and apply deselected style."""
             self.status = "deselected"
             self.applyStyle(self.status)
 
         @err_catcher(name=__name__)
-        def select(self, event=None):
+        def select(self, event: Optional[Any] = None) -> None:
+            """Select widget, emit signal, and apply selected style.
+            
+            Args:
+                event: Mouse event (optional)
+            """
             wasSelected = self.isSelected()
             self.signalSelect.emit(self, event)
             if not wasSelected:
@@ -2526,10 +4100,20 @@ class Projects(object):
                 self.setFocus()
 
         @err_catcher(name=__name__)
-        def isSelected(self):
+        def isSelected(self) -> bool:
+            """Check if widget is currently selected.
+            
+            Returns:
+                True if selected, False otherwise
+            """
             return self.status == "selected"
 
-        def mouseDoubleClickEvent(self, event):
+        def mouseDoubleClickEvent(self, event: Any) -> None:
+            """Handle double click to open project.
+            
+            Args:
+                event: Mouse event
+            """
             super(Projects.ProjectWidget, self).mouseDoubleClickEvent(event)
             if event.button() == Qt.LeftButton:
                 self.signalDoubleClicked.emit(self)
@@ -2537,10 +4121,15 @@ class Projects(object):
             event.accept()
 
         @err_catcher(name=__name__)
-        def getContextMenu(self):
-            menu = QMenu(self.parent)
+        def getContextMenu(self) -> QMenu:
+            """Create context menu with project operations.
+            
+            Returns:
+                QMenu with capture/browse/paste preview, favorite, explorer, copy path actions
+            """
+            menu = QMenu(self._parent)
 
-            selectedProjects = self.parent.getSelectedItems()
+            selectedProjects = self._parent.getSelectedItems()
 
             copAct = QAction("Capture project image", self)
             copAct.triggered.connect(self.captureProjectPreview)
@@ -2561,47 +4150,90 @@ class Projects(object):
                 clipAct.setEnabled(False)
 
             if "source" in self.data and self.data["source"] == "recent" and self.allowRemove:
-                expAct = QAction("Delete from recent", self.parent)
+                expAct = QAction("Delete from recent", self._parent)
                 expAct.triggered.connect(self.deleteRecent)
                 menu.addAction(expAct)
 
-            expAct = QAction("Open in Explorer", self.parent)
+            favAct = QAction("Favorite", self._parent)
+            favAct.setCheckable(True)
+            favAct.setChecked(self.data.get("favorite", False))
+            favAct.toggled.connect(self.onFavoriteToggled)
+            menu.addAction(favAct)
+
+            expAct = QAction("Open in Explorer", self._parent)
             expAct.triggered.connect(self.onOpenExplorerClicked)
             menu.addAction(expAct)
 
-            copAct = QAction("Copy path", self.parent)
+            copAct = QAction("Copy path", self._parent)
             copAct.triggered.connect(self.onCopyPathClicked)
             menu.addAction(copAct)
+
+            self.core.callback(
+                name="projectWidgetGetContextMenu",
+                args=[self, menu],
+            )
             return menu
 
         @err_catcher(name=__name__)
-        def onOpenExplorerClicked(self):
-            items = self.parent.getSelectedItems()
+        def onFavoriteToggled(self, state: bool) -> None:
+            """Handle favorite toggle for selected project(s).
+            
+            Args:
+                state: New favorite state
+            """
+            items = self._parent.getSelectedItems()
+            for item in items:
+                item.data["favorite"] = state
+                item.core.projects.setFaroriteProject(item.data["configPath"], state)
+                item.refreshUi()
+
+            self._parent.dirty = True
+
+        @err_catcher(name=__name__)
+        def onOpenExplorerClicked(self) -> None:
+            """Open Explorer/Finder at project config path for selected projects."""
+            items = self._parent.getSelectedItems()
             for item in items:
                 self.core.openFolder(item.data["configPath"])
 
         @err_catcher(name=__name__)
-        def onCopyPathClicked(self):
-            items = self.parent.getSelectedItems()
+        def onCopyPathClicked(self) -> None:
+            """Copy project config paths of selected projects to clipboard.
+            
+            Multiple paths separated by OS path separator.
+            """
+            items = self._parent.getSelectedItems()
             text = os.pathsep.join(item.data["configPath"] for item in items)
             self.core.copyToClipboard(text)
 
         @err_catcher(name=__name__)
-        def rightClicked(self, pos):
+        def rightClicked(self, pos: Any) -> None:
+            """Show context menu at cursor position.
+            
+            Args:
+                pos: Click position
+            """
             if not self.data.get("configPath"):
                 return
 
             menu = self.getContextMenu()
-            if hasattr(self.parent, "allowClose"):
-                self.parent.allowClose = False
+            if not menu or menu.isEmpty():
+                return
+
+            if hasattr(self._parent, "allowClose"):
+                self._parent.allowClose = False
 
             menu.exec_(QCursor.pos())
 
-            if hasattr(self.parent, "allowClose"):
-                self.parent.allowClose = True
+            if hasattr(self._parent, "allowClose"):
+                self._parent.allowClose = True
 
         @err_catcher(name=__name__)
-        def browseProjectPreview(self):
+        def browseProjectPreview(self) -> None:
+            """Browse for project preview image file (jpg/png/exr) and set as preview.
+            
+            Scales image to standard preview size and saves to project.
+            """
             formats = "Image File (*.jpg *.png *.exr)"
 
             imgPath = QFileDialog.getOpenFileName(
@@ -2630,7 +4262,12 @@ class Projects(object):
             self.updatePreview()
 
         @err_catcher(name=__name__)
-        def captureProjectPreview(self):
+        def captureProjectPreview(self) -> None:
+            """Capture screen area as project preview image.
+            
+            Hides window temporarily, captures screen area, scales to standard size,
+            and saves as project preview.
+            """
             from PrismUtils import ScreenShot
             self.window().setWindowOpacity(0)
 
@@ -2646,10 +4283,14 @@ class Projects(object):
                 self.updatePreview()
 
         @err_catcher(name=__name__)
-        def pasteProjectPreviewFromClipboard(self):
+        def pasteProjectPreviewFromClipboard(self) -> None:
+            """Paste image from clipboard as project preview.
+            
+            Scales to standard preview size and saves to project.
+            """
             pmap = self.core.media.getPixmapFromClipboard()
             if not pmap:
-                self.core.popup("No image in clipboard.", parent=self.parent)
+                self.core.popup("No image in clipboard.", parent=self._parent)
                 return
 
             pmap = self.core.media.scalePixmap(pmap, width=self.core.projects.previewWidth, height=self.core.projects.previewHeight, fitIntoBounds=False)
@@ -2660,27 +4301,43 @@ class Projects(object):
             self.updatePreview()
 
         @err_catcher(name=__name__)
-        def deleteRecent(self):
-            items = self.parent.getSelectedItems()
+        def deleteRecent(self) -> None:
+            """Remove selected projects from recent projects list."""
+            items = self._parent.getSelectedItems()
             for item in items:
                 self.core.projects.setRecentPrj(item.data["configPath"], action="remove")
             
             self.signalRemoved.emit()
 
     class RoundedLabel(QLabel):
-        def paintEvent(self, event):
+        """QLabel with rounded bottom corners for project previews."""
+
+        def paintEvent(self, event: Any) -> None:
+            """Paint event with rounded corners.
+            
+            Args:
+                event: Paint event
+            """
             pm = self.pixmap()
             if pm:
                 painter = QPainter(self)
                 painter.setRenderHint(QPainter.Antialiasing, True)
+                painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
                 brush = QBrush(self.pixmap())
                 painter.setBrush(brush)
                 painter.setPen(Qt.NoPen)
                 painter.drawRoundedRect(1, 1, self.width()-2, self.height(), 10, 10)
-                painter.drawRect(1, self.height() / 2, self.width()-2, self.height())
+                painter.drawRect(1, int(self.height() / 2), self.width()-2, self.height())
             else:
                 super(Projects.RoundedLabel, self).paintEvent(event)
 
     class HelpLabel(QLabel):
-        def mouseMoveEvent(self, event):
+        """QLabel that shows tooltip on mouse move."""
+
+        def mouseMoveEvent(self, event: Any) -> None:
+            """Show tooltip on mouse move.
+            
+            Args:
+                event: Mouse event
+            """
             QToolTip.showText(QCursor.pos(), self.toolTip())

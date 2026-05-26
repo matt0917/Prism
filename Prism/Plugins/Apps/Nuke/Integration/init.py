@@ -11,13 +11,18 @@ if ((not nuke.env["studio"]) or nuke.env["indie"]) and not nuke.env.get("gui"):
         import os
         import sys
 
-        try:
-            from PySide2.QtCore import *
-            from PySide2.QtGui import *
-            from PySide2.QtWidgets import *
-        except:
-            from PySide.QtCore import *
-            from PySide.QtGui import *
+        if nuke.NUKE_VERSION_MAJOR >= 16:
+            from PySide6.QtCore import *
+            from PySide6.QtGui import *
+            from PySide6.QtWidgets import *
+        else:
+            try:
+                from PySide2.QtCore import *
+                from PySide2.QtGui import *
+                from PySide2.QtWidgets import *
+            except:
+                from PySide.QtCore import *
+                from PySide.QtGui import *
 
         prismRoot = os.getenv("PRISM_ROOT")
         if not prismRoot:
@@ -38,7 +43,9 @@ if ((not nuke.env["studio"]) or nuke.env["indie"]) and not nuke.env.get("gui"):
         if type(qapp) == QCoreApplication:
             if os.getenv("PRISM_NUKE_TERMINAL_FILES"):
                 import importlib
-                files = os.getenv("PRISM_NUKE_TERMINAL_FILES").split(os.pathsep)
+                tfiles = os.getenv("PRISM_NUKE_TERMINAL_FILES")
+                # if mixing Windows and Linux workstations, you might need to do some path remapping here
+                files = tfiles.split(os.pathsep)
                 for file in files:
                     sys.path.append(os.path.dirname(file))
                     mod = importlib.import_module(os.path.splitext(os.path.basename(file))[0])

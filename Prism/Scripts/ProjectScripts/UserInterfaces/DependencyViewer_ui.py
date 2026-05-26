@@ -1,70 +1,96 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'DependencyViewer.ui'
-#
-# Created: Wed Mar 22 14:24:54 2023
-#      by: qtpy-uic 2.0.5
-#
-# WARNING! All changes made in this file will be lost!
+################################################################################
+## Form generated from reading UI file 'DependencyViewer.ui'
+##
+## Created by: Qt User Interface Compiler version 6.4.2
+##
+## WARNING! All changes made in this file will be lost when recompiling UI file!
+################################################################################
 
-from qtpy import QtCore, QtGui, QtWidgets
+from qtpy.QtCore import *  # type: ignore
+from qtpy.QtGui import *  # type: ignore
+from qtpy.QtWidgets import *  # type: ignore
 
 class Ui_dlg_DependencyViewer(object):
     def setupUi(self, dlg_DependencyViewer):
-        dlg_DependencyViewer.setObjectName("dlg_DependencyViewer")
+        if not dlg_DependencyViewer.objectName():
+            dlg_DependencyViewer.setObjectName(u"dlg_DependencyViewer")
         dlg_DependencyViewer.resize(1555, 412)
-        self.verticalLayout = QtWidgets.QVBoxLayout(dlg_DependencyViewer)
-        self.verticalLayout.setObjectName("verticalLayout")
-        self.widget_2 = QtWidgets.QWidget(dlg_DependencyViewer)
-        self.widget_2.setObjectName("widget_2")
-        self.horizontalLayout_2 = QtWidgets.QHBoxLayout(self.widget_2)
+        self.verticalLayout = QVBoxLayout(dlg_DependencyViewer)
+        self.verticalLayout.setObjectName(u"verticalLayout")
+        self.widget_2 = QWidget(dlg_DependencyViewer)
+        self.widget_2.setObjectName(u"widget_2")
+        self.horizontalLayout_2 = QHBoxLayout(self.widget_2)
+        self.horizontalLayout_2.setObjectName(u"horizontalLayout_2")
         self.horizontalLayout_2.setContentsMargins(0, 0, 0, 0)
-        self.horizontalLayout_2.setObjectName("horizontalLayout_2")
-        self.widget_3 = QtWidgets.QWidget(self.widget_2)
-        self.widget_3.setObjectName("widget_3")
-        self.verticalLayout_2 = QtWidgets.QVBoxLayout(self.widget_3)
+        self.widget_3 = QWidget(self.widget_2)
+        self.widget_3.setObjectName(u"widget_3")
+        self.verticalLayout_2 = QVBoxLayout(self.widget_3)
+        self.verticalLayout_2.setObjectName(u"verticalLayout_2")
         self.verticalLayout_2.setContentsMargins(0, 0, 0, 0)
-        self.verticalLayout_2.setObjectName("verticalLayout_2")
-        self.label = QtWidgets.QLabel(self.widget_3)
-        self.label.setObjectName("label")
+        self.label = QLabel(self.widget_3)
+        self.label.setObjectName(u"label")
+
         self.verticalLayout_2.addWidget(self.label)
+
+
         self.horizontalLayout_2.addWidget(self.widget_3)
-        spacerItem = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_2.addItem(spacerItem)
-        self.widget = QtWidgets.QWidget(self.widget_2)
-        self.widget.setObjectName("widget")
-        self.horizontalLayout = QtWidgets.QHBoxLayout(self.widget)
+
+        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.horizontalLayout_2.addItem(self.horizontalSpacer)
+
+        self.widget = QWidget(self.widget_2)
+        self.widget.setObjectName(u"widget")
+        self.horizontalLayout = QHBoxLayout(self.widget)
+        self.horizontalLayout.setObjectName(u"horizontalLayout")
         self.horizontalLayout.setContentsMargins(0, 0, 0, 0)
-        self.horizontalLayout.setObjectName("horizontalLayout")
-        self.label_2 = QtWidgets.QLabel(self.widget)
-        self.label_2.setObjectName("label_2")
+        self.label_2 = QLabel(self.widget)
+        self.label_2.setObjectName(u"label_2")
+
         self.horizontalLayout.addWidget(self.label_2)
-        self.e_search = QtWidgets.QLineEdit(self.widget)
-        self.e_search.setObjectName("e_search")
+
+        self.e_search = QLineEdit(self.widget)
+        self.e_search.setObjectName(u"e_search")
+
         self.horizontalLayout.addWidget(self.e_search)
+
+
         self.horizontalLayout_2.addWidget(self.widget)
+
+
         self.verticalLayout.addWidget(self.widget_2)
-        self.l_root = QtWidgets.QLabel(dlg_DependencyViewer)
-        font = QtGui.QFont()
-        font.setWeight(75)
+
+        self.l_root = QLabel(dlg_DependencyViewer)
+        self.l_root.setObjectName(u"l_root")
+        font = QFont()
         font.setBold(True)
         self.l_root.setFont(font)
-        self.l_root.setText("")
-        self.l_root.setObjectName("l_root")
+
         self.verticalLayout.addWidget(self.l_root)
-        self.tw_dependencies = QtWidgets.QTreeWidget(dlg_DependencyViewer)
-        self.tw_dependencies.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-        self.tw_dependencies.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
-        self.tw_dependencies.setObjectName("tw_dependencies")
-        self.tw_dependencies.headerItem().setText(0, "1")
+
+        self.tw_dependencies = QTreeWidget(dlg_DependencyViewer)
+        __qtreewidgetitem = QTreeWidgetItem()
+        __qtreewidgetitem.setText(0, u"1");
+        self.tw_dependencies.setHeaderItem(__qtreewidgetitem)
+        self.tw_dependencies.setObjectName(u"tw_dependencies")
+        self.tw_dependencies.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tw_dependencies.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.tw_dependencies.header().setVisible(True)
+
         self.verticalLayout.addWidget(self.tw_dependencies)
 
+
         self.retranslateUi(dlg_DependencyViewer)
-        QtCore.QMetaObject.connectSlotsByName(dlg_DependencyViewer)
+
+        QMetaObject.connectSlotsByName(dlg_DependencyViewer)
+    # setupUi
 
     def retranslateUi(self, dlg_DependencyViewer):
-        dlg_DependencyViewer.setWindowTitle(QtWidgets.QApplication.translate("", "Dependency Viewer", None, -1))
-        self.label.setText(QtWidgets.QApplication.translate("", "The asets in the list were used to create:", None, -1))
-        self.label_2.setText(QtWidgets.QApplication.translate("", "Search:", None, -1))
+        dlg_DependencyViewer.setWindowTitle(QCoreApplication.translate("dlg_DependencyViewer", u"Dependency Viewer", None))
+        self.label.setText(QCoreApplication.translate("dlg_DependencyViewer", u"The asets in the list were used to create:", None))
+        self.label_2.setText(QCoreApplication.translate("dlg_DependencyViewer", u"Search:", None))
+        self.l_root.setText("")
+    # retranslateUi
 

@@ -32,7 +32,11 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from typing import Any, Optional, Dict, List, Tuple
+
 import os
+import logging
+import copy
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -41,22 +45,60 @@ from qtpy.QtWidgets import *
 from PrismUtils.Decorators import err_catcher
 
 
+logger = logging.getLogger(__name__)
+
+
 class ImportFileClass(object):
+    """State Manager node for importing external files/caches.
+    
+    Provides functionality to import files (ABC, FBX, USD, etc.) from the project
+    or external sources. Supports automatic updates, object tracking, namespace
+    management, and version checking.
+    
+    Attributes:
+        className (str): Node type identifier ("ImportFile")
+        listType (str): State list type ("Import")
+        core (Any): Reference to PrismCore instance
+        state (Any): Reference to QTreeWidgetItem representing this state
+        stateManager (Any): Reference to StateManager instance
+        stateMode (str): Current import mode ("ImportFile" or "ApplyCache")
+        taskName (str): Task name from imported file
+        setName (str): Set name for tracking
+        importPath (str): Path to the imported file
+        nodes (List): List of imported scene nodes
+        nodeNames (List[str]): Names of imported nodes
+        statusColor (QColor): Color indicating import status
+    """
     className = "ImportFile"
     listType = "Import"
 
     @err_catcher(name=__name__)
     def setup(
         self,
-        state,
-        core,
-        stateManager,
-        node=None,
-        importPath=None,
-        stateData=None,
-        openProductsBrowser=True,
-        settings=None,
-    ):
+        state: Any,
+        core: Any,
+        stateManager: Any,
+        node: Optional[Any] = None,
+        importPath: Optional[str] = None,
+        stateData: Optional[Dict[str, Any]] = None,
+        openProductsBrowser: bool = True,
+        settings: Optional[Dict[str, Any]] = None,
+    ) -> Optional[bool]:
+        """Initialize the ImportFile state.
+        
+        Args:
+            state: QTreeWidgetItem representing this state
+            core: PrismCore instance
+            stateManager: StateManager instance
+            node: Optional node reference (unused)
+            importPath: Optional path to import
+            stateData: Optional saved state data to load
+            openProductsBrowser: Whether to show product browser if no path given
+            settings: Optional import settings
+            
+        Returns:
+            False if import was cancelled, None otherwise
+        """
         self.state = state
         self.stateMode = "ImportFile"
 
@@ -65,13 +107,12 @@ class ImportFileClass(object):
         self.taskName = ""
         self.setName = ""
 
-        stateNameTemplate = "{entity}_{product}_{version}"
+        stateNameTemplate = "{entity}_{product}_{version}{#}"
         self.stateNameTemplate = self.core.getConfig(
             "globals",
             "defaultImportStateName",
-            dft=stateNameTemplate,
             configPath=self.core.prismIni,
-        )
+        ) or stateNameTemplate
         self.e_name.setText(self.stateNameTemplate)
         self.l_name.setVisible(False)
         self.e_name.setVisible(False)
@@ -98,12 +139,12 @@ class ImportFileClass(object):
             and not createEmptyState
             and not self.stateManager.standalone
         ):
-            import ProductBrowser
-
-            ts = ProductBrowser.ProductBrowser(core=core, importState=self)
-            core.parentWindow(ts)
-            ts.exec_()
-            importPath = ts.productPath
+            importPaths = self.requestImportPaths()
+            if importPaths:
+                importPath = importPaths[-1]
+                if len(importPaths) > 1:
+                    for impPath in importPaths[:-1]:
+                        stateManager.importFile(impPath)
 
         if importPath:
             self.setImportPath(importPath)
@@ -120,6 +161,9 @@ class ImportFileClass(object):
 
         getattr(self.core.appPlugin, "sm_import_startup", lambda x: None)(self)
         self.connectEvents()
+        if settings:
+            stateData = copy.deepcopy(stateData or {})
+            stateData.update(settings)
 
         if stateData is not None:
             self.loadData(stateData)
@@ -128,12 +172,44 @@ class ImportFileClass(object):
         self.updateUi()
 
     @err_catcher(name=__name__)
-    def setStateMode(self, stateMode):
+    def setStateMode(self, stateMode: str) -> None:
+        """Set the import state mode.
+        
+        Args:
+            stateMode: Mode to set ("ImportFile" or "ApplyCache")
+        """
         self.stateMode = stateMode
         self.l_class.setText(stateMode)
 
     @err_catcher(name=__name__)
-    def loadData(self, data):
+    def requestImportPaths(self) -> List[str]:
+        """Request import paths from user via callback or browser.
+        
+        Returns:
+            List of import file paths
+        """
+        result = self.core.callback("requestImportPath", self)
+        for res in result:
+            if isinstance(res, dict) and res.get("importPaths") is not None:
+                return res["importPaths"]
+
+        import ProductBrowser
+        ts = ProductBrowser.ProductBrowser(core=self.core, importState=self)
+        self.core.parentWindow(ts)
+        ts.exec_()
+        importPath = [ts.productPath]
+        return importPath
+
+    @err_catcher(name=__name__)
+    def loadData(self, data: Dict[str, Any]) -> None:
+        """Load state data from saved configuration.
+        
+        Restores import settings including file path, namespace settings,
+        object tracking, and connected nodes.
+        
+        Args:
+            data: Dictionary containing saved state configuration
+        """
         if "statename" in data:
             self.e_name.setText(data["statename"])
         if "statemode" in data:
@@ -167,11 +243,18 @@ class ImportFileClass(object):
             self.setName = data["setname"]
         if "autoUpdate" in data:
             self.chb_autoUpdate.setChecked(eval(data["autoUpdate"]))
+        if "ignoreMaster" in data:
+            self.chb_ignoreMaster.setChecked(data["ignoreMaster"])
 
         self.core.callback("onStateSettingsLoaded", self, data)
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect Qt signals to their respective slot methods.
+        
+        Establishes connections for import path browsing, object selection,
+        auto-update, and namespace management.
+        """
         self.e_name.textChanged.connect(self.nameChanged)
         self.e_name.editingFinished.connect(self.stateManager.saveStatesToScene)
         self.b_browse.clicked.connect(self.browse)
@@ -179,6 +262,7 @@ class ImportFileClass(object):
         self.b_import.clicked.connect(self.importObject)
         self.b_importLatest.clicked.connect(self.importLatest)
         self.chb_autoUpdate.stateChanged.connect(self.autoUpdateChanged)
+        self.chb_ignoreMaster.stateChanged.connect(self.ignoreMasterChanged)
         self.chb_keepRefEdits.stateChanged.connect(self.stateManager.saveStatesToScene)
         self.chb_autoNameSpaces.stateChanged.connect(self.autoNameSpaceChanged)
         self.chb_abcPath.stateChanged.connect(self.stateManager.saveStatesToScene)
@@ -193,7 +277,14 @@ class ImportFileClass(object):
             )
 
     @err_catcher(name=__name__)
-    def nameChanged(self, text=None):
+    def nameChanged(self, text: Optional[str] = None) -> None:
+        """Handle changes to the state name.
+        
+        Formats name with cache data context variables.
+        
+        Args:
+            text: New name text (unused, reads from widget)
+        """
         text = self.e_name.text()
         cacheData = self.core.paths.getCachePathData(self.getImportPath())
         if cacheData.get("type") == "asset":
@@ -204,7 +295,7 @@ class ImportFileClass(object):
                 cacheData["entity"] = shotName
 
         num = 0
-
+        self.core.callback("onGenerateStateNameContext", self, cacheData)
         try:
             if "{#}" in text:
                 while True:
@@ -231,12 +322,21 @@ class ImportFileClass(object):
         self.state.setText(0, name)
 
     @err_catcher(name=__name__)
-    def getSortKey(self):
+    def getSortKey(self) -> str:
+        """Get the sorting key for this state.
+        
+        Returns:
+            Product name from cache data, used for sorting
+        """
         cacheData = self.core.paths.getCachePathData(self.getImportPath())
         return cacheData.get("product")
 
     @err_catcher(name=__name__)
-    def browse(self):
+    def browse(self) -> None:
+        """Open product browser to select import file.
+        
+        Shows product browser and imports selected file.
+        """
         import ProductBrowser
 
         ts = ProductBrowser.ProductBrowser(core=self.core, importState=self)
@@ -251,7 +351,12 @@ class ImportFileClass(object):
             self.updateUi()
 
     @err_catcher(name=__name__)
-    def openFolder(self, pos):
+    def openFolder(self, pos: QPoint) -> None:
+        """Open file explorer at import file location.
+        
+        Args:
+            pos: Position of context menu request (unused)
+        """
         path = self.getImportPath()
         if os.path.isfile(path):
             path = os.path.dirname(path)
@@ -259,7 +364,12 @@ class ImportFileClass(object):
         self.core.openFolder(path)
 
     @err_catcher(name=__name__)
-    def getImportPath(self):
+    def getImportPath(self) -> str:
+        """Get the current import file path.
+        
+        Returns:
+            Normalized import path string
+        """
         path = getattr(self, "importPath", "")
         if path:
             path = os.path.normpath(path)
@@ -267,7 +377,12 @@ class ImportFileClass(object):
         return path
 
     @err_catcher(name=__name__)
-    def setImportPath(self, path):
+    def setImportPath(self, path: str) -> None:
+        """Set the import file path.
+        
+        Args:
+            path: File path to set as import source
+        """
         self.importPath = path
         self.w_currentVersion.setToolTip(path)
         self.stateManager.saveImports()
@@ -275,13 +390,26 @@ class ImportFileClass(object):
         self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def isShotCam(self, path=None):
+    def isShotCam(self, path: Optional[str] = None) -> bool:
+        """Check if import is a shot camera.
+        
+        Args:
+            path: Optional path to check (uses current import path if None)
+            
+        Returns:
+            True if path is a shot camera ABC file
+        """
         if not path:
             path = self.getImportPath()
         return path.endswith(".abc") and "/_ShotCam/" in path
 
     @err_catcher(name=__name__)
-    def autoUpdateChanged(self, checked):
+    def autoUpdateChanged(self, checked: bool) -> None:
+        """Handle auto-update checkbox state change.
+        
+        Args:
+            checked: Whether auto-update is enabled
+        """
         self.w_latestVersion.setVisible(not checked)
         self.w_importLatest.setVisible(not checked)
 
@@ -294,18 +422,41 @@ class ImportFileClass(object):
         self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def autoNameSpaceChanged(self, checked):
+    def ignoreMasterChanged(self, checked: bool) -> None:
+        """Handle ignore master checkbox state change.
+        
+        Args:
+            checked: Whether ignore master is enabled
+        """
+        self.updateUi()
+
+    @err_catcher(name=__name__)
+    def autoNameSpaceChanged(self, checked: bool) -> None:
+        """Handle auto-namespace checkbox state change.
+        
+        Args:
+            checked: Whether auto-namespace cleanup is enabled
+        """
         self.b_nameSpaces.setEnabled(not checked)
-        if not self.stateManager.standalone:
+        if not self.stateManager.standalone and checked:
             self.core.appPlugin.sm_import_removeNameSpaces(self)
             self.stateManager.saveStatesToScene()
 
     @err_catcher(name=__name__)
-    def runSanityChecks(self, cachePath):
+    def runSanityChecks(self, cachePath: str, settings: Optional[Dict[str, Any]] = None) -> bool:
+        """Run validation checks before import.
+        
+        Args:
+            cachePath: Path to cache file to validate
+            settings: Optional import settings
+            
+        Returns:
+            True if checks passed, False otherwise
+        """
         result = True
 
         if getattr(self.core.appPlugin, "hasFrameRange", True):
-            result = self.checkFrameRange(cachePath)
+            result = self.checkFrameRange(cachePath, settings=settings)
 
         if not result:
             return False
@@ -313,7 +464,16 @@ class ImportFileClass(object):
         return True
 
     @err_catcher(name=__name__)
-    def checkFrameRange(self, cachePath):
+    def checkFrameRange(self, cachePath: str, settings: Optional[Dict[str, Any]] = None) -> bool:
+        """Check if import FPS matches scene FPS.
+        
+        Args:
+            cachePath: Path to cache file to check
+            settings: Optional settings including 'quiet' mode
+            
+        Returns:
+            True to proceed, False to cancel
+        """
         versionInfoPath = self.core.getVersioninfoPath(
             self.core.products.getVersionInfoPathFromProductFilepath(cachePath)
         )
@@ -323,17 +483,41 @@ class ImportFileClass(object):
         if not impFPS or not curFPS or impFPS == curFPS:
             return True
 
-        fString = (
-            "The FPS of the import doesn't match the FPS of the current scene:\n\nCurrent scene FPS:\t%s\nImport FPS:\t\t%s"
-            % (curFPS, impFPS)
+        vInfo = [["FPS of current scene:", str(curFPS)], ["Import FPS:", str(impFPS)]]
+        lay_info = QGridLayout()
+
+        msgString = "The FPS of the import doesn't match the FPS of the current scene:"
+
+        for idx, val in enumerate(vInfo):
+            l_infoName = QLabel(val[0] + ":\t")
+            l_info = QLabel(val[1])
+            lay_info.addWidget(l_infoName, idx, 0)
+            lay_info.addWidget(l_info, idx, 1)
+
+        lay_info.addItem(
+            QSpacerItem(10, 10, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        )
+        lay_info.addItem(
+            QSpacerItem(10, 10, QSizePolicy.Expanding, QSizePolicy.Minimum), 0, 2
         )
 
-        result = self.core.popupQuestion(
-            fString,
-            title="FPS mismatch",
-            buttons=["Continue", "Cancel"],
-            icon=QMessageBox.Warning,
-        )
+        lay_info.setContentsMargins(0, 10, 0, 10)
+        w_info = QWidget()
+        w_info.setLayout(lay_info)
+
+        if not settings or not settings.get("quiet", False):
+            result = self.core.popupQuestion(
+                msgString,
+                title="FPS mismatch",
+                buttons=["Continue", "Cancel"],
+                icon=QMessageBox.Warning,
+                widget=w_info,
+                escapeButton="Continue",
+                default="Continue",
+            )
+        else:
+            logger.warning(fString)
+            result = "Continue"
 
         if result == "Cancel":
             return False
@@ -341,7 +525,17 @@ class ImportFileClass(object):
         return True
 
     @err_catcher(name=__name__)
-    def importObject(self, update=False, path=None, settings=None):
+    def importObject(self, update: bool = False, path: Optional[str] = None, settings: Optional[Dict[str, Any]] = None) -> Optional[Any]:
+        """Import file into the scene.
+        
+        Args:
+            update: Whether this is an update of existing import
+            path: Optional path to import (uses current if None)
+            settings: Optional import settings
+            
+        Returns:
+            Import result from app plugin, or None on failure
+        """
         result = True
         if self.stateManager.standalone:
             return result
@@ -373,7 +567,7 @@ class ImportFileClass(object):
             self.core.popup("Import into %s is not supported." % self.core.appPlugin.pluginName)
             return
 
-        result = self.runSanityChecks(impFileName)
+        result = self.runSanityChecks(impFileName, settings=settings)
         if not result:
             return
 
@@ -441,12 +635,19 @@ class ImportFileClass(object):
         return result
 
     @err_catcher(name=__name__)
-    def importLatest(self, refreshUi=True, selectedStates=True):
+    def importLatest(self, refreshUi: bool = True, selectedStates: bool = True) -> None:
+        """Import the latest version of the file.
+        
+        Args:
+            refreshUi: Whether to refresh UI before importing
+            selectedStates: Whether to apply to selected states
+        """
         if refreshUi:
             self.updateUi()
 
+        includeMaster = not self.chb_ignoreMaster.isChecked()
         latestVersion = self.core.products.getLatestVersionFromPath(
-            self.getImportPath()
+            self.getImportPath(), includeMaster=includeMaster
         )
         filepath = self.core.products.getPreferredFileFromVersion(latestVersion)
         if not filepath:
@@ -470,11 +671,17 @@ class ImportFileClass(object):
         self.stateManager.applyChangesToSelection = prevState
 
     @err_catcher(name=__name__)
-    def checkLatestVersion(self):
+    def checkLatestVersion(self) -> Tuple[Dict[str, str], Dict[str, str]]:
+        """Check current vs latest available version.
+        
+        Returns:
+            Tuple of (current_version_data, latest_version_data) dictionaries
+        """
         path = self.getImportPath()
         curVersionName = self.core.products.getVersionFromFilepath(path) or ""
         curVersionData = {"version": curVersionName, "path": path}
-        latestVersion = self.core.products.getLatestVersionFromPath(path)
+        includeMaster = not self.chb_ignoreMaster.isChecked()
+        latestVersion = self.core.products.getLatestVersionFromPath(path, includeMaster=includeMaster)
         if latestVersion:
             latestVersionData = {"version": latestVersion["version"], "path": latestVersion["path"]}
         else:
@@ -483,7 +690,12 @@ class ImportFileClass(object):
         return curVersionData, latestVersionData
 
     @err_catcher(name=__name__)
-    def setStateColor(self, status):
+    def setStateColor(self, status: str) -> None:
+        """Set visual status color for the state.
+        
+        Args:
+            status: Status string ("ok", "warning", "error")
+        """
         if status == "ok":
             statusColor = QColor(0, 130, 0)
         elif status == "warning":
@@ -497,7 +709,11 @@ class ImportFileClass(object):
         self.stateManager.tw_import.repaint()
 
     @err_catcher(name=__name__)
-    def updateUi(self):
+    def updateUi(self) -> None:
+        """Update the user interface with current state.
+        
+        Refreshes version info, object list, and status indicators.
+        """
         versions = self.checkLatestVersion()
         if versions:
             curVersion, latestVersion = versions
@@ -580,7 +796,12 @@ class ImportFileClass(object):
         getattr(self.core.appPlugin, "sm_import_updateUi", lambda x: None)(self)
 
     @err_catcher(name=__name__)
-    def updateTrackObjects(self, state):
+    def updateTrackObjects(self, state: bool) -> None:
+        """Handle object tracking checkbox state change.
+        
+        Args:
+            state: Whether object tracking is enabled
+        """
         if not state:
             if len(self.nodes) > 0:
                 msg = QMessageBox(
@@ -608,9 +829,17 @@ class ImportFileClass(object):
     @err_catcher(name=__name__)
     def preDelete(
         self,
-        item=None,
-        baseText="Do you also want to delete the connected objects?\n\n",
-    ):
+        item: Optional[Any] = None,
+        baseText: str = "Do you also want to delete the connected objects?\n\n",
+    ) -> None:
+        """Cleanup before state deletion.
+        
+        Optionally deletes imported objects from scene.
+        
+        Args:
+            item: State item being deleted
+            baseText: Base message text for confirmation dialog
+        """
         if len(self.nodes) > 0 and self.stateMode != "ApplyCache":
             message = baseText
             validNodes = [
@@ -625,21 +854,23 @@ class ImportFileClass(object):
                         message += self.core.appPlugin.getNodeName(self, val) + "\n"
 
                 if not self.core.uiAvailable:
-                    action = 0
+                    action = "Yes"
                     print("delete objects:\n\n%s" % message)
                 else:
-                    msg = QMessageBox(
-                        QMessageBox.Question, "Delete state", message, QMessageBox.No
-                    )
-                    msg.addButton("Yes", QMessageBox.YesRole)
-                    msg.setParent(self.core.messageParent, Qt.Window)
-                    action = msg.exec_()
+                    action = self.core.popupQuestion(message, title="Delete State", parent=self.stateManager)
 
-                if action == 0:
+                if action == "Yes":
                     self.core.appPlugin.deleteNodes(self, validNodes)
 
+        getattr(self.core.appPlugin, "sm_import_preDelete", lambda x: None)(self)
+
     @err_catcher(name=__name__)
-    def getStateProps(self):
+    def getStateProps(self) -> Dict[str, Any]:
+        """Get all state properties for saving.
+        
+        Returns:
+            Dictionary containing all state settings and values
+        """
         connectedNodes = []
         if self.chb_trackObjects.isChecked():
             for i in range(self.lw_objects.count()):
@@ -650,6 +881,7 @@ class ImportFileClass(object):
             "statemode": self.stateMode,
             "filepath": self.getImportPath(),
             "autoUpdate": str(self.chb_autoUpdate.isChecked()),
+            "ignoreMaster": self.chb_ignoreMaster.isChecked(),
             "keepedits": str(self.chb_keepRefEdits.isChecked()),
             "autonamespaces": str(self.chb_autoNameSpaces.isChecked()),
             "updateabc": str(self.chb_abcPath.isChecked()),

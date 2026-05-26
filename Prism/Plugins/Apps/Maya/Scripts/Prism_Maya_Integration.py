@@ -40,6 +40,8 @@ from qtpy.QtCore import *
 from qtpy.QtGui import *
 from qtpy.QtWidgets import *
 
+from typing import Any, Dict, List, Optional, Tuple
+
 if platform.system() == "Windows":
     if sys.version[0] == "3":
         import winreg as _winreg
@@ -50,19 +52,27 @@ from PrismUtils.Decorators import err_catcher_plugin as err_catcher
 
 
 class Prism_Maya_Integration(object):
-    def __init__(self, core, plugin):
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize Maya integration manager.
+        
+        Sets up platform-specific example paths for Maya preferences folder.
+        
+        Args:
+            core: Prism core instance
+            plugin: Plugin instance
+        """
         self.core = core
         self.plugin = plugin
 
         if platform.system() == "Windows":
-            self.examplePath = self.core.getWindowsDocumentsPath() + "\\maya\\2024"
+            self.examplePath = self.core.getWindowsDocumentsPath() + "\\maya\\2027"
         elif platform.system() == "Linux":
             userName = (
                 os.environ["SUDO_USER"]
                 if "SUDO_USER" in os.environ
                 else os.environ["USER"]
             )
-            self.examplePath = os.path.join("/home", userName, "maya", "2024")
+            self.examplePath = os.path.join("/home", userName, "maya", "2027")
         elif platform.system() == "Darwin":
             userName = (
                 os.environ["SUDO_USER"]
@@ -70,11 +80,16 @@ class Prism_Maya_Integration(object):
                 else os.environ["USER"]
             )
             self.examplePath = (
-                "/Users/%s/Library/Preferences/Autodesk/maya/2024" % userName
+                "/Users/%s/Library/Preferences/Autodesk/maya/2027" % userName
             )
 
     @err_catcher(name=__name__)
-    def getExecutable(self):
+    def getExecutable(self) -> str:
+        """Get path to Maya executable.
+        
+        Returns:
+            Path to maya.exe on Windows, empty string otherwise
+        """
         execPath = ""
         if platform.system() == "Windows":
             defaultpath = os.path.join(self.getMayaPath(), "bin", "maya.exe")
@@ -84,7 +99,12 @@ class Prism_Maya_Integration(object):
         return execPath
 
     @err_catcher(name=__name__)
-    def getMayaPath(self):
+    def getMayaPath(self) -> str:
+        """Get Maya installation directory from Windows registry.
+        
+        Returns:
+           Installation directory path, or empty string if not found
+        """
         try:
             key = _winreg.OpenKey(
                 _winreg.HKEY_LOCAL_MACHINE,
@@ -123,101 +143,66 @@ class Prism_Maya_Integration(object):
         except:
             return ""
 
-    def addIntegration(self, installPath):
+    def addIntegration(self, installPath: str) -> bool:
+        """Add Prism integration to Maya installation.
+        
+        Copies Prism module file and shelf to Maya preferences folder.
+        
+        Args:
+            installPath: Path to Maya preferences folder
+            
+        Returns:
+            True if integration successful, False otherwise
+        """
         try:
-            if not os.path.exists(
-                os.path.join(installPath, "scripts")
-            ) or not os.path.exists(os.path.join(installPath, "prefs", "shelves")):
-                QMessageBox.warning(
-                    self.core.messageParent,
-                    "Prism Installation",
-                    "Invalid Maya path:\n\n%s\n\nThe path has to be the Maya preferences folder, which usually looks like this: (with your username and Maya version):\n\n%s" 
-                    % (installPath, self.examplePath),
-                    QMessageBox.Ok,
-                )
-                return False
+            scriptPath = os.path.join(installPath, "scripts")
+            shelfPath = os.path.join(installPath, "prefs", "shelves")
+            if not os.path.exists(scriptPath) or not os.path.exists(shelfPath):
+                msg = "Maya path appears invalid:\n\n%s\n\nThe expected paths don't exist:\n%s\n%s\n\nThe Maya path has to be the Maya preferences folder, which usually looks like this: (with your username and Maya version):\n\n%s" % (installPath, scriptPath, shelfPath, self.examplePath)
+                result = self.core.popupQuestion(msg, buttons=["Continue", "Cancel"], icon=QMessageBox.Warning, default="Continue")
+                if result != "Continue":
+                    return False
 
             integrationBase = os.path.join(
                 os.path.dirname(os.path.dirname(__file__)), "Integration"
             )
+            integrationBase = os.path.realpath(integrationBase)
             addedFiles = []
 
             integrationFiles = {}
-            integrationFiles["userSetup.py"] = os.path.join(
-                integrationBase, "userSetup.py"
-            )
-            integrationFiles["PrismInit.py"] = os.path.join(
-                integrationBase, "PrismInit.py"
+            integrationFiles["Prism.mod"] = os.path.join(
+                integrationBase, "Prism.mod"
             )
             integrationFiles["shelf_Prism.mel"] = os.path.join(
-                integrationBase, "shelf_Prism.mel"
+                integrationBase, "shelves", "shelf_Prism.mel"
             )
 
             self.core.callback(
                 name="preIntegrationAdded", args=[self, integrationFiles]
             )
 
-            origSetupFile = integrationFiles["userSetup.py"]
-            with open(origSetupFile, "r") as mFile:
-                setupString = mFile.read()
+            origModFile = integrationFiles["Prism.mod"]
+            modpath = os.path.join(installPath, "modules", "Prism.mod")
+            if os.path.exists(modpath):
+                os.remove(modpath)
 
-            prismSetup = os.path.join(installPath, "scripts", "userSetup.py")
-            self.core.integration.removeIntegrationData(filepath=prismSetup)
+            if not os.path.exists(os.path.dirname(modpath)):
+                os.makedirs(os.path.dirname(modpath))
 
-            with open(prismSetup, "a") as setupfile:
-                setupfile.write(setupString)
+            shutil.copy2(origModFile, modpath)
+            addedFiles.append(modpath)
 
-            addedFiles.append(prismSetup)
-
-            initpath = os.path.join(installPath, "scripts", "PrismInit.py")
-
-            if os.path.exists(initpath):
-                os.remove(initpath)
-
-            if os.path.exists(initpath + "c"):
-                os.remove(initpath + "c")
-
-            origInitFile = integrationFiles["PrismInit.py"]
-            shutil.copy2(origInitFile, initpath)
-            addedFiles.append(initpath)
-
-            with open(initpath, "r") as init:
+            with open(modpath, "r") as init:
                 initStr = init.read()
 
-            with open(initpath, "w") as init:
+            with open(modpath, "w") as init:
                 initStr = initStr.replace(
-                    "PRISMROOT", '"%s"' % self.core.prismRoot.replace("\\", "/")
+                    "PRISMROOT", self.core.prismRoot.replace("\\", "/")
+                )
+                initStr = initStr.replace(
+                    "PLUGINROOT", os.path.dirname(self.pluginPath).replace("\\", "/")
                 )
                 init.write(initStr)
-
-            shelfpath = os.path.join(installPath, "prefs", "shelves", "shelf_Prism.mel")
-
-            if os.path.exists(shelfpath):
-                os.remove(shelfpath)
-
-            origShelfFile = integrationFiles["shelf_Prism.mel"]
-            shutil.copy2(origShelfFile, shelfpath)
-            addedFiles.append(shelfpath)
-
-            icons = [
-                "prismSave.png",
-                "prismSaveComment.png",
-                "prismBrowser.png",
-                "prismStates.png",
-                "prismSettings.png",
-            ]
-
-            for i in icons:
-                iconPath = os.path.join(
-                    self.core.prismRoot, "Scripts", "UserInterfacesPrism", i
-                )
-                tPath = os.path.join(installPath, "prefs", "icons", i)
-
-                if os.path.exists(tPath):
-                    os.remove(tPath)
-
-                shutil.copy2(iconPath, tPath)
-                addedFiles.append(tPath)
 
             if platform.system() in ["Linux", "Darwin"]:
                 for i in addedFiles:
@@ -237,13 +222,24 @@ class Prism_Maya_Integration(object):
             QMessageBox.warning(self.core.messageParent, "Prism Integration", msgStr)
             return False
 
-    def removeIntegration(self, installPath):
+    def removeIntegration(self, installPath: str) -> bool:
+        """Remove Prism integration from Maya installation.
+        
+        Deletes Prism module file, scripts, and shelf from Maya folder.
+        
+        Args:
+            installPath: Path to Maya preferences folder
+            
+        Returns:
+            True if removal successful, False otherwise
+        """
         try:
+            modPath = os.path.join(installPath, "modules", "Prism.mod")
             initPy = os.path.join(installPath, "scripts", "PrismInit.py")
             initPyc = os.path.join(installPath, "scripts", "PrismInit.pyc")
             shelfpath = os.path.join(installPath, "prefs", "shelves", "shelf_Prism.mel")
 
-            for i in [initPy, initPyc, shelfpath]:
+            for i in [modPath, initPy, initPyc, shelfpath]:
                 if os.path.exists(i):
                     os.remove(i)
 
@@ -264,17 +260,27 @@ class Prism_Maya_Integration(object):
             QMessageBox.warning(self.core.messageParent, "Prism Integration", msgStr)
             return False
 
-    def updateInstallerUI(self, userFolders, pItem):
+    def updateInstallerUI(self, userFolders: Dict[str, str], pItem: Any) -> Optional[bool]:
+        """Update installer UI with detected Maya versions.
+        
+        Scans for Maya installations and adds them to installer tree.
+        
+        Args:
+            userFolders: Dict with paths like {"Documents": path}
+            pItem: Parent QTreeWidgetItem to add Maya items to
+            
+        Returns:
+            False on error, None on success
+        """
         try:
             if platform.system() == "Windows":
                 mayaPath = [
-                    os.path.join(userFolders["Documents"], "maya", "2016"),
-                    os.path.join(userFolders["Documents"], "maya", "2017"),
-                    os.path.join(userFolders["Documents"], "maya", "2018"),
-                    os.path.join(userFolders["Documents"], "maya", "2019"),
-                    os.path.join(userFolders["Documents"], "maya", "2020"),
                     os.path.join(userFolders["Documents"], "maya", "2022"),
                     os.path.join(userFolders["Documents"], "maya", "2023"),
+                    os.path.join(userFolders["Documents"], "maya", "2024"),
+                    os.path.join(userFolders["Documents"], "maya", "2025"),
+                    os.path.join(userFolders["Documents"], "maya", "2026"),
+                    os.path.join(userFolders["Documents"], "maya", "2027"),
                 ]
             elif platform.system() == "Linux":
                 userName = (
@@ -283,13 +289,12 @@ class Prism_Maya_Integration(object):
                     else os.environ["USER"]
                 )
                 mayaPath = [
-                    os.path.join("/home", userName, "maya", "2016"),
-                    os.path.join("/home", userName, "maya", "2017"),
-                    os.path.join("/home", userName, "maya", "2018"),
-                    os.path.join("/home", userName, "maya", "2019"),
-                    os.path.join("/home", userName, "maya", "2020"),
                     os.path.join("/home", userName, "maya", "2022"),
                     os.path.join("/home", userName, "maya", "2023"),
+                    os.path.join("/home", userName, "maya", "2024"),
+                    os.path.join("/home", userName, "maya", "2025"),
+                    os.path.join("/home", userName, "maya", "2026"),
+                    os.path.join("/home", userName, "maya", "2027"),
                 ]
             elif platform.system() == "Darwin":
                 userName = (
@@ -298,13 +303,12 @@ class Prism_Maya_Integration(object):
                     else os.environ["USER"]
                 )
                 mayaPath = [
-                    "/Users/%s/Library/Preferences/Autodesk/maya/2016" % userName,
-                    "/Users/%s/Library/Preferences/Autodesk/maya/2017" % userName,
-                    "/Users/%s/Library/Preferences/Autodesk/maya/2018" % userName,
-                    "/Users/%s/Library/Preferences/Autodesk/maya/2019" % userName,
-                    "/Users/%s/Library/Preferences/Autodesk/maya/2020" % userName,
                     "/Users/%s/Library/Preferences/Autodesk/maya/2022" % userName,
                     "/Users/%s/Library/Preferences/Autodesk/maya/2023" % userName,
+                    "/Users/%s/Library/Preferences/Autodesk/maya/2024" % userName,
+                    "/Users/%s/Library/Preferences/Autodesk/maya/2025" % userName,
+                    "/Users/%s/Library/Preferences/Autodesk/maya/2026" % userName,
+                    "/Users/%s/Library/Preferences/Autodesk/maya/2027" % userName,
                 ]
 
             mayaItem = QTreeWidgetItem(["Maya"])
@@ -344,7 +348,16 @@ class Prism_Maya_Integration(object):
             )
             return False
 
-    def installerExecute(self, mayaItem, result):
+    def installerExecute(self, mayaItem: Any, result: Dict[str, Any]) -> Any:
+        """Execute integration installation for checked Maya versions.
+        
+        Args:
+            mayaItem: QTreeWidgetItem containing Maya versions to install
+            result: Dict to store installation results
+            
+        Returns:
+            List of successfully installed paths, or False on error
+        """
         try:
             mayaPaths = []
             installLocs = []

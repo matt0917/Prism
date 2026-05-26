@@ -33,11 +33,21 @@
 
 
 import os
+from typing import Any, Dict, List
 
 
 class Prism_Maya_Variables(object):
-    def __init__(self, core, plugin):
-        self.version = "v2.0.0"
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize Maya plugin variables and configuration.
+        
+        Sets up plugin metadata, supported formats, render passes for various renderers,
+        playblast settings, and platform information.
+        
+        Args:
+            core: Prism core instance
+            plugin: Plugin instance
+        """
+        self.version = "v2.1.2"
         self.pluginName = "Maya"
         self.pluginType = "App"
         self.appShortName = "Maya"
@@ -45,7 +55,8 @@ class Prism_Maya_Variables(object):
         self.hasQtParent = True
         self.sceneFormats = [".ma", ".mb"]
         self.appSpecificFormats = self.sceneFormats
-        self.outputFormats = [".abc", ".obj", ".fbx", ".ma", ".mb", "ShotCam"]
+        self.outputFormats = [".abc", ".obj", ".fbx", ".ma", ".mb", ".atom", "ShotCam"]
+        self.canBuildScene = True
         self.appColor = [44, 121, 207]
         self.renderPasses = {
             "maya_vray": {

@@ -117,7 +117,7 @@ class Prism_Standalone_Functions(object):
         return
 
     @err_catcher(name=__name__)
-    def createWinStartMenu(self, origin):
+    def createWinStartMenu(self, origin, allUsers=False):
         if os.environ.get("prism_skip_root_install"):
             logger.warning(
                 "skipped creating Prism startmenu because of missing permissions."
@@ -125,15 +125,24 @@ class Prism_Standalone_Functions(object):
             return
 
         if platform.system() == "Windows":
-            startMenuPath = os.path.join(
-                os.environ["AppData"], "Microsoft", "Windows", "Start Menu", "Programs"
-            )
+            if allUsers:
+                startMenuPath = os.path.join(
+                    os.environ["PROGRAMDATA"], "Microsoft", "Windows", "Start Menu", "Programs"
+                )
+            else:
+                startMenuPath = os.path.join(
+                    os.environ["AppData"], "Microsoft", "Windows", "Start Menu", "Programs"
+                )
+
             trayStartup = os.path.join(startMenuPath, "Startup", "Prism.lnk")
             trayStartupOld = os.path.join(startMenuPath, "Startup", "Prism Tray.lnk")
             trayStartupOld2 = os.path.join(startMenuPath, "Startup", "PrismTray.lnk")
             prismStartMenu = os.path.join(startMenuPath, "Prism")
             trayStartMenu = os.path.join(prismStartMenu, "Prism.lnk")
-            desktopIcon = os.path.join(os.environ["USERPROFILE"], "Desktop", "Prism.lnk")
+            if allUsers:
+                desktopIcon = os.path.join(os.environ["PUBLIC"], "Desktop", "Prism.lnk")
+            else:
+                desktopIcon = os.path.join(os.environ["USERPROFILE"], "Desktop", "Prism.lnk")
 
             if os.path.exists(prismStartMenu):
                 try:
@@ -185,10 +194,16 @@ class Prism_Standalone_Functions(object):
         return True
 
     @err_catcher(name=__name__)
-    def addWindowsStartMenuEntry(self, name, executable, script, args=None):
-        startMenuPath = os.path.join(
-            os.environ["AppData"], "Microsoft", "Windows", "Start Menu", "Programs"
-        )
+    def addWindowsStartMenuEntry(self, name, executable, script, args=None, allUsers=False):
+        if allUsers:
+            startMenuPath = os.path.join(
+                os.environ["PROGRAMDATA"], "Microsoft", "Windows", "Start Menu", "Programs"
+            )
+        else:
+            startMenuPath = os.path.join(
+                os.environ["AppData"], "Microsoft", "Windows", "Start Menu", "Programs"
+            )
+
         scPath = os.path.join(startMenuPath, "Prism", name + ".lnk")
 
         if not os.path.isabs(executable):
@@ -200,7 +215,6 @@ class Prism_Standalone_Functions(object):
             self.core.popup("Executable doesn't exist: %s" % executable)
             return
 
-        script
         if not os.path.isabs(script):
             script = os.path.join(
                 self.core.prismRoot.replace("/", "\\"), "Scripts", script

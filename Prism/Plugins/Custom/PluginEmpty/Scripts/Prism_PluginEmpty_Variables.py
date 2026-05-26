@@ -37,8 +37,8 @@ import os
 
 class Prism_PluginEmpty_Variables(object):
     def __init__(self, core, plugin):
-        self.version = "v2.0.0.beta13"
+        self.version = "v2.0.0"
         self.pluginName = "PluginEmpty"
         self.pluginType = "Custom"
-        self.platforms = ["Windows", "Linux", "Darwin"]
+        self.platforms = ["Windows"]
         self.pluginDirectory = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))

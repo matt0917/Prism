@@ -32,6 +32,8 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from typing import Any
+
 from Prism_3dsMax_Variables import Prism_3dsMax_Variables
 from Prism_3dsMax_externalAccess_Functions import Prism_3dsMax_externalAccess_Functions
 from Prism_3dsMax_Functions import Prism_3dsMax_Functions
@@ -44,7 +46,18 @@ class Prism_Plugin_3dsMax(
     Prism_3dsMax_Functions,
     Prism_3dsMax_Integration,
 ):
-    def __init__(self, core):
+    """Main 3ds Max plugin class for Prism.
+    
+    Combines all 3ds Max plugin functionality through multiple inheritance.
+    Provides full integration with Autodesk 3ds Max DCC application.
+    """
+
+    def __init__(self, core: Any) -> None:
+        """Initialize 3ds Max plugin.
+        
+        Args:
+            core: PrismCore instance.
+        """
         Prism_3dsMax_Variables.__init__(self, core, self)
         Prism_3dsMax_externalAccess_Functions.__init__(self, core, self)
         Prism_3dsMax_Functions.__init__(self, core, self)

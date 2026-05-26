@@ -33,11 +33,21 @@
 
 
 import os
+from typing import Any
 
 
 class Prism_Nuke_Variables(object):
-    def __init__(self, core, plugin):
-        self.version = "v2.0.0"
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize Nuke plugin variables.
+        
+        Sets up plugin metadata, supported file formats, and visual properties
+        for Prism's Nuke integration.
+        
+        Args:
+            core: The Prism core instance
+            plugin: The plugin instance
+        """
+        self.version = "v2.1.2"
         self.pluginName = "Nuke"
         self.pluginType = "App"
         self.appShortName = "Nuke"
@@ -45,6 +55,8 @@ class Prism_Nuke_Variables(object):
         self.hasQtParent = True
         self.sceneFormats = [".nk", ".nknc", ".nkple", ".nuke", ".nkind"]
         self.appSpecificFormats = self.sceneFormats
+        self.outputFormats = [".nk"]
+        self.canBuildScene = True
         self.appColor = [160, 52, 66]
         self.platforms = ["Windows", "Linux", "Darwin"]
         self.pluginDirectory = os.path.abspath(

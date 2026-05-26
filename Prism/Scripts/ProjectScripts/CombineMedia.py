@@ -34,6 +34,7 @@
 
 import os
 import subprocess
+from typing import Any, Optional, List, Dict, Tuple
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -45,7 +46,25 @@ from PrismUtils.Decorators import err_catcher
 
 
 class CombineMedia(QDialog, CombineMedia_ui.Ui_dlg_CombineMedia):
-    def __init__(self, core, ctype):
+    """Dialog for combining multiple media files into a single video output.
+    
+    This class provides functionality to combine multiple renders or media sources
+    into a single video file using FFmpeg. Supports different combination types
+    including layout, sequence, stack, and stack difference modes.
+    
+    Attributes:
+        core: The Prism core instance
+        ctype: Combination type ("layout", "sequence", "stack", or "stackDif")
+        taskList: List of available task names for the current context
+    """
+    
+    def __init__(self, core: Any, ctype: str) -> None:
+        """Initialize the CombineMedia dialog.
+        
+        Args:
+            core: The Prism core instance providing access to pipeline functionality
+            ctype: Type of media combination to perform ("layout", "sequence", "stack", "stackDif")
+        """
         QDialog.__init__(self)
         self.setupUi(self)
         self.core = core
@@ -69,7 +88,12 @@ class CombineMedia(QDialog, CombineMedia_ui.Ui_dlg_CombineMedia):
         self.e_output.setFocus()
 
     @err_catcher(name=__name__)
-    def connectEvents(self):
+    def connectEvents(self) -> None:
+        """Connect UI signals to their respective slot methods.
+        
+        Connects button clicks, checkbox states, and dialog acceptance to
+        their corresponding handler methods.
+        """
         self.b_browse.clicked.connect(self.browseCombineOutputFile)
         self.b_browse.customContextMenuRequested.connect(
             lambda: self.core.openFolder(self.e_output.text())
@@ -81,7 +105,12 @@ class CombineMedia(QDialog, CombineMedia_ui.Ui_dlg_CombineMedia):
         self.accepted.connect(self.combine)
 
     @err_catcher(name=__name__)
-    def showTasks(self):
+    def showTasks(self) -> None:
+        """Display a context menu with available task names.
+        
+        Creates and shows a popup menu containing all tasks from the task list,
+        allowing the user to select a task name for the combined output.
+        """
         tmenu = QMenu(self)
 
         for i in self.taskList:
@@ -92,7 +121,24 @@ class CombineMedia(QDialog, CombineMedia_ui.Ui_dlg_CombineMedia):
         tmenu.exec_(QCursor.pos())
 
     @err_catcher(name=__name__)
-    def combine(self):
+    def combine(self) -> None:
+        """Combine multiple media sources into a single output video.
+        
+        Processes all selected media renders/sources through FFmpeg to create
+        a combined video output. Handles:
+        - Image sequence to video conversion
+        - Resolution normalization and padding
+        - Video concatenation for sequence mode
+        - Optional media product creation in project structure
+        
+        The method:
+        1. Validates output path and FFmpeg availability
+        2. Converts image sequences to video if needed
+        3. Normalizes all inputs to same resolution with padding
+        4. Combines videos based on combination type (sequence, layout, etc.)
+        5. Optionally creates a new version in the project structure
+        6. Cleans up temporary files
+        """
         output = self.e_output.text()
 
         if not os.path.exists(os.path.dirname(output)):
@@ -307,7 +353,12 @@ class CombineMedia(QDialog, CombineMedia_ui.Ui_dlg_CombineMedia):
             )
 
     @err_catcher(name=__name__)
-    def browseCombineOutputFile(self):
+    def browseCombineOutputFile(self) -> None:
+        """Open file browser dialog to select the output file path.
+        
+        Displays a save file dialog for the user to select where the combined
+        video should be saved. Updates the output path field with the selection.
+        """
         path = QFileDialog.getSaveFileName(
             self, "Select Outputfile", self.e_output.text(), "Video (*.mp4)"
         )[0]
@@ -315,7 +366,12 @@ class CombineMedia(QDialog, CombineMedia_ui.Ui_dlg_CombineMedia):
             self.e_output.setText(path)
 
     @err_catcher(name=__name__)
-    def getTasks(self):
+    def getTasks(self) -> None:
+        """Retrieve and filter the task list for the current context.
+        
+        Gets task names based on the task type and filters out special tasks
+        like "_ShotCam". Hides the tasks button if no tasks are available.
+        """
         taskList = self.core.getTaskNames(self.taskType)
 
         if len(self.taskList) == 0:

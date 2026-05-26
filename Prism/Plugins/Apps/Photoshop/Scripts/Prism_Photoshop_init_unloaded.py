@@ -37,6 +37,7 @@ from Prism_Photoshop_externalAccess_Functions import (
     Prism_Photoshop_externalAccess_Functions,
 )
 from Prism_Photoshop_Integration import Prism_Photoshop_Integration
+from typing import Any
 
 
 class Prism_Photoshop_unloaded(
@@ -44,7 +45,15 @@ class Prism_Photoshop_unloaded(
     Prism_Photoshop_externalAccess_Functions,
     Prism_Photoshop_Integration,
 ):
-    def __init__(self, core):
+    def __init__(self, core: Any) -> None:
+        """Initialize Photoshop plugin in unloaded state.
+        
+        Used when Photoshop is not available but plugin configuration is needed.
+        Initializes Variables, externalAccess_Functions, and Integration modules.
+        
+        Args:
+            core: Prism core instance
+        """
         Prism_Photoshop_Variables.__init__(self, core, self)
         Prism_Photoshop_externalAccess_Functions.__init__(self, core, self)
         Prism_Photoshop_Integration.__init__(self, core, self)

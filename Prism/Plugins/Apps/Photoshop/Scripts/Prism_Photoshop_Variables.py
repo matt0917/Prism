@@ -33,11 +33,20 @@
 
 
 import os
+from typing import Any, List
 
 
 class Prism_Photoshop_Variables(object):
-    def __init__(self, core, plugin):
-        self.version = "v2.0.0"
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize Photoshop plugin variables.
+        
+        Sets up plugin metadata, scene formats, app configuration, and paths.
+        
+        Args:
+            core: Prism core instance
+            plugin: Plugin instance (self)
+        """
+        self.version = "v2.1.2"
         self.pluginName = "Photoshop"
         self.pluginType = "App"
         self.appShortName = "Photoshop"
@@ -53,5 +62,5 @@ class Prism_Photoshop_Variables(object):
             os.path.dirname(os.path.dirname(__file__))
         )
         self.appIcon = os.path.join(
-            self.pluginDirectory, "UserInterfaces", "photoshop.ico"
+            self.pluginDirectory, "UserInterfaces", "photoshop.png"
         )

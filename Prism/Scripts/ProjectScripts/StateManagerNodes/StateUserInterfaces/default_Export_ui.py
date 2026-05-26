@@ -1,481 +1,690 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'default_Export.ui'
-#
-# Created: Fri Oct 27 15:56:08 2023
-#      by: qtpy-uic 2.0.5
-#
-# WARNING! All changes made in this file will be lost!
+################################################################################
+## Form generated from reading UI file 'default_Export.ui'
+##
+## Created by: Qt User Interface Compiler version 6.8.3
+##
+## WARNING! All changes made in this file will be lost when recompiling UI file!
+################################################################################
 
-from qtpy import QtCore, QtGui, QtWidgets
+from qtpy.QtCore import *  # type: ignore
+from qtpy.QtGui import *  # type: ignore
+from qtpy.QtWidgets import *  # type: ignore
 
 class Ui_wg_Export(object):
     def setupUi(self, wg_Export):
-        wg_Export.setObjectName("wg_Export")
-        wg_Export.resize(340, 955)
-        self.verticalLayout = QtWidgets.QVBoxLayout(wg_Export)
+        if not wg_Export.objectName():
+            wg_Export.setObjectName(u"wg_Export")
+        wg_Export.resize(400, 1259)
+        self.verticalLayout = QVBoxLayout(wg_Export)
+        self.verticalLayout.setObjectName(u"verticalLayout")
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
-        self.verticalLayout.setObjectName("verticalLayout")
-        self.w_name = QtWidgets.QWidget(wg_Export)
-        self.w_name.setObjectName("w_name")
-        self.horizontalLayout_5 = QtWidgets.QHBoxLayout(self.w_name)
+        self.w_name = QWidget(wg_Export)
+        self.w_name.setObjectName(u"w_name")
+        self.horizontalLayout_5 = QHBoxLayout(self.w_name)
+        self.horizontalLayout_5.setObjectName(u"horizontalLayout_5")
         self.horizontalLayout_5.setContentsMargins(9, 0, 18, 0)
-        self.horizontalLayout_5.setObjectName("horizontalLayout_5")
-        self.l_name = QtWidgets.QLabel(self.w_name)
-        self.l_name.setObjectName("l_name")
+        self.l_name = QLabel(self.w_name)
+        self.l_name.setObjectName(u"l_name")
+
         self.horizontalLayout_5.addWidget(self.l_name)
-        self.e_name = QtWidgets.QLineEdit(self.w_name)
-        self.e_name.setMinimumSize(QtCore.QSize(0, 0))
-        self.e_name.setMaximumSize(QtCore.QSize(9999, 16777215))
-        self.e_name.setObjectName("e_name")
+
+        self.e_name = QLineEdit(self.w_name)
+        self.e_name.setObjectName(u"e_name")
+        self.e_name.setMinimumSize(QSize(0, 0))
+        self.e_name.setMaximumSize(QSize(9999, 16777215))
+
         self.horizontalLayout_5.addWidget(self.e_name)
-        self.l_class = QtWidgets.QLabel(self.w_name)
-        font = QtGui.QFont()
-        font.setWeight(75)
+
+        self.l_class = QLabel(self.w_name)
+        self.l_class.setObjectName(u"l_class")
+        font = QFont()
         font.setBold(True)
         self.l_class.setFont(font)
-        self.l_class.setObjectName("l_class")
+
         self.horizontalLayout_5.addWidget(self.l_class)
+
+
         self.verticalLayout.addWidget(self.w_name)
-        self.gb_export = QtWidgets.QGroupBox(wg_Export)
-        self.gb_export.setObjectName("gb_export")
-        self.verticalLayout_2 = QtWidgets.QVBoxLayout(self.gb_export)
-        self.verticalLayout_2.setObjectName("verticalLayout_2")
-        self.w_context = QtWidgets.QWidget(self.gb_export)
-        self.w_context.setObjectName("w_context")
-        self.horizontalLayout_10 = QtWidgets.QHBoxLayout(self.w_context)
+
+        self.gb_export = QGroupBox(wg_Export)
+        self.gb_export.setObjectName(u"gb_export")
+        self.lo_export = QVBoxLayout(self.gb_export)
+        self.lo_export.setObjectName(u"lo_export")
+        self.w_comment = QWidget(self.gb_export)
+        self.w_comment.setObjectName(u"w_comment")
+        self.horizontalLayout_16 = QHBoxLayout(self.w_comment)
+        self.horizontalLayout_16.setSpacing(0)
+        self.horizontalLayout_16.setObjectName(u"horizontalLayout_16")
+        self.horizontalLayout_16.setContentsMargins(9, 0, 9, 0)
+        self.l_comment = QLabel(self.w_comment)
+        self.l_comment.setObjectName(u"l_comment")
+        self.l_comment.setMinimumSize(QSize(40, 0))
+        self.l_comment.setMaximumSize(QSize(95, 16777215))
+
+        self.horizontalLayout_16.addWidget(self.l_comment)
+
+        self.horizontalSpacer_8 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_16.addItem(self.horizontalSpacer_8)
+
+        self.e_comment = QLineEdit(self.w_comment)
+        self.e_comment.setObjectName(u"e_comment")
+
+        self.horizontalLayout_16.addWidget(self.e_comment)
+
+
+        self.lo_export.addWidget(self.w_comment)
+
+        self.w_context = QWidget(self.gb_export)
+        self.w_context.setObjectName(u"w_context")
+        self.horizontalLayout_10 = QHBoxLayout(self.w_context)
+        self.horizontalLayout_10.setObjectName(u"horizontalLayout_10")
         self.horizontalLayout_10.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout_10.setObjectName("horizontalLayout_10")
-        self.label_4 = QtWidgets.QLabel(self.w_context)
-        self.label_4.setObjectName("label_4")
+        self.label_4 = QLabel(self.w_context)
+        self.label_4.setObjectName(u"label_4")
+
         self.horizontalLayout_10.addWidget(self.label_4)
-        spacerItem = QtWidgets.QSpacerItem(37, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_10.addItem(spacerItem)
-        self.l_context = QtWidgets.QLabel(self.w_context)
-        self.l_context.setText("")
-        self.l_context.setObjectName("l_context")
+
+        self.horizontalSpacer_5 = QSpacerItem(37, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_10.addItem(self.horizontalSpacer_5)
+
+        self.l_context = QLabel(self.w_context)
+        self.l_context.setObjectName(u"l_context")
+
         self.horizontalLayout_10.addWidget(self.l_context)
-        spacerItem1 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_10.addItem(spacerItem1)
-        self.b_context = QtWidgets.QPushButton(self.w_context)
-        self.b_context.setObjectName("b_context")
+
+        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_10.addItem(self.horizontalSpacer)
+
+        self.b_context = QPushButton(self.w_context)
+        self.b_context.setObjectName(u"b_context")
+
         self.horizontalLayout_10.addWidget(self.b_context)
-        self.cb_context = QtWidgets.QComboBox(self.w_context)
-        self.cb_context.setObjectName("cb_context")
+
+        self.cb_context = QComboBox(self.w_context)
+        self.cb_context.setObjectName(u"cb_context")
+
         self.horizontalLayout_10.addWidget(self.cb_context)
-        self.verticalLayout_2.addWidget(self.w_context)
-        self.w_taskname = QtWidgets.QWidget(self.gb_export)
-        self.w_taskname.setObjectName("w_taskname")
-        self.horizontalLayout_4 = QtWidgets.QHBoxLayout(self.w_taskname)
+
+
+        self.lo_export.addWidget(self.w_context)
+
+        self.w_taskname = QWidget(self.gb_export)
+        self.w_taskname.setObjectName(u"w_taskname")
+        self.horizontalLayout_4 = QHBoxLayout(self.w_taskname)
+        self.horizontalLayout_4.setObjectName(u"horizontalLayout_4")
         self.horizontalLayout_4.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout_4.setObjectName("horizontalLayout_4")
-        self.l_tasklabel = QtWidgets.QLabel(self.w_taskname)
-        self.l_tasklabel.setObjectName("l_tasklabel")
+        self.l_tasklabel = QLabel(self.w_taskname)
+        self.l_tasklabel.setObjectName(u"l_tasklabel")
+
         self.horizontalLayout_4.addWidget(self.l_tasklabel)
-        self.l_taskName = QtWidgets.QLabel(self.w_taskname)
-        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+
+        self.l_taskName = QLabel(self.w_taskname)
+        self.l_taskName.setObjectName(u"l_taskName")
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.l_taskName.sizePolicy().hasHeightForWidth())
         self.l_taskName.setSizePolicy(sizePolicy)
-        self.l_taskName.setText("")
-        self.l_taskName.setAlignment(QtCore.Qt.AlignCenter)
-        self.l_taskName.setObjectName("l_taskName")
+        self.l_taskName.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
         self.horizontalLayout_4.addWidget(self.l_taskName)
-        self.b_changeTask = QtWidgets.QPushButton(self.w_taskname)
+
+        self.b_changeTask = QPushButton(self.w_taskname)
+        self.b_changeTask.setObjectName(u"b_changeTask")
         self.b_changeTask.setEnabled(True)
-        self.b_changeTask.setFocusPolicy(QtCore.Qt.NoFocus)
-        self.b_changeTask.setObjectName("b_changeTask")
+        self.b_changeTask.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
         self.horizontalLayout_4.addWidget(self.b_changeTask)
-        self.verticalLayout_2.addWidget(self.w_taskname)
-        self.w_range = QtWidgets.QWidget(self.gb_export)
-        self.w_range.setObjectName("w_range")
-        self.horizontalLayout_6 = QtWidgets.QHBoxLayout(self.w_range)
+
+
+        self.lo_export.addWidget(self.w_taskname)
+
+        self.w_range = QWidget(self.gb_export)
+        self.w_range.setObjectName(u"w_range")
+        self.horizontalLayout_6 = QHBoxLayout(self.w_range)
         self.horizontalLayout_6.setSpacing(0)
+        self.horizontalLayout_6.setObjectName(u"horizontalLayout_6")
         self.horizontalLayout_6.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout_6.setObjectName("horizontalLayout_6")
-        self.label_3 = QtWidgets.QLabel(self.w_range)
-        self.label_3.setObjectName("label_3")
+        self.label_3 = QLabel(self.w_range)
+        self.label_3.setObjectName(u"label_3")
+
         self.horizontalLayout_6.addWidget(self.label_3)
-        spacerItem2 = QtWidgets.QSpacerItem(37, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_6.addItem(spacerItem2)
-        self.cb_rangeType = QtWidgets.QComboBox(self.w_range)
-        self.cb_rangeType.setObjectName("cb_rangeType")
+
+        self.horizontalSpacer_2 = QSpacerItem(37, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_6.addItem(self.horizontalSpacer_2)
+
+        self.cb_rangeType = QComboBox(self.w_range)
+        self.cb_rangeType.setObjectName(u"cb_rangeType")
+
         self.horizontalLayout_6.addWidget(self.cb_rangeType)
-        self.verticalLayout_2.addWidget(self.w_range)
-        self.f_frameRange_2 = QtWidgets.QWidget(self.gb_export)
-        self.f_frameRange_2.setObjectName("f_frameRange_2")
-        self.gridLayout = QtWidgets.QGridLayout(self.f_frameRange_2)
+
+
+        self.lo_export.addWidget(self.w_range)
+
+        self.f_frameRange_2 = QWidget(self.gb_export)
+        self.f_frameRange_2.setObjectName(u"f_frameRange_2")
+        self.gridLayout = QGridLayout(self.f_frameRange_2)
+        self.gridLayout.setObjectName(u"gridLayout")
         self.gridLayout.setContentsMargins(9, 0, 9, 0)
-        self.gridLayout.setObjectName("gridLayout")
-        self.l_rangeEnd = QtWidgets.QLabel(self.f_frameRange_2)
-        self.l_rangeEnd.setMinimumSize(QtCore.QSize(30, 0))
-        self.l_rangeEnd.setAlignment(QtCore.Qt.AlignRight|QtCore.Qt.AlignTrailing|QtCore.Qt.AlignVCenter)
-        self.l_rangeEnd.setObjectName("l_rangeEnd")
+        self.l_rangeEnd = QLabel(self.f_frameRange_2)
+        self.l_rangeEnd.setObjectName(u"l_rangeEnd")
+        self.l_rangeEnd.setMinimumSize(QSize(30, 0))
+        self.l_rangeEnd.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
+
         self.gridLayout.addWidget(self.l_rangeEnd, 1, 5, 1, 1)
-        self.sp_rangeEnd = QtWidgets.QSpinBox(self.f_frameRange_2)
-        self.sp_rangeEnd.setMaximumSize(QtCore.QSize(55, 16777215))
+
+        self.sp_rangeEnd = QSpinBox(self.f_frameRange_2)
+        self.sp_rangeEnd.setObjectName(u"sp_rangeEnd")
         self.sp_rangeEnd.setMaximum(99999)
-        self.sp_rangeEnd.setProperty("value", 1100)
-        self.sp_rangeEnd.setObjectName("sp_rangeEnd")
+        self.sp_rangeEnd.setValue(1100)
+
         self.gridLayout.addWidget(self.sp_rangeEnd, 1, 6, 1, 1)
-        self.sp_rangeStart = QtWidgets.QSpinBox(self.f_frameRange_2)
-        self.sp_rangeStart.setMaximumSize(QtCore.QSize(55, 16777215))
+
+        self.sp_rangeStart = QSpinBox(self.f_frameRange_2)
+        self.sp_rangeStart.setObjectName(u"sp_rangeStart")
         self.sp_rangeStart.setMaximum(99999)
-        self.sp_rangeStart.setProperty("value", 1001)
-        self.sp_rangeStart.setObjectName("sp_rangeStart")
+        self.sp_rangeStart.setValue(1001)
+
         self.gridLayout.addWidget(self.sp_rangeStart, 0, 6, 1, 1)
-        self.l_rangeStart = QtWidgets.QLabel(self.f_frameRange_2)
-        self.l_rangeStart.setMinimumSize(QtCore.QSize(30, 0))
-        self.l_rangeStart.setAlignment(QtCore.Qt.AlignRight|QtCore.Qt.AlignTrailing|QtCore.Qt.AlignVCenter)
-        self.l_rangeStart.setObjectName("l_rangeStart")
+
+        self.l_rangeStart = QLabel(self.f_frameRange_2)
+        self.l_rangeStart.setObjectName(u"l_rangeStart")
+        self.l_rangeStart.setMinimumSize(QSize(30, 0))
+        self.l_rangeStart.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
+
         self.gridLayout.addWidget(self.l_rangeStart, 0, 5, 1, 1)
-        self.l_rangeStartInfo = QtWidgets.QLabel(self.f_frameRange_2)
-        self.l_rangeStartInfo.setObjectName("l_rangeStartInfo")
+
+        self.l_rangeStartInfo = QLabel(self.f_frameRange_2)
+        self.l_rangeStartInfo.setObjectName(u"l_rangeStartInfo")
+
         self.gridLayout.addWidget(self.l_rangeStartInfo, 0, 0, 1, 1)
-        spacerItem3 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.gridLayout.addItem(spacerItem3, 0, 4, 1, 1)
-        self.l_rangeEndInfo = QtWidgets.QLabel(self.f_frameRange_2)
-        self.l_rangeEndInfo.setObjectName("l_rangeEndInfo")
+
+        self.horizontalSpacer_7 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.gridLayout.addItem(self.horizontalSpacer_7, 0, 4, 1, 1)
+
+        self.l_rangeEndInfo = QLabel(self.f_frameRange_2)
+        self.l_rangeEndInfo.setObjectName(u"l_rangeEndInfo")
+
         self.gridLayout.addWidget(self.l_rangeEndInfo, 1, 0, 1, 1)
-        self.verticalLayout_2.addWidget(self.f_frameRange_2)
-        self.w_master = QtWidgets.QWidget(self.gb_export)
-        self.w_master.setObjectName("w_master")
-        self.horizontalLayout_20 = QtWidgets.QHBoxLayout(self.w_master)
+
+
+        self.lo_export.addWidget(self.f_frameRange_2)
+
+        self.w_master = QWidget(self.gb_export)
+        self.w_master.setObjectName(u"w_master")
+        self.horizontalLayout_20 = QHBoxLayout(self.w_master)
         self.horizontalLayout_20.setSpacing(0)
+        self.horizontalLayout_20.setObjectName(u"horizontalLayout_20")
         self.horizontalLayout_20.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout_20.setObjectName("horizontalLayout_20")
-        self.l_master = QtWidgets.QLabel(self.w_master)
-        self.l_master.setObjectName("l_master")
+        self.l_master = QLabel(self.w_master)
+        self.l_master.setObjectName(u"l_master")
+
         self.horizontalLayout_20.addWidget(self.l_master)
-        spacerItem4 = QtWidgets.QSpacerItem(113, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_20.addItem(spacerItem4)
-        self.chb_master = QtWidgets.QCheckBox(self.w_master)
-        self.chb_master.setText("")
+
+        self.horizontalSpacer_29 = QSpacerItem(113, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_20.addItem(self.horizontalSpacer_29)
+
+        self.chb_master = QCheckBox(self.w_master)
+        self.chb_master.setObjectName(u"chb_master")
         self.chb_master.setChecked(True)
-        self.chb_master.setObjectName("chb_master")
+
         self.horizontalLayout_20.addWidget(self.chb_master)
-        self.verticalLayout_2.addWidget(self.w_master)
-        self.w_outPath = QtWidgets.QWidget(self.gb_export)
-        self.w_outPath.setObjectName("w_outPath")
-        self.horizontalLayout_11 = QtWidgets.QHBoxLayout(self.w_outPath)
+
+
+        self.lo_export.addWidget(self.w_master)
+
+        self.w_outPath = QWidget(self.gb_export)
+        self.w_outPath.setObjectName(u"w_outPath")
+        self.horizontalLayout_11 = QHBoxLayout(self.w_outPath)
         self.horizontalLayout_11.setSpacing(0)
+        self.horizontalLayout_11.setObjectName(u"horizontalLayout_11")
         self.horizontalLayout_11.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout_11.setObjectName("horizontalLayout_11")
-        self.l_outPath = QtWidgets.QLabel(self.w_outPath)
-        self.l_outPath.setObjectName("l_outPath")
+        self.l_outPath = QLabel(self.w_outPath)
+        self.l_outPath.setObjectName(u"l_outPath")
+
         self.horizontalLayout_11.addWidget(self.l_outPath)
-        spacerItem5 = QtWidgets.QSpacerItem(113, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_11.addItem(spacerItem5)
-        self.cb_outPath = QtWidgets.QComboBox(self.w_outPath)
-        self.cb_outPath.setMinimumSize(QtCore.QSize(124, 0))
-        self.cb_outPath.setObjectName("cb_outPath")
+
+        self.horizontalSpacer_6 = QSpacerItem(113, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_11.addItem(self.horizontalSpacer_6)
+
+        self.cb_outPath = QComboBox(self.w_outPath)
+        self.cb_outPath.setObjectName(u"cb_outPath")
+        self.cb_outPath.setMinimumSize(QSize(124, 0))
+
         self.horizontalLayout_11.addWidget(self.cb_outPath)
-        self.verticalLayout_2.addWidget(self.w_outPath)
-        self.w_outType = QtWidgets.QWidget(self.gb_export)
-        self.w_outType.setObjectName("w_outType")
-        self.horizontalLayout_9 = QtWidgets.QHBoxLayout(self.w_outType)
+
+
+        self.lo_export.addWidget(self.w_outPath)
+
+        self.w_outType = QWidget(self.gb_export)
+        self.w_outType.setObjectName(u"w_outType")
+        self.horizontalLayout_9 = QHBoxLayout(self.w_outType)
         self.horizontalLayout_9.setSpacing(0)
+        self.horizontalLayout_9.setObjectName(u"horizontalLayout_9")
         self.horizontalLayout_9.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout_9.setObjectName("horizontalLayout_9")
-        self.l_outType = QtWidgets.QLabel(self.w_outType)
-        self.l_outType.setObjectName("l_outType")
+        self.l_outType = QLabel(self.w_outType)
+        self.l_outType.setObjectName(u"l_outType")
+
         self.horizontalLayout_9.addWidget(self.l_outType)
-        spacerItem6 = QtWidgets.QSpacerItem(113, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_9.addItem(spacerItem6)
-        self.cb_outType = QtWidgets.QComboBox(self.w_outType)
-        self.cb_outType.setMinimumSize(QtCore.QSize(124, 0))
-        self.cb_outType.setObjectName("cb_outType")
+
+        self.horizontalSpacer_3 = QSpacerItem(113, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_9.addItem(self.horizontalSpacer_3)
+
+        self.cb_outType = QComboBox(self.w_outType)
+        self.cb_outType.setObjectName(u"cb_outType")
+        self.cb_outType.setMinimumSize(QSize(124, 0))
+
         self.horizontalLayout_9.addWidget(self.cb_outType)
-        self.verticalLayout_2.addWidget(self.w_outType)
-        self.w_cam = QtWidgets.QWidget(self.gb_export)
-        self.w_cam.setObjectName("w_cam")
-        self.horizontalLayout_3 = QtWidgets.QHBoxLayout(self.w_cam)
+
+
+        self.lo_export.addWidget(self.w_outType)
+
+        self.w_cam = QWidget(self.gb_export)
+        self.w_cam.setObjectName(u"w_cam")
+        self.horizontalLayout_3 = QHBoxLayout(self.w_cam)
         self.horizontalLayout_3.setSpacing(0)
+        self.horizontalLayout_3.setObjectName(u"horizontalLayout_3")
         self.horizontalLayout_3.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout_3.setObjectName("horizontalLayout_3")
-        self.l_cam = QtWidgets.QLabel(self.w_cam)
-        self.l_cam.setMinimumSize(QtCore.QSize(40, 0))
-        self.l_cam.setMaximumSize(QtCore.QSize(95, 16777215))
-        self.l_cam.setObjectName("l_cam")
+        self.l_cam = QLabel(self.w_cam)
+        self.l_cam.setObjectName(u"l_cam")
+        self.l_cam.setMinimumSize(QSize(40, 0))
+        self.l_cam.setMaximumSize(QSize(95, 16777215))
+
         self.horizontalLayout_3.addWidget(self.l_cam)
-        self.cb_cam = QtWidgets.QComboBox(self.w_cam)
-        self.cb_cam.setObjectName("cb_cam")
+
+        self.cb_cam = QComboBox(self.w_cam)
+        self.cb_cam.setObjectName(u"cb_cam")
+
         self.horizontalLayout_3.addWidget(self.cb_cam)
-        self.verticalLayout_2.addWidget(self.w_cam)
-        self.w_sCamShot = QtWidgets.QWidget(self.gb_export)
-        self.w_sCamShot.setObjectName("w_sCamShot")
-        self.horizontalLayout_7 = QtWidgets.QHBoxLayout(self.w_sCamShot)
+
+
+        self.lo_export.addWidget(self.w_cam)
+
+        self.w_sCamShot = QWidget(self.gb_export)
+        self.w_sCamShot.setObjectName(u"w_sCamShot")
+        self.horizontalLayout_7 = QHBoxLayout(self.w_sCamShot)
         self.horizontalLayout_7.setSpacing(0)
+        self.horizontalLayout_7.setObjectName(u"horizontalLayout_7")
         self.horizontalLayout_7.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout_7.setObjectName("horizontalLayout_7")
-        self.l_sCamShot = QtWidgets.QLabel(self.w_sCamShot)
-        self.l_sCamShot.setMinimumSize(QtCore.QSize(40, 0))
-        self.l_sCamShot.setMaximumSize(QtCore.QSize(95, 16777215))
-        self.l_sCamShot.setObjectName("l_sCamShot")
+        self.l_sCamShot = QLabel(self.w_sCamShot)
+        self.l_sCamShot.setObjectName(u"l_sCamShot")
+        self.l_sCamShot.setMinimumSize(QSize(40, 0))
+        self.l_sCamShot.setMaximumSize(QSize(95, 16777215))
+
         self.horizontalLayout_7.addWidget(self.l_sCamShot)
-        self.cb_sCamShot = QtWidgets.QComboBox(self.w_sCamShot)
-        self.cb_sCamShot.setObjectName("cb_sCamShot")
+
+        self.cb_sCamShot = QComboBox(self.w_sCamShot)
+        self.cb_sCamShot.setObjectName(u"cb_sCamShot")
+
         self.horizontalLayout_7.addWidget(self.cb_sCamShot)
-        self.verticalLayout_2.addWidget(self.w_sCamShot)
-        self.w_selectCam = QtWidgets.QWidget(self.gb_export)
-        self.w_selectCam.setObjectName("w_selectCam")
-        self.horizontalLayout_2 = QtWidgets.QHBoxLayout(self.w_selectCam)
+
+
+        self.lo_export.addWidget(self.w_sCamShot)
+
+        self.w_selectCam = QWidget(self.gb_export)
+        self.w_selectCam.setObjectName(u"w_selectCam")
+        self.horizontalLayout_2 = QHBoxLayout(self.w_selectCam)
         self.horizontalLayout_2.setSpacing(0)
+        self.horizontalLayout_2.setObjectName(u"horizontalLayout_2")
         self.horizontalLayout_2.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout_2.setObjectName("horizontalLayout_2")
-        self.b_selectCam = QtWidgets.QPushButton(self.w_selectCam)
-        self.b_selectCam.setFocusPolicy(QtCore.Qt.NoFocus)
-        self.b_selectCam.setObjectName("b_selectCam")
+        self.b_selectCam = QPushButton(self.w_selectCam)
+        self.b_selectCam.setObjectName(u"b_selectCam")
+        self.b_selectCam.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
         self.horizontalLayout_2.addWidget(self.b_selectCam)
-        self.verticalLayout_2.addWidget(self.w_selectCam)
-        self.w_additionalOptions = QtWidgets.QWidget(self.gb_export)
-        self.w_additionalOptions.setObjectName("w_additionalOptions")
-        self.horizontalLayout_15 = QtWidgets.QHBoxLayout(self.w_additionalOptions)
+
+
+        self.lo_export.addWidget(self.w_selectCam)
+
+        self.w_additionalOptions = QWidget(self.gb_export)
+        self.w_additionalOptions.setObjectName(u"w_additionalOptions")
+        self.horizontalLayout_15 = QHBoxLayout(self.w_additionalOptions)
+        self.horizontalLayout_15.setObjectName(u"horizontalLayout_15")
         self.horizontalLayout_15.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout_15.setObjectName("horizontalLayout_15")
-        self.l_additionalOptions = QtWidgets.QLabel(self.w_additionalOptions)
-        self.l_additionalOptions.setObjectName("l_additionalOptions")
+        self.l_additionalOptions = QLabel(self.w_additionalOptions)
+        self.l_additionalOptions.setObjectName(u"l_additionalOptions")
+
         self.horizontalLayout_15.addWidget(self.l_additionalOptions)
-        spacerItem7 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_15.addItem(spacerItem7)
-        self.chb_additionalOptions = QtWidgets.QCheckBox(self.w_additionalOptions)
-        self.chb_additionalOptions.setText("")
+
+        self.horizontalSpacer_11 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_15.addItem(self.horizontalSpacer_11)
+
+        self.chb_additionalOptions = QCheckBox(self.w_additionalOptions)
+        self.chb_additionalOptions.setObjectName(u"chb_additionalOptions")
         self.chb_additionalOptions.setChecked(False)
-        self.chb_additionalOptions.setObjectName("chb_additionalOptions")
+
         self.horizontalLayout_15.addWidget(self.chb_additionalOptions)
-        self.verticalLayout_2.addWidget(self.w_additionalOptions)
-        self.w_wholeScene = QtWidgets.QWidget(self.gb_export)
-        self.w_wholeScene.setObjectName("w_wholeScene")
-        self.horizontalLayout = QtWidgets.QHBoxLayout(self.w_wholeScene)
+
+
+        self.lo_export.addWidget(self.w_additionalOptions)
+
+        self.w_wholeScene = QWidget(self.gb_export)
+        self.w_wholeScene.setObjectName(u"w_wholeScene")
+        self.horizontalLayout = QHBoxLayout(self.w_wholeScene)
         self.horizontalLayout.setSpacing(0)
+        self.horizontalLayout.setObjectName(u"horizontalLayout")
         self.horizontalLayout.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout.setObjectName("horizontalLayout")
-        self.l_wholeScene = QtWidgets.QLabel(self.w_wholeScene)
-        self.l_wholeScene.setObjectName("l_wholeScene")
+        self.l_wholeScene = QLabel(self.w_wholeScene)
+        self.l_wholeScene.setObjectName(u"l_wholeScene")
+
         self.horizontalLayout.addWidget(self.l_wholeScene)
-        spacerItem8 = QtWidgets.QSpacerItem(185, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout.addItem(spacerItem8)
-        self.chb_wholeScene = QtWidgets.QCheckBox(self.w_wholeScene)
-        self.chb_wholeScene.setText("")
+
+        self.horizontalSpacer_4 = QSpacerItem(185, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout.addItem(self.horizontalSpacer_4)
+
+        self.chb_wholeScene = QCheckBox(self.w_wholeScene)
+        self.chb_wholeScene.setObjectName(u"chb_wholeScene")
         self.chb_wholeScene.setChecked(False)
-        self.chb_wholeScene.setObjectName("chb_wholeScene")
+
         self.horizontalLayout.addWidget(self.chb_wholeScene)
-        self.verticalLayout_2.addWidget(self.w_wholeScene)
-        self.gb_objects = QtWidgets.QGroupBox(self.gb_export)
+
+
+        self.lo_export.addWidget(self.w_wholeScene)
+
+        self.gb_objects = QGroupBox(self.gb_export)
+        self.gb_objects.setObjectName(u"gb_objects")
         self.gb_objects.setEnabled(True)
-        self.gb_objects.setObjectName("gb_objects")
-        self.verticalLayout_3 = QtWidgets.QVBoxLayout(self.gb_objects)
+        self.verticalLayout_3 = QVBoxLayout(self.gb_objects)
+        self.verticalLayout_3.setObjectName(u"verticalLayout_3")
         self.verticalLayout_3.setContentsMargins(9, 9, 9, 9)
-        self.verticalLayout_3.setObjectName("verticalLayout_3")
-        self.f_objectList = QtWidgets.QFrame(self.gb_objects)
-        self.f_objectList.setObjectName("f_objectList")
-        self.horizontalLayout_8 = QtWidgets.QHBoxLayout(self.f_objectList)
+        self.f_objectList = QFrame(self.gb_objects)
+        self.f_objectList.setObjectName(u"f_objectList")
+        self.horizontalLayout_8 = QHBoxLayout(self.f_objectList)
+        self.horizontalLayout_8.setObjectName(u"horizontalLayout_8")
         self.horizontalLayout_8.setContentsMargins(0, 0, 0, 0)
-        self.horizontalLayout_8.setObjectName("horizontalLayout_8")
-        self.lw_objects = QtWidgets.QListWidget(self.f_objectList)
-        self.lw_objects.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-        self.lw_objects.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
-        self.lw_objects.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
-        self.lw_objects.setHorizontalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
-        self.lw_objects.setObjectName("lw_objects")
+        self.lw_objects = QListWidget(self.f_objectList)
+        self.lw_objects.setObjectName(u"lw_objects")
+        self.lw_objects.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.lw_objects.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.lw_objects.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.lw_objects.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+
         self.horizontalLayout_8.addWidget(self.lw_objects)
+
+
         self.verticalLayout_3.addWidget(self.f_objectList)
-        self.b_add = QtWidgets.QPushButton(self.gb_objects)
-        self.b_add.setMinimumSize(QtCore.QSize(0, 0))
-        self.b_add.setMaximumSize(QtCore.QSize(99999, 16777215))
-        self.b_add.setFocusPolicy(QtCore.Qt.NoFocus)
-        self.b_add.setObjectName("b_add")
+
+        self.b_add = QPushButton(self.gb_objects)
+        self.b_add.setObjectName(u"b_add")
+        self.b_add.setMinimumSize(QSize(0, 0))
+        self.b_add.setMaximumSize(QSize(99999, 16777215))
+        self.b_add.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
         self.verticalLayout_3.addWidget(self.b_add)
-        self.verticalLayout_2.addWidget(self.gb_objects)
-        self.gb_submit = QtWidgets.QGroupBox(self.gb_export)
+
+
+        self.lo_export.addWidget(self.gb_objects)
+
+        self.gb_submit = QGroupBox(self.gb_export)
+        self.gb_submit.setObjectName(u"gb_submit")
         self.gb_submit.setCheckable(True)
         self.gb_submit.setChecked(True)
-        self.gb_submit.setObjectName("gb_submit")
-        self.verticalLayout_8 = QtWidgets.QVBoxLayout(self.gb_submit)
+        self.verticalLayout_8 = QVBoxLayout(self.gb_submit)
+        self.verticalLayout_8.setObjectName(u"verticalLayout_8")
         self.verticalLayout_8.setContentsMargins(-1, 15, -1, -1)
-        self.verticalLayout_8.setObjectName("verticalLayout_8")
-        self.f_manager = QtWidgets.QWidget(self.gb_submit)
-        self.f_manager.setObjectName("f_manager")
-        self.horizontalLayout_14 = QtWidgets.QHBoxLayout(self.f_manager)
+        self.f_manager = QWidget(self.gb_submit)
+        self.f_manager.setObjectName(u"f_manager")
+        self.horizontalLayout_14 = QHBoxLayout(self.f_manager)
+        self.horizontalLayout_14.setObjectName(u"horizontalLayout_14")
         self.horizontalLayout_14.setContentsMargins(-1, 0, -1, 0)
-        self.horizontalLayout_14.setObjectName("horizontalLayout_14")
-        self.l_manager = QtWidgets.QLabel(self.f_manager)
-        self.l_manager.setObjectName("l_manager")
+        self.l_manager = QLabel(self.f_manager)
+        self.l_manager.setObjectName(u"l_manager")
+
         self.horizontalLayout_14.addWidget(self.l_manager)
-        spacerItem9 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_14.addItem(spacerItem9)
-        self.cb_manager = QtWidgets.QComboBox(self.f_manager)
-        self.cb_manager.setMinimumSize(QtCore.QSize(150, 0))
-        self.cb_manager.setObjectName("cb_manager")
+
+        self.horizontalSpacer_19 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_14.addItem(self.horizontalSpacer_19)
+
+        self.cb_manager = QComboBox(self.f_manager)
+        self.cb_manager.setObjectName(u"cb_manager")
+        self.cb_manager.setMinimumSize(QSize(150, 0))
+
         self.horizontalLayout_14.addWidget(self.cb_manager)
+
+
         self.verticalLayout_8.addWidget(self.f_manager)
-        self.f_rjPrio = QtWidgets.QWidget(self.gb_submit)
-        self.f_rjPrio.setObjectName("f_rjPrio")
-        self.horizontalLayout_21 = QtWidgets.QHBoxLayout(self.f_rjPrio)
+
+        self.f_rjPrio = QWidget(self.gb_submit)
+        self.f_rjPrio.setObjectName(u"f_rjPrio")
+        self.horizontalLayout_21 = QHBoxLayout(self.f_rjPrio)
+        self.horizontalLayout_21.setObjectName(u"horizontalLayout_21")
         self.horizontalLayout_21.setContentsMargins(-1, 0, -1, 0)
-        self.horizontalLayout_21.setObjectName("horizontalLayout_21")
-        self.l_rjPrio = QtWidgets.QLabel(self.f_rjPrio)
-        self.l_rjPrio.setObjectName("l_rjPrio")
+        self.l_rjPrio = QLabel(self.f_rjPrio)
+        self.l_rjPrio.setObjectName(u"l_rjPrio")
+
         self.horizontalLayout_21.addWidget(self.l_rjPrio)
-        spacerItem10 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_21.addItem(spacerItem10)
-        self.sp_rjPrio = QtWidgets.QSpinBox(self.f_rjPrio)
+
+        self.horizontalSpacer_16 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_21.addItem(self.horizontalSpacer_16)
+
+        self.sp_rjPrio = QSpinBox(self.f_rjPrio)
+        self.sp_rjPrio.setObjectName(u"sp_rjPrio")
         self.sp_rjPrio.setMaximum(100)
-        self.sp_rjPrio.setProperty("value", 50)
-        self.sp_rjPrio.setObjectName("sp_rjPrio")
+        self.sp_rjPrio.setValue(50)
+
         self.horizontalLayout_21.addWidget(self.sp_rjPrio)
+
+
         self.verticalLayout_8.addWidget(self.f_rjPrio)
-        self.f_rjWidgetsPerTask = QtWidgets.QWidget(self.gb_submit)
-        self.f_rjWidgetsPerTask.setObjectName("f_rjWidgetsPerTask")
-        self.horizontalLayout_22 = QtWidgets.QHBoxLayout(self.f_rjWidgetsPerTask)
+
+        self.f_rjWidgetsPerTask = QWidget(self.gb_submit)
+        self.f_rjWidgetsPerTask.setObjectName(u"f_rjWidgetsPerTask")
+        self.horizontalLayout_22 = QHBoxLayout(self.f_rjWidgetsPerTask)
+        self.horizontalLayout_22.setObjectName(u"horizontalLayout_22")
         self.horizontalLayout_22.setContentsMargins(-1, 0, -1, 0)
-        self.horizontalLayout_22.setObjectName("horizontalLayout_22")
-        self.label_15 = QtWidgets.QLabel(self.f_rjWidgetsPerTask)
-        self.label_15.setObjectName("label_15")
+        self.label_15 = QLabel(self.f_rjWidgetsPerTask)
+        self.label_15.setObjectName(u"label_15")
+
         self.horizontalLayout_22.addWidget(self.label_15)
-        spacerItem11 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_22.addItem(spacerItem11)
-        self.sp_rjFramesPerTask = QtWidgets.QSpinBox(self.f_rjWidgetsPerTask)
+
+        self.horizontalSpacer_17 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_22.addItem(self.horizontalSpacer_17)
+
+        self.sp_rjFramesPerTask = QSpinBox(self.f_rjWidgetsPerTask)
+        self.sp_rjFramesPerTask.setObjectName(u"sp_rjFramesPerTask")
+        self.sp_rjFramesPerTask.setMinimum(1)
         self.sp_rjFramesPerTask.setMaximum(9999)
-        self.sp_rjFramesPerTask.setProperty("value", 9999)
-        self.sp_rjFramesPerTask.setObjectName("sp_rjFramesPerTask")
+        self.sp_rjFramesPerTask.setValue(9999)
+
         self.horizontalLayout_22.addWidget(self.sp_rjFramesPerTask)
+
+
         self.verticalLayout_8.addWidget(self.f_rjWidgetsPerTask)
-        self.f_rjTimeout = QtWidgets.QWidget(self.gb_submit)
-        self.f_rjTimeout.setObjectName("f_rjTimeout")
-        self.horizontalLayout_28 = QtWidgets.QHBoxLayout(self.f_rjTimeout)
+
+        self.f_rjTimeout = QWidget(self.gb_submit)
+        self.f_rjTimeout.setObjectName(u"f_rjTimeout")
+        self.horizontalLayout_28 = QHBoxLayout(self.f_rjTimeout)
+        self.horizontalLayout_28.setObjectName(u"horizontalLayout_28")
         self.horizontalLayout_28.setContentsMargins(-1, 0, -1, 0)
-        self.horizontalLayout_28.setObjectName("horizontalLayout_28")
-        self.l_rjTimeout = QtWidgets.QLabel(self.f_rjTimeout)
-        self.l_rjTimeout.setObjectName("l_rjTimeout")
+        self.l_rjTimeout = QLabel(self.f_rjTimeout)
+        self.l_rjTimeout.setObjectName(u"l_rjTimeout")
+
         self.horizontalLayout_28.addWidget(self.l_rjTimeout)
-        spacerItem12 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_28.addItem(spacerItem12)
-        self.sp_rjTimeout = QtWidgets.QSpinBox(self.f_rjTimeout)
-        self.sp_rjTimeout.setMinimum(1)
+
+        self.horizontalSpacer_23 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_28.addItem(self.horizontalSpacer_23)
+
+        self.sp_rjTimeout = QSpinBox(self.f_rjTimeout)
+        self.sp_rjTimeout.setObjectName(u"sp_rjTimeout")
+        self.sp_rjTimeout.setMinimum(0)
         self.sp_rjTimeout.setMaximum(9999)
-        self.sp_rjTimeout.setProperty("value", 180)
-        self.sp_rjTimeout.setObjectName("sp_rjTimeout")
+        self.sp_rjTimeout.setValue(180)
+
         self.horizontalLayout_28.addWidget(self.sp_rjTimeout)
+
+
         self.verticalLayout_8.addWidget(self.f_rjTimeout)
-        self.f_rjSuspended = QtWidgets.QWidget(self.gb_submit)
-        self.f_rjSuspended.setObjectName("f_rjSuspended")
-        self.horizontalLayout_26 = QtWidgets.QHBoxLayout(self.f_rjSuspended)
+
+        self.f_rjSuspended = QWidget(self.gb_submit)
+        self.f_rjSuspended.setObjectName(u"f_rjSuspended")
+        self.horizontalLayout_26 = QHBoxLayout(self.f_rjSuspended)
+        self.horizontalLayout_26.setObjectName(u"horizontalLayout_26")
         self.horizontalLayout_26.setContentsMargins(-1, 0, -1, 0)
-        self.horizontalLayout_26.setObjectName("horizontalLayout_26")
-        self.label_18 = QtWidgets.QLabel(self.f_rjSuspended)
-        self.label_18.setObjectName("label_18")
+        self.label_18 = QLabel(self.f_rjSuspended)
+        self.label_18.setObjectName(u"label_18")
+
         self.horizontalLayout_26.addWidget(self.label_18)
-        spacerItem13 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_26.addItem(spacerItem13)
-        self.chb_rjSuspended = QtWidgets.QCheckBox(self.f_rjSuspended)
-        self.chb_rjSuspended.setText("")
+
+        self.horizontalSpacer_20 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_26.addItem(self.horizontalSpacer_20)
+
+        self.chb_rjSuspended = QCheckBox(self.f_rjSuspended)
+        self.chb_rjSuspended.setObjectName(u"chb_rjSuspended")
         self.chb_rjSuspended.setChecked(False)
-        self.chb_rjSuspended.setObjectName("chb_rjSuspended")
+
         self.horizontalLayout_26.addWidget(self.chb_rjSuspended)
+
+
         self.verticalLayout_8.addWidget(self.f_rjSuspended)
-        self.w_dlConcurrentTasks = QtWidgets.QWidget(self.gb_submit)
-        self.w_dlConcurrentTasks.setObjectName("w_dlConcurrentTasks")
-        self.horizontalLayout_29 = QtWidgets.QHBoxLayout(self.w_dlConcurrentTasks)
+
+        self.w_dlConcurrentTasks = QWidget(self.gb_submit)
+        self.w_dlConcurrentTasks.setObjectName(u"w_dlConcurrentTasks")
+        self.horizontalLayout_29 = QHBoxLayout(self.w_dlConcurrentTasks)
+        self.horizontalLayout_29.setObjectName(u"horizontalLayout_29")
         self.horizontalLayout_29.setContentsMargins(-1, 0, -1, 0)
-        self.horizontalLayout_29.setObjectName("horizontalLayout_29")
-        self.l_dlConcurrentTasks = QtWidgets.QLabel(self.w_dlConcurrentTasks)
-        self.l_dlConcurrentTasks.setObjectName("l_dlConcurrentTasks")
+        self.l_dlConcurrentTasks = QLabel(self.w_dlConcurrentTasks)
+        self.l_dlConcurrentTasks.setObjectName(u"l_dlConcurrentTasks")
+
         self.horizontalLayout_29.addWidget(self.l_dlConcurrentTasks)
-        spacerItem14 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_29.addItem(spacerItem14)
-        self.sp_dlConcurrentTasks = QtWidgets.QSpinBox(self.w_dlConcurrentTasks)
+
+        self.horizontalSpacer_24 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_29.addItem(self.horizontalSpacer_24)
+
+        self.sp_dlConcurrentTasks = QSpinBox(self.w_dlConcurrentTasks)
+        self.sp_dlConcurrentTasks.setObjectName(u"sp_dlConcurrentTasks")
         self.sp_dlConcurrentTasks.setMinimum(1)
         self.sp_dlConcurrentTasks.setMaximum(99)
-        self.sp_dlConcurrentTasks.setProperty("value", 1)
-        self.sp_dlConcurrentTasks.setObjectName("sp_dlConcurrentTasks")
+        self.sp_dlConcurrentTasks.setValue(1)
+
         self.horizontalLayout_29.addWidget(self.sp_dlConcurrentTasks)
+
+
         self.verticalLayout_8.addWidget(self.w_dlConcurrentTasks)
-        self.verticalLayout_2.addWidget(self.gb_submit)
-        self.gb_previous = QtWidgets.QGroupBox(self.gb_export)
-        self.gb_previous.setObjectName("gb_previous")
-        self.horizontalLayout_13 = QtWidgets.QHBoxLayout(self.gb_previous)
+
+
+        self.lo_export.addWidget(self.gb_submit)
+
+        self.gb_previous = QGroupBox(self.gb_export)
+        self.gb_previous.setObjectName(u"gb_previous")
+        self.horizontalLayout_13 = QHBoxLayout(self.gb_previous)
+        self.horizontalLayout_13.setObjectName(u"horizontalLayout_13")
         self.horizontalLayout_13.setContentsMargins(9, 9, 9, 9)
-        self.horizontalLayout_13.setObjectName("horizontalLayout_13")
-        self.scrollArea = QtWidgets.QScrollArea(self.gb_previous)
+        self.scrollArea = QScrollArea(self.gb_previous)
+        self.scrollArea.setObjectName(u"scrollArea")
         self.scrollArea.setWidgetResizable(True)
-        self.scrollArea.setObjectName("scrollArea")
-        self.scrollAreaWidgetContents = QtWidgets.QWidget()
-        self.scrollAreaWidgetContents.setGeometry(QtCore.QRect(0, 0, 269, 69))
-        self.scrollAreaWidgetContents.setObjectName("scrollAreaWidgetContents")
-        self.horizontalLayout_12 = QtWidgets.QHBoxLayout(self.scrollAreaWidgetContents)
-        self.horizontalLayout_12.setObjectName("horizontalLayout_12")
-        self.l_pathLast = QtWidgets.QLabel(self.scrollAreaWidgetContents)
-        self.l_pathLast.setObjectName("l_pathLast")
+        self.scrollAreaWidgetContents = QWidget()
+        self.scrollAreaWidgetContents.setObjectName(u"scrollAreaWidgetContents")
+        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 329, 248))
+        self.horizontalLayout_12 = QHBoxLayout(self.scrollAreaWidgetContents)
+        self.horizontalLayout_12.setObjectName(u"horizontalLayout_12")
+        self.l_pathLast = QLabel(self.scrollAreaWidgetContents)
+        self.l_pathLast.setObjectName(u"l_pathLast")
+
         self.horizontalLayout_12.addWidget(self.l_pathLast)
+
         self.scrollArea.setWidget(self.scrollAreaWidgetContents)
+
         self.horizontalLayout_13.addWidget(self.scrollArea)
-        self.b_pathLast = QtWidgets.QToolButton(self.gb_previous)
+
+        self.b_pathLast = QToolButton(self.gb_previous)
+        self.b_pathLast.setObjectName(u"b_pathLast")
         self.b_pathLast.setEnabled(True)
-        self.b_pathLast.setArrowType(QtCore.Qt.DownArrow)
-        self.b_pathLast.setObjectName("b_pathLast")
+        self.b_pathLast.setArrowType(Qt.ArrowType.DownArrow)
+
         self.horizontalLayout_13.addWidget(self.b_pathLast)
-        self.verticalLayout_2.addWidget(self.gb_previous)
+
+
+        self.lo_export.addWidget(self.gb_previous)
+
+
         self.verticalLayout.addWidget(self.gb_export)
 
+        QWidget.setTabOrder(self.e_name, self.b_context)
+        QWidget.setTabOrder(self.b_context, self.cb_context)
+        QWidget.setTabOrder(self.cb_context, self.cb_rangeType)
+        QWidget.setTabOrder(self.cb_rangeType, self.sp_rangeStart)
+        QWidget.setTabOrder(self.sp_rangeStart, self.sp_rangeEnd)
+        QWidget.setTabOrder(self.sp_rangeEnd, self.chb_master)
+        QWidget.setTabOrder(self.chb_master, self.cb_outPath)
+        QWidget.setTabOrder(self.cb_outPath, self.cb_outType)
+        QWidget.setTabOrder(self.cb_outType, self.cb_cam)
+        QWidget.setTabOrder(self.cb_cam, self.cb_sCamShot)
+        QWidget.setTabOrder(self.cb_sCamShot, self.chb_additionalOptions)
+        QWidget.setTabOrder(self.chb_additionalOptions, self.chb_wholeScene)
+        QWidget.setTabOrder(self.chb_wholeScene, self.lw_objects)
+        QWidget.setTabOrder(self.lw_objects, self.gb_submit)
+        QWidget.setTabOrder(self.gb_submit, self.cb_manager)
+        QWidget.setTabOrder(self.cb_manager, self.sp_rjPrio)
+        QWidget.setTabOrder(self.sp_rjPrio, self.sp_rjFramesPerTask)
+        QWidget.setTabOrder(self.sp_rjFramesPerTask, self.sp_rjTimeout)
+        QWidget.setTabOrder(self.sp_rjTimeout, self.chb_rjSuspended)
+        QWidget.setTabOrder(self.chb_rjSuspended, self.sp_dlConcurrentTasks)
+        QWidget.setTabOrder(self.sp_dlConcurrentTasks, self.scrollArea)
+        QWidget.setTabOrder(self.scrollArea, self.b_pathLast)
+
         self.retranslateUi(wg_Export)
-        QtCore.QMetaObject.connectSlotsByName(wg_Export)
-        wg_Export.setTabOrder(self.e_name, self.b_context)
-        wg_Export.setTabOrder(self.b_context, self.cb_context)
-        wg_Export.setTabOrder(self.cb_context, self.cb_rangeType)
-        wg_Export.setTabOrder(self.cb_rangeType, self.sp_rangeStart)
-        wg_Export.setTabOrder(self.sp_rangeStart, self.sp_rangeEnd)
-        wg_Export.setTabOrder(self.sp_rangeEnd, self.chb_master)
-        wg_Export.setTabOrder(self.chb_master, self.cb_outPath)
-        wg_Export.setTabOrder(self.cb_outPath, self.cb_outType)
-        wg_Export.setTabOrder(self.cb_outType, self.cb_cam)
-        wg_Export.setTabOrder(self.cb_cam, self.cb_sCamShot)
-        wg_Export.setTabOrder(self.cb_sCamShot, self.chb_additionalOptions)
-        wg_Export.setTabOrder(self.chb_additionalOptions, self.chb_wholeScene)
-        wg_Export.setTabOrder(self.chb_wholeScene, self.lw_objects)
-        wg_Export.setTabOrder(self.lw_objects, self.gb_submit)
-        wg_Export.setTabOrder(self.gb_submit, self.cb_manager)
-        wg_Export.setTabOrder(self.cb_manager, self.sp_rjPrio)
-        wg_Export.setTabOrder(self.sp_rjPrio, self.sp_rjFramesPerTask)
-        wg_Export.setTabOrder(self.sp_rjFramesPerTask, self.sp_rjTimeout)
-        wg_Export.setTabOrder(self.sp_rjTimeout, self.chb_rjSuspended)
-        wg_Export.setTabOrder(self.chb_rjSuspended, self.sp_dlConcurrentTasks)
-        wg_Export.setTabOrder(self.sp_dlConcurrentTasks, self.scrollArea)
-        wg_Export.setTabOrder(self.scrollArea, self.b_pathLast)
+
+        QMetaObject.connectSlotsByName(wg_Export)
+    # setupUi
 
     def retranslateUi(self, wg_Export):
-        wg_Export.setWindowTitle(QtWidgets.QApplication.translate("", "Export", None, -1))
-        self.l_name.setText(QtWidgets.QApplication.translate("", "Name:", None, -1))
-        self.l_class.setText(QtWidgets.QApplication.translate("", "Export", None, -1))
-        self.gb_export.setTitle(QtWidgets.QApplication.translate("", "General", None, -1))
-        self.label_4.setText(QtWidgets.QApplication.translate("", "Context:", None, -1))
-        self.b_context.setText(QtWidgets.QApplication.translate("", "Select", None, -1))
-        self.l_tasklabel.setText(QtWidgets.QApplication.translate("", "Productname:", None, -1))
-        self.b_changeTask.setText(QtWidgets.QApplication.translate("", "change", None, -1))
-        self.label_3.setText(QtWidgets.QApplication.translate("", "Framerange:", None, -1))
-        self.l_rangeEnd.setText(QtWidgets.QApplication.translate("", "1100", None, -1))
-        self.l_rangeStart.setText(QtWidgets.QApplication.translate("", "1001", None, -1))
-        self.l_rangeStartInfo.setText(QtWidgets.QApplication.translate("", "Start:", None, -1))
-        self.l_rangeEndInfo.setText(QtWidgets.QApplication.translate("", "End:", None, -1))
-        self.l_master.setText(QtWidgets.QApplication.translate("", "Update Master Version:", None, -1))
-        self.l_outPath.setText(QtWidgets.QApplication.translate("", "Location:", None, -1))
-        self.l_outType.setText(QtWidgets.QApplication.translate("", "Outputtype:", None, -1))
-        self.l_cam.setText(QtWidgets.QApplication.translate("", "Camera:", None, -1))
-        self.l_sCamShot.setText(QtWidgets.QApplication.translate("", "Shot:", None, -1))
-        self.b_selectCam.setText(QtWidgets.QApplication.translate("", "Select", None, -1))
-        self.l_additionalOptions.setText(QtWidgets.QApplication.translate("", "Show additional options on publish:", None, -1))
-        self.l_wholeScene.setText(QtWidgets.QApplication.translate("", "Export whole Scene:", None, -1))
-        self.gb_objects.setTitle(QtWidgets.QApplication.translate("", "Objects", None, -1))
-        self.b_add.setText(QtWidgets.QApplication.translate("", "Add selected", None, -1))
-        self.gb_submit.setTitle(QtWidgets.QApplication.translate("", "Submit Render Job", None, -1))
-        self.l_manager.setText(QtWidgets.QApplication.translate("", "Manager:", None, -1))
-        self.l_rjPrio.setText(QtWidgets.QApplication.translate("", "Priority:", None, -1))
-        self.label_15.setText(QtWidgets.QApplication.translate("", "Frames per Task:", None, -1))
-        self.l_rjTimeout.setText(QtWidgets.QApplication.translate("", "Task Timeout (min)", None, -1))
-        self.label_18.setText(QtWidgets.QApplication.translate("", "Submit suspended:", None, -1))
-        self.l_dlConcurrentTasks.setText(QtWidgets.QApplication.translate("", "Concurrent Tasks:", None, -1))
-        self.gb_previous.setTitle(QtWidgets.QApplication.translate("", "Last export", None, -1))
-        self.l_pathLast.setText(QtWidgets.QApplication.translate("", "None", None, -1))
-        self.b_pathLast.setText(QtWidgets.QApplication.translate("", "...", None, -1))
+        wg_Export.setWindowTitle(QCoreApplication.translate("wg_Export", u"Export", None))
+        self.l_name.setText(QCoreApplication.translate("wg_Export", u"Name:", None))
+        self.l_class.setText(QCoreApplication.translate("wg_Export", u"Export", None))
+        self.gb_export.setTitle(QCoreApplication.translate("wg_Export", u"General", None))
+        self.l_comment.setText(QCoreApplication.translate("wg_Export", u"Comment:", None))
+        self.label_4.setText(QCoreApplication.translate("wg_Export", u"Context:", None))
+        self.l_context.setText("")
+        self.b_context.setText(QCoreApplication.translate("wg_Export", u"Select", None))
+        self.l_tasklabel.setText(QCoreApplication.translate("wg_Export", u"Productname:", None))
+        self.l_taskName.setText("")
+        self.b_changeTask.setText(QCoreApplication.translate("wg_Export", u"change", None))
+        self.label_3.setText(QCoreApplication.translate("wg_Export", u"Framerange:", None))
+        self.l_rangeEnd.setText(QCoreApplication.translate("wg_Export", u"1100", None))
+        self.l_rangeStart.setText(QCoreApplication.translate("wg_Export", u"1001", None))
+        self.l_rangeStartInfo.setText(QCoreApplication.translate("wg_Export", u"Start:", None))
+        self.l_rangeEndInfo.setText(QCoreApplication.translate("wg_Export", u"End:", None))
+        self.l_master.setText(QCoreApplication.translate("wg_Export", u"Update Master Version:", None))
+        self.chb_master.setText("")
+        self.l_outPath.setText(QCoreApplication.translate("wg_Export", u"Location:", None))
+        self.l_outType.setText(QCoreApplication.translate("wg_Export", u"Outputtype:", None))
+        self.l_cam.setText(QCoreApplication.translate("wg_Export", u"Camera:", None))
+        self.l_sCamShot.setText(QCoreApplication.translate("wg_Export", u"Shot:", None))
+        self.b_selectCam.setText(QCoreApplication.translate("wg_Export", u"Select", None))
+        self.l_additionalOptions.setText(QCoreApplication.translate("wg_Export", u"Show additional options on publish:", None))
+        self.chb_additionalOptions.setText("")
+        self.l_wholeScene.setText(QCoreApplication.translate("wg_Export", u"Export whole Scene:", None))
+        self.chb_wholeScene.setText("")
+        self.gb_objects.setTitle(QCoreApplication.translate("wg_Export", u"Objects", None))
+        self.b_add.setText(QCoreApplication.translate("wg_Export", u"Add selected", None))
+        self.gb_submit.setTitle(QCoreApplication.translate("wg_Export", u"Submit Render Job", None))
+        self.l_manager.setText(QCoreApplication.translate("wg_Export", u"Manager:", None))
+        self.l_rjPrio.setText(QCoreApplication.translate("wg_Export", u"Priority:", None))
+        self.label_15.setText(QCoreApplication.translate("wg_Export", u"Frames per Task:", None))
+        self.l_rjTimeout.setText(QCoreApplication.translate("wg_Export", u"Task Timeout (min)", None))
+        self.label_18.setText(QCoreApplication.translate("wg_Export", u"Submit suspended:", None))
+        self.chb_rjSuspended.setText("")
+        self.l_dlConcurrentTasks.setText(QCoreApplication.translate("wg_Export", u"Concurrent Tasks:", None))
+        self.gb_previous.setTitle(QCoreApplication.translate("wg_Export", u"Last export", None))
+        self.l_pathLast.setText(QCoreApplication.translate("wg_Export", u"None", None))
+        self.b_pathLast.setText(QCoreApplication.translate("wg_Export", u"...", None))
+    # retranslateUi
 

@@ -19,10 +19,11 @@ Gizmo {
  addUserKnob {22 refresh l "Refresh" T "pcore.appPlugin.getOutputPath(nuke.thisNode().node(\"WritePrismBase\"), nuke.thisNode())" +STARTLINE}
  addUserKnob {26 ""}
  addUserKnob {22 b_startRender l Render T "pcore.appPlugin.startRender(nuke.thisNode().node(\"WritePrismBase\"), nuke.thisNode())" +STARTLINE}
- addUserKnob {22 b_startRenderLastVersion l "Render as previous version..." -STARTLINE T "pcore.appPlugin.renderAsVersion(nuke.thisNode().node(\"WritePrismBase\"), nuke.thisNode())"}
- addUserKnob {22 b_openSubmitter l "Submit Job..." T "pcore.appPlugin.openFarmSubmitter(nuke.thisNode().node(\"WritePrismBase\"), nuke.thisNode())"}
+ addUserKnob {6 submitJob l "Submit Job"}
+ addUserKnob {1 prevFileNameEdit l "previous filepath" +INVISIBLE}
  addUserKnob {26 prevFileName l "previous filepath" T "-"}
  addUserKnob {22 openDir l "Open In..." T "pcore.appPlugin.openInClicked(nuke.thisNode().node(\"WritePrismBase\"), nuke.thisNode())" +STARTLINE}
+ addUserKnob {22 createRead l "Create Read" T "pcore.appPlugin.createRead(nuke.thisNode().node(\"WritePrismBase\"), nuke.thisNode())"}
  onCreate "try: pcore.appPlugin.writeGizmoCreated()\nexcept: pass"
  knobChanged "try:\n\tpcore.getPlugin(\"Nuke\").updateNodeUI(\"writePrism\", nuke.thisNode())\nexcept:\n\tpass"
 }

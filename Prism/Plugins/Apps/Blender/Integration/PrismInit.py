@@ -55,16 +55,17 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 7:
 sys.path.insert(0, os.path.join(prismRoot, "Scripts"))
 import PrismCore
 
-from PySide2.QtCore import *
-from PySide2.QtGui import *
-from PySide2.QtWidgets import *
+from qtpy.QtCore import *
+from qtpy.QtGui import *
+from qtpy.QtWidgets import *
 
 
 from bpy.app.handlers import persistent
 
 
-def prismInit():
-    pcore = PrismCore.PrismCore(app="Blender")
+def prismInit(prismArgs=None):
+    prismArgs = prismArgs or []
+    pcore = PrismCore.PrismCore(app="Blender", prismArgs=prismArgs)
     return pcore
 
 
@@ -85,7 +86,7 @@ def sceneOpen(dummy):
 
 class PrismSave(bpy.types.Operator):
     bl_idname = "object.prism_save"
-    bl_label = "Save"
+    bl_label = "Save Version"
 
     def execute(self, context):
         if platform.system() == "Linux":
@@ -102,7 +103,7 @@ class PrismSave(bpy.types.Operator):
 
 class PrismSaveComment(bpy.types.Operator):
     bl_idname = "object.prism_savecomment"
-    bl_label = "Save Comment"
+    bl_label = "Save with Comment"
 
     def execute(self, context):
         if platform.system() == "Linux":
@@ -192,22 +193,22 @@ class PrismPanel(bpy.types.Panel):
 
 
 def register():
-    if bpy.app.background:
-        return
-
     try:
         qapp = QApplication.instance()
         if qapp is None:
             qapp = QApplication(sys.argv)
 
         global pcore
-        pcore = prismInit()
-        bpy.utils.register_class(PrismSave)
-        bpy.utils.register_class(PrismSaveComment)
-        bpy.utils.register_class(PrismProjectBrowser)
-        bpy.utils.register_class(PrismStateManager)
-        bpy.utils.register_class(PrismSettings)
-        # bpy.utils.register_class(PrismPanel)
+        if bpy.app.background:
+            pcore = prismInit(["noUI"])
+        else:
+            pcore = prismInit()
+            bpy.utils.register_class(PrismSave)
+            bpy.utils.register_class(PrismSaveComment)
+            bpy.utils.register_class(PrismProjectBrowser)
+            bpy.utils.register_class(PrismStateManager)
+            bpy.utils.register_class(PrismSettings)
+            # bpy.utils.register_class(PrismPanel)
 
         bpy.app.handlers.load_pre.append(sceneUnload)
         bpy.app.handlers.save_post.append(sceneSave)

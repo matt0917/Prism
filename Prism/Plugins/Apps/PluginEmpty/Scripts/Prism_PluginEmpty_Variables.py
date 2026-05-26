@@ -32,9 +32,12 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import os
+
+
 class Prism_PluginEmpty_Variables(object):
     def __init__(self, core, plugin):
-        self.version = "v2.0.0.beta2"
+        self.version = "v2.0.0"
         self.pluginName = "PluginEmpty"
         self.pluginType = "App"
         self.appShortName = "PluginEmpty"
@@ -45,4 +48,7 @@ class Prism_PluginEmpty_Variables(object):
         self.outputFormats = [".abc", ".obj", ".fbx", "ShotCam"]
         self.appColor = [255, 255, 255]
         self.renderPasses = []
-        self.platforms = ["Windows", "Linux", "Darwin"]
+        self.platforms = ["Windows"]
+        self.pluginDirectory = os.path.abspath(
+            os.path.dirname(os.path.dirname(__file__))
+        )

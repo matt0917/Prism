@@ -1,299 +1,433 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'hou_Playblast.ui'
-#
-# Created: Tue Mar  7 11:17:54 2023
-#      by: qtpy-uic 2.0.5
-#
-# WARNING! All changes made in this file will be lost!
+################################################################################
+## Form generated from reading UI file 'hou_Playblast.ui'
+##
+## Created by: Qt User Interface Compiler version 6.9.0
+##
+## WARNING! All changes made in this file will be lost when recompiling UI file!
+################################################################################
 
-from qtpy import QtCore, QtGui, QtWidgets
+from qtpy.QtCore import *  # type: ignore
+from qtpy.QtGui import *  # type: ignore
+from qtpy.QtWidgets import *  # type: ignore
 
 class Ui_wg_Playblast(object):
     def setupUi(self, wg_Playblast):
-        wg_Playblast.setObjectName("wg_Playblast")
-        wg_Playblast.resize(340, 429)
-        self.verticalLayout = QtWidgets.QVBoxLayout(wg_Playblast)
+        if not wg_Playblast.objectName():
+            wg_Playblast.setObjectName(u"wg_Playblast")
+        wg_Playblast.resize(389, 479)
+        self.verticalLayout = QVBoxLayout(wg_Playblast)
+        self.verticalLayout.setObjectName(u"verticalLayout")
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
-        self.verticalLayout.setObjectName("verticalLayout")
-        self.widget_4 = QtWidgets.QWidget(wg_Playblast)
-        self.widget_4.setObjectName("widget_4")
-        self.horizontalLayout_4 = QtWidgets.QHBoxLayout(self.widget_4)
+        self.widget_4 = QWidget(wg_Playblast)
+        self.widget_4.setObjectName(u"widget_4")
+        self.horizontalLayout_4 = QHBoxLayout(self.widget_4)
+        self.horizontalLayout_4.setObjectName(u"horizontalLayout_4")
         self.horizontalLayout_4.setContentsMargins(-1, 0, 18, 0)
-        self.horizontalLayout_4.setObjectName("horizontalLayout_4")
-        self.l_name = QtWidgets.QLabel(self.widget_4)
-        self.l_name.setObjectName("l_name")
+        self.l_name = QLabel(self.widget_4)
+        self.l_name.setObjectName(u"l_name")
+
         self.horizontalLayout_4.addWidget(self.l_name)
-        self.e_name = QtWidgets.QLineEdit(self.widget_4)
-        self.e_name.setObjectName("e_name")
+
+        self.e_name = QLineEdit(self.widget_4)
+        self.e_name.setObjectName(u"e_name")
+
         self.horizontalLayout_4.addWidget(self.e_name)
-        self.l_class = QtWidgets.QLabel(self.widget_4)
-        font = QtGui.QFont()
-        font.setWeight(75)
+
+        self.l_class = QLabel(self.widget_4)
+        self.l_class.setObjectName(u"l_class")
+        font = QFont()
         font.setBold(True)
         self.l_class.setFont(font)
-        self.l_class.setObjectName("l_class")
+
         self.horizontalLayout_4.addWidget(self.l_class)
+
+
         self.verticalLayout.addWidget(self.widget_4)
-        self.gb_playblast = QtWidgets.QGroupBox(wg_Playblast)
-        self.gb_playblast.setObjectName("gb_playblast")
-        self.verticalLayout_2 = QtWidgets.QVBoxLayout(self.gb_playblast)
-        self.verticalLayout_2.setObjectName("verticalLayout_2")
-        self.widget_10 = QtWidgets.QWidget(self.gb_playblast)
-        self.widget_10.setObjectName("widget_10")
-        self.horizontalLayout_10 = QtWidgets.QHBoxLayout(self.widget_10)
+
+        self.gb_playblast = QGroupBox(wg_Playblast)
+        self.gb_playblast.setObjectName(u"gb_playblast")
+        self.verticalLayout_2 = QVBoxLayout(self.gb_playblast)
+        self.verticalLayout_2.setObjectName(u"verticalLayout_2")
+        self.w_comment = QWidget(self.gb_playblast)
+        self.w_comment.setObjectName(u"w_comment")
+        self.horizontalLayout_25 = QHBoxLayout(self.w_comment)
+        self.horizontalLayout_25.setSpacing(0)
+        self.horizontalLayout_25.setObjectName(u"horizontalLayout_25")
+        self.horizontalLayout_25.setContentsMargins(9, 0, 9, 0)
+        self.l_comment = QLabel(self.w_comment)
+        self.l_comment.setObjectName(u"l_comment")
+        self.l_comment.setMinimumSize(QSize(40, 0))
+        self.l_comment.setMaximumSize(QSize(95, 16777215))
+
+        self.horizontalLayout_25.addWidget(self.l_comment)
+
+        self.horizontalSpacer_8 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_25.addItem(self.horizontalSpacer_8)
+
+        self.e_comment = QLineEdit(self.w_comment)
+        self.e_comment.setObjectName(u"e_comment")
+
+        self.horizontalLayout_25.addWidget(self.e_comment)
+
+
+        self.verticalLayout_2.addWidget(self.w_comment)
+
+        self.widget_10 = QWidget(self.gb_playblast)
+        self.widget_10.setObjectName(u"widget_10")
+        self.horizontalLayout_10 = QHBoxLayout(self.widget_10)
+        self.horizontalLayout_10.setObjectName(u"horizontalLayout_10")
         self.horizontalLayout_10.setContentsMargins(-1, 0, -1, 0)
-        self.horizontalLayout_10.setObjectName("horizontalLayout_10")
-        self.label_2 = QtWidgets.QLabel(self.widget_10)
-        self.label_2.setObjectName("label_2")
+        self.label_2 = QLabel(self.widget_10)
+        self.label_2.setObjectName(u"label_2")
+
         self.horizontalLayout_10.addWidget(self.label_2)
-        self.l_taskName = QtWidgets.QLabel(self.widget_10)
-        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+
+        self.l_taskName = QLabel(self.widget_10)
+        self.l_taskName.setObjectName(u"l_taskName")
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.l_taskName.sizePolicy().hasHeightForWidth())
         self.l_taskName.setSizePolicy(sizePolicy)
-        self.l_taskName.setText("")
-        self.l_taskName.setAlignment(QtCore.Qt.AlignCenter)
-        self.l_taskName.setObjectName("l_taskName")
+        self.l_taskName.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
         self.horizontalLayout_10.addWidget(self.l_taskName)
-        self.b_changeTask = QtWidgets.QPushButton(self.widget_10)
+
+        self.b_changeTask = QPushButton(self.widget_10)
+        self.b_changeTask.setObjectName(u"b_changeTask")
         self.b_changeTask.setEnabled(True)
-        self.b_changeTask.setFocusPolicy(QtCore.Qt.NoFocus)
-        self.b_changeTask.setObjectName("b_changeTask")
+        self.b_changeTask.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
         self.horizontalLayout_10.addWidget(self.b_changeTask)
+
+
         self.verticalLayout_2.addWidget(self.widget_10)
-        self.widget_2 = QtWidgets.QWidget(self.gb_playblast)
-        self.widget_2.setObjectName("widget_2")
-        self.horizontalLayout = QtWidgets.QHBoxLayout(self.widget_2)
+
+        self.widget_2 = QWidget(self.gb_playblast)
+        self.widget_2.setObjectName(u"widget_2")
+        self.horizontalLayout = QHBoxLayout(self.widget_2)
         self.horizontalLayout.setSpacing(0)
+        self.horizontalLayout.setObjectName(u"horizontalLayout")
         self.horizontalLayout.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout.setObjectName("horizontalLayout")
-        self.label_3 = QtWidgets.QLabel(self.widget_2)
-        self.label_3.setObjectName("label_3")
+        self.label_3 = QLabel(self.widget_2)
+        self.label_3.setObjectName(u"label_3")
+
         self.horizontalLayout.addWidget(self.label_3)
-        spacerItem = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout.addItem(spacerItem)
-        self.cb_rangeType = QtWidgets.QComboBox(self.widget_2)
-        self.cb_rangeType.setObjectName("cb_rangeType")
+
+        self.horizontalSpacer_2 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout.addItem(self.horizontalSpacer_2)
+
+        self.cb_rangeType = QComboBox(self.widget_2)
+        self.cb_rangeType.setObjectName(u"cb_rangeType")
+
         self.horizontalLayout.addWidget(self.cb_rangeType)
+
+
         self.verticalLayout_2.addWidget(self.widget_2)
-        self.f_frameRange_2 = QtWidgets.QWidget(self.gb_playblast)
-        self.f_frameRange_2.setObjectName("f_frameRange_2")
-        self.gridLayout = QtWidgets.QGridLayout(self.f_frameRange_2)
+
+        self.f_frameRange_2 = QWidget(self.gb_playblast)
+        self.f_frameRange_2.setObjectName(u"f_frameRange_2")
+        self.gridLayout = QGridLayout(self.f_frameRange_2)
+        self.gridLayout.setObjectName(u"gridLayout")
         self.gridLayout.setContentsMargins(-1, 0, -1, 0)
-        self.gridLayout.setObjectName("gridLayout")
-        self.l_rangeEnd = QtWidgets.QLabel(self.f_frameRange_2)
-        self.l_rangeEnd.setMinimumSize(QtCore.QSize(30, 0))
-        self.l_rangeEnd.setAlignment(QtCore.Qt.AlignRight|QtCore.Qt.AlignTrailing|QtCore.Qt.AlignVCenter)
-        self.l_rangeEnd.setObjectName("l_rangeEnd")
+        self.l_rangeEnd = QLabel(self.f_frameRange_2)
+        self.l_rangeEnd.setObjectName(u"l_rangeEnd")
+        self.l_rangeEnd.setMinimumSize(QSize(30, 0))
+        self.l_rangeEnd.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
+
         self.gridLayout.addWidget(self.l_rangeEnd, 1, 5, 1, 1)
-        self.sp_rangeEnd = QtWidgets.QSpinBox(self.f_frameRange_2)
-        self.sp_rangeEnd.setMaximumSize(QtCore.QSize(55, 16777215))
+
+        self.sp_rangeEnd = QSpinBox(self.f_frameRange_2)
+        self.sp_rangeEnd.setObjectName(u"sp_rangeEnd")
         self.sp_rangeEnd.setMaximum(99999)
-        self.sp_rangeEnd.setProperty("value", 1100)
-        self.sp_rangeEnd.setObjectName("sp_rangeEnd")
+        self.sp_rangeEnd.setValue(1100)
+
         self.gridLayout.addWidget(self.sp_rangeEnd, 1, 6, 1, 1)
-        self.sp_rangeStart = QtWidgets.QSpinBox(self.f_frameRange_2)
-        self.sp_rangeStart.setMaximumSize(QtCore.QSize(55, 16777215))
+
+        self.sp_rangeStart = QSpinBox(self.f_frameRange_2)
+        self.sp_rangeStart.setObjectName(u"sp_rangeStart")
         self.sp_rangeStart.setMaximum(99999)
-        self.sp_rangeStart.setProperty("value", 1001)
-        self.sp_rangeStart.setObjectName("sp_rangeStart")
+        self.sp_rangeStart.setValue(1001)
+
         self.gridLayout.addWidget(self.sp_rangeStart, 0, 6, 1, 1)
-        self.l_rangeStart = QtWidgets.QLabel(self.f_frameRange_2)
-        self.l_rangeStart.setMinimumSize(QtCore.QSize(30, 0))
-        self.l_rangeStart.setAlignment(QtCore.Qt.AlignRight|QtCore.Qt.AlignTrailing|QtCore.Qt.AlignVCenter)
-        self.l_rangeStart.setObjectName("l_rangeStart")
+
+        self.l_rangeStart = QLabel(self.f_frameRange_2)
+        self.l_rangeStart.setObjectName(u"l_rangeStart")
+        self.l_rangeStart.setMinimumSize(QSize(30, 0))
+        self.l_rangeStart.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignTrailing|Qt.AlignmentFlag.AlignVCenter)
+
         self.gridLayout.addWidget(self.l_rangeStart, 0, 5, 1, 1)
-        self.l_rangeStartInfo = QtWidgets.QLabel(self.f_frameRange_2)
-        self.l_rangeStartInfo.setObjectName("l_rangeStartInfo")
+
+        self.l_rangeStartInfo = QLabel(self.f_frameRange_2)
+        self.l_rangeStartInfo.setObjectName(u"l_rangeStartInfo")
+
         self.gridLayout.addWidget(self.l_rangeStartInfo, 0, 0, 1, 1)
-        spacerItem1 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.gridLayout.addItem(spacerItem1, 0, 4, 1, 1)
-        self.l_rangeEndInfo = QtWidgets.QLabel(self.f_frameRange_2)
-        self.l_rangeEndInfo.setObjectName("l_rangeEndInfo")
+
+        self.horizontalSpacer_7 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.gridLayout.addItem(self.horizontalSpacer_7, 0, 4, 1, 1)
+
+        self.l_rangeEndInfo = QLabel(self.f_frameRange_2)
+        self.l_rangeEndInfo.setObjectName(u"l_rangeEndInfo")
+
         self.gridLayout.addWidget(self.l_rangeEndInfo, 1, 0, 1, 1)
+
+
         self.verticalLayout_2.addWidget(self.f_frameRange_2)
-        self.widget = QtWidgets.QWidget(self.gb_playblast)
-        self.widget.setObjectName("widget")
-        self.horizontalLayout_2 = QtWidgets.QHBoxLayout(self.widget)
+
+        self.widget = QWidget(self.gb_playblast)
+        self.widget.setObjectName(u"widget")
+        self.horizontalLayout_2 = QHBoxLayout(self.widget)
+        self.horizontalLayout_2.setObjectName(u"horizontalLayout_2")
         self.horizontalLayout_2.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout_2.setObjectName("horizontalLayout_2")
-        self.label = QtWidgets.QLabel(self.widget)
-        self.label.setObjectName("label")
+        self.label = QLabel(self.widget)
+        self.label.setObjectName(u"label")
+
         self.horizontalLayout_2.addWidget(self.label)
-        spacerItem2 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_2.addItem(spacerItem2)
-        self.cb_cams = QtWidgets.QComboBox(self.widget)
-        self.cb_cams.setMinimumSize(QtCore.QSize(150, 0))
-        self.cb_cams.setObjectName("cb_cams")
+
+        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_2.addItem(self.horizontalSpacer)
+
+        self.cb_cams = QComboBox(self.widget)
+        self.cb_cams.setObjectName(u"cb_cams")
+        self.cb_cams.setMinimumSize(QSize(150, 0))
+
         self.horizontalLayout_2.addWidget(self.cb_cams)
+
+
         self.verticalLayout_2.addWidget(self.widget)
-        self.f_resolution = QtWidgets.QWidget(self.gb_playblast)
-        self.f_resolution.setObjectName("f_resolution")
-        self.horizontalLayout_9 = QtWidgets.QHBoxLayout(self.f_resolution)
+
+        self.f_resolution = QWidget(self.gb_playblast)
+        self.f_resolution.setObjectName(u"f_resolution")
+        self.horizontalLayout_9 = QHBoxLayout(self.f_resolution)
         self.horizontalLayout_9.setSpacing(6)
+        self.horizontalLayout_9.setObjectName(u"horizontalLayout_9")
         self.horizontalLayout_9.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout_9.setObjectName("horizontalLayout_9")
-        self.label_6 = QtWidgets.QLabel(self.f_resolution)
-        self.label_6.setObjectName("label_6")
+        self.label_6 = QLabel(self.f_resolution)
+        self.label_6.setObjectName(u"label_6")
+
         self.horizontalLayout_9.addWidget(self.label_6)
-        spacerItem3 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_9.addItem(spacerItem3)
-        self.chb_resOverride = QtWidgets.QCheckBox(self.f_resolution)
-        self.chb_resOverride.setText("")
+
+        self.horizontalSpacer_13 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_9.addItem(self.horizontalSpacer_13)
+
+        self.chb_resOverride = QCheckBox(self.f_resolution)
+        self.chb_resOverride.setObjectName(u"chb_resOverride")
         self.chb_resOverride.setChecked(True)
-        self.chb_resOverride.setObjectName("chb_resOverride")
+
         self.horizontalLayout_9.addWidget(self.chb_resOverride)
-        self.sp_resWidth = QtWidgets.QSpinBox(self.f_resolution)
+
+        self.sp_resWidth = QSpinBox(self.f_resolution)
+        self.sp_resWidth.setObjectName(u"sp_resWidth")
         self.sp_resWidth.setEnabled(True)
         self.sp_resWidth.setMinimum(1)
         self.sp_resWidth.setMaximum(99999)
-        self.sp_resWidth.setProperty("value", 1280)
-        self.sp_resWidth.setObjectName("sp_resWidth")
+        self.sp_resWidth.setValue(1280)
+
         self.horizontalLayout_9.addWidget(self.sp_resWidth)
-        self.sp_resHeight = QtWidgets.QSpinBox(self.f_resolution)
+
+        self.sp_resHeight = QSpinBox(self.f_resolution)
+        self.sp_resHeight.setObjectName(u"sp_resHeight")
         self.sp_resHeight.setEnabled(True)
         self.sp_resHeight.setMinimum(1)
         self.sp_resHeight.setMaximum(99999)
-        self.sp_resHeight.setProperty("value", 720)
-        self.sp_resHeight.setObjectName("sp_resHeight")
+        self.sp_resHeight.setValue(720)
+
         self.horizontalLayout_9.addWidget(self.sp_resHeight)
-        self.b_resPresets = QtWidgets.QPushButton(self.f_resolution)
+
+        self.b_resPresets = QPushButton(self.f_resolution)
+        self.b_resPresets.setObjectName(u"b_resPresets")
         self.b_resPresets.setEnabled(True)
-        self.b_resPresets.setMinimumSize(QtCore.QSize(23, 23))
-        self.b_resPresets.setMaximumSize(QtCore.QSize(23, 23))
-        self.b_resPresets.setObjectName("b_resPresets")
+        self.b_resPresets.setMinimumSize(QSize(23, 23))
+        self.b_resPresets.setMaximumSize(QSize(23, 23))
+
         self.horizontalLayout_9.addWidget(self.b_resPresets)
+
+
         self.verticalLayout_2.addWidget(self.f_resolution)
-        self.f_displayMode = QtWidgets.QWidget(self.gb_playblast)
-        self.f_displayMode.setObjectName("f_displayMode")
-        self.horizontalLayout_11 = QtWidgets.QHBoxLayout(self.f_displayMode)
+
+        self.f_displayMode = QWidget(self.gb_playblast)
+        self.f_displayMode.setObjectName(u"f_displayMode")
+        self.horizontalLayout_11 = QHBoxLayout(self.f_displayMode)
+        self.horizontalLayout_11.setObjectName(u"horizontalLayout_11")
         self.horizontalLayout_11.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout_11.setObjectName("horizontalLayout_11")
-        self.label_7 = QtWidgets.QLabel(self.f_displayMode)
-        self.label_7.setObjectName("label_7")
+        self.label_7 = QLabel(self.f_displayMode)
+        self.label_7.setObjectName(u"label_7")
+
         self.horizontalLayout_11.addWidget(self.label_7)
-        spacerItem4 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_11.addItem(spacerItem4)
-        self.cb_displayMode = QtWidgets.QComboBox(self.f_displayMode)
-        self.cb_displayMode.setMinimumSize(QtCore.QSize(150, 0))
-        self.cb_displayMode.setObjectName("cb_displayMode")
+
+        self.horizontalSpacer_14 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_11.addItem(self.horizontalSpacer_14)
+
+        self.cb_displayMode = QComboBox(self.f_displayMode)
+        self.cb_displayMode.setObjectName(u"cb_displayMode")
+        self.cb_displayMode.setMinimumSize(QSize(150, 0))
+
         self.horizontalLayout_11.addWidget(self.cb_displayMode)
+
+
         self.verticalLayout_2.addWidget(self.f_displayMode)
-        self.w_master = QtWidgets.QWidget(self.gb_playblast)
-        self.w_master.setObjectName("w_master")
-        self.horizontalLayout_20 = QtWidgets.QHBoxLayout(self.w_master)
+
+        self.w_master = QWidget(self.gb_playblast)
+        self.w_master.setObjectName(u"w_master")
+        self.horizontalLayout_20 = QHBoxLayout(self.w_master)
         self.horizontalLayout_20.setSpacing(0)
+        self.horizontalLayout_20.setObjectName(u"horizontalLayout_20")
         self.horizontalLayout_20.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout_20.setObjectName("horizontalLayout_20")
-        self.l_master = QtWidgets.QLabel(self.w_master)
-        self.l_master.setObjectName("l_master")
+        self.l_master = QLabel(self.w_master)
+        self.l_master.setObjectName(u"l_master")
+
         self.horizontalLayout_20.addWidget(self.l_master)
-        spacerItem5 = QtWidgets.QSpacerItem(113, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_20.addItem(spacerItem5)
-        self.cb_master = QtWidgets.QComboBox(self.w_master)
-        self.cb_master.setMinimumSize(QtCore.QSize(150, 0))
-        self.cb_master.setObjectName("cb_master")
+
+        self.horizontalSpacer_29 = QSpacerItem(113, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_20.addItem(self.horizontalSpacer_29)
+
+        self.cb_master = QComboBox(self.w_master)
+        self.cb_master.setObjectName(u"cb_master")
+        self.cb_master.setMinimumSize(QSize(150, 0))
+
         self.horizontalLayout_20.addWidget(self.cb_master)
+
+
         self.verticalLayout_2.addWidget(self.w_master)
-        self.w_location = QtWidgets.QWidget(self.gb_playblast)
-        self.w_location.setObjectName("w_location")
-        self.horizontalLayout_18 = QtWidgets.QHBoxLayout(self.w_location)
+
+        self.w_location = QWidget(self.gb_playblast)
+        self.w_location.setObjectName(u"w_location")
+        self.horizontalLayout_18 = QHBoxLayout(self.w_location)
         self.horizontalLayout_18.setSpacing(0)
+        self.horizontalLayout_18.setObjectName(u"horizontalLayout_18")
         self.horizontalLayout_18.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout_18.setObjectName("horizontalLayout_18")
-        self.l_location = QtWidgets.QLabel(self.w_location)
-        self.l_location.setObjectName("l_location")
+        self.l_location = QLabel(self.w_location)
+        self.l_location.setObjectName(u"l_location")
+
         self.horizontalLayout_18.addWidget(self.l_location)
-        spacerItem6 = QtWidgets.QSpacerItem(113, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_18.addItem(spacerItem6)
-        self.cb_location = QtWidgets.QComboBox(self.w_location)
-        self.cb_location.setMinimumSize(QtCore.QSize(150, 0))
-        self.cb_location.setObjectName("cb_location")
+
+        self.horizontalSpacer_9 = QSpacerItem(113, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_18.addItem(self.horizontalSpacer_9)
+
+        self.cb_location = QComboBox(self.w_location)
+        self.cb_location.setObjectName(u"cb_location")
+        self.cb_location.setMinimumSize(QSize(150, 0))
+
         self.horizontalLayout_18.addWidget(self.cb_location)
+
+
         self.verticalLayout_2.addWidget(self.w_location)
-        self.widget_5 = QtWidgets.QWidget(self.gb_playblast)
-        self.widget_5.setObjectName("widget_5")
-        self.horizontalLayout_5 = QtWidgets.QHBoxLayout(self.widget_5)
+
+        self.widget_5 = QWidget(self.gb_playblast)
+        self.widget_5.setObjectName(u"widget_5")
+        self.horizontalLayout_5 = QHBoxLayout(self.widget_5)
         self.horizontalLayout_5.setSpacing(0)
+        self.horizontalLayout_5.setObjectName(u"horizontalLayout_5")
         self.horizontalLayout_5.setContentsMargins(9, 0, 9, 0)
-        self.horizontalLayout_5.setObjectName("horizontalLayout_5")
-        self.label_5 = QtWidgets.QLabel(self.widget_5)
-        self.label_5.setObjectName("label_5")
+        self.label_5 = QLabel(self.widget_5)
+        self.label_5.setObjectName(u"label_5")
+
         self.horizontalLayout_5.addWidget(self.label_5)
-        spacerItem7 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-        self.horizontalLayout_5.addItem(spacerItem7)
-        self.cb_formats = QtWidgets.QComboBox(self.widget_5)
-        self.cb_formats.setMinimumSize(QtCore.QSize(150, 0))
-        self.cb_formats.setObjectName("cb_formats")
+
+        self.horizontalSpacer_4 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_5.addItem(self.horizontalSpacer_4)
+
+        self.cb_formats = QComboBox(self.widget_5)
+        self.cb_formats.setObjectName(u"cb_formats")
+        self.cb_formats.setMinimumSize(QSize(150, 0))
+
         self.horizontalLayout_5.addWidget(self.cb_formats)
+
+
         self.verticalLayout_2.addWidget(self.widget_5)
+
+
         self.verticalLayout.addWidget(self.gb_playblast)
-        self.groupBox_3 = QtWidgets.QGroupBox(wg_Playblast)
+
+        self.groupBox_3 = QGroupBox(wg_Playblast)
+        self.groupBox_3.setObjectName(u"groupBox_3")
         self.groupBox_3.setCheckable(False)
         self.groupBox_3.setChecked(False)
-        self.groupBox_3.setObjectName("groupBox_3")
-        self.horizontalLayout_3 = QtWidgets.QHBoxLayout(self.groupBox_3)
+        self.horizontalLayout_3 = QHBoxLayout(self.groupBox_3)
+        self.horizontalLayout_3.setObjectName(u"horizontalLayout_3")
         self.horizontalLayout_3.setContentsMargins(18, -1, 18, -1)
-        self.horizontalLayout_3.setObjectName("horizontalLayout_3")
-        self.scrollArea = QtWidgets.QScrollArea(self.groupBox_3)
+        self.scrollArea = QScrollArea(self.groupBox_3)
+        self.scrollArea.setObjectName(u"scrollArea")
         self.scrollArea.setWidgetResizable(True)
-        self.scrollArea.setObjectName("scrollArea")
-        self.scrollAreaWidgetContents = QtWidgets.QWidget()
-        self.scrollAreaWidgetContents.setGeometry(QtCore.QRect(0, 0, 271, 69))
-        self.scrollAreaWidgetContents.setObjectName("scrollAreaWidgetContents")
-        self.horizontalLayout_6 = QtWidgets.QHBoxLayout(self.scrollAreaWidgetContents)
-        self.horizontalLayout_6.setObjectName("horizontalLayout_6")
-        self.l_pathLast = QtWidgets.QLabel(self.scrollAreaWidgetContents)
-        self.l_pathLast.setObjectName("l_pathLast")
+        self.scrollAreaWidgetContents = QWidget()
+        self.scrollAreaWidgetContents.setObjectName(u"scrollAreaWidgetContents")
+        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 320, 54))
+        self.horizontalLayout_6 = QHBoxLayout(self.scrollAreaWidgetContents)
+        self.horizontalLayout_6.setObjectName(u"horizontalLayout_6")
+        self.l_pathLast = QLabel(self.scrollAreaWidgetContents)
+        self.l_pathLast.setObjectName(u"l_pathLast")
+
         self.horizontalLayout_6.addWidget(self.l_pathLast)
+
         self.scrollArea.setWidget(self.scrollAreaWidgetContents)
+
         self.horizontalLayout_3.addWidget(self.scrollArea)
-        self.b_pathLast = QtWidgets.QToolButton(self.groupBox_3)
+
+        self.b_pathLast = QToolButton(self.groupBox_3)
+        self.b_pathLast.setObjectName(u"b_pathLast")
         self.b_pathLast.setEnabled(True)
-        self.b_pathLast.setArrowType(QtCore.Qt.DownArrow)
-        self.b_pathLast.setObjectName("b_pathLast")
+        self.b_pathLast.setArrowType(Qt.ArrowType.DownArrow)
+
         self.horizontalLayout_3.addWidget(self.b_pathLast)
+
+
         self.verticalLayout.addWidget(self.groupBox_3)
 
+        QWidget.setTabOrder(self.e_name, self.cb_rangeType)
+        QWidget.setTabOrder(self.cb_rangeType, self.sp_rangeStart)
+        QWidget.setTabOrder(self.sp_rangeStart, self.sp_rangeEnd)
+        QWidget.setTabOrder(self.sp_rangeEnd, self.cb_cams)
+        QWidget.setTabOrder(self.cb_cams, self.chb_resOverride)
+        QWidget.setTabOrder(self.chb_resOverride, self.sp_resWidth)
+        QWidget.setTabOrder(self.sp_resWidth, self.sp_resHeight)
+        QWidget.setTabOrder(self.sp_resHeight, self.b_resPresets)
+        QWidget.setTabOrder(self.b_resPresets, self.cb_displayMode)
+        QWidget.setTabOrder(self.cb_displayMode, self.cb_master)
+        QWidget.setTabOrder(self.cb_master, self.cb_location)
+        QWidget.setTabOrder(self.cb_location, self.cb_formats)
+        QWidget.setTabOrder(self.cb_formats, self.scrollArea)
+        QWidget.setTabOrder(self.scrollArea, self.b_pathLast)
+
         self.retranslateUi(wg_Playblast)
-        QtCore.QMetaObject.connectSlotsByName(wg_Playblast)
-        wg_Playblast.setTabOrder(self.e_name, self.cb_rangeType)
-        wg_Playblast.setTabOrder(self.cb_rangeType, self.sp_rangeStart)
-        wg_Playblast.setTabOrder(self.sp_rangeStart, self.sp_rangeEnd)
-        wg_Playblast.setTabOrder(self.sp_rangeEnd, self.cb_cams)
-        wg_Playblast.setTabOrder(self.cb_cams, self.chb_resOverride)
-        wg_Playblast.setTabOrder(self.chb_resOverride, self.sp_resWidth)
-        wg_Playblast.setTabOrder(self.sp_resWidth, self.sp_resHeight)
-        wg_Playblast.setTabOrder(self.sp_resHeight, self.b_resPresets)
-        wg_Playblast.setTabOrder(self.b_resPresets, self.cb_displayMode)
-        wg_Playblast.setTabOrder(self.cb_displayMode, self.cb_master)
-        wg_Playblast.setTabOrder(self.cb_master, self.cb_location)
-        wg_Playblast.setTabOrder(self.cb_location, self.cb_formats)
-        wg_Playblast.setTabOrder(self.cb_formats, self.scrollArea)
-        wg_Playblast.setTabOrder(self.scrollArea, self.b_pathLast)
+
+        QMetaObject.connectSlotsByName(wg_Playblast)
+    # setupUi
 
     def retranslateUi(self, wg_Playblast):
-        wg_Playblast.setWindowTitle(QtWidgets.QApplication.translate("", "Playblast", None, -1))
-        self.l_name.setText(QtWidgets.QApplication.translate("", "Name:", None, -1))
-        self.l_class.setText(QtWidgets.QApplication.translate("", "Playblast", None, -1))
-        self.gb_playblast.setTitle(QtWidgets.QApplication.translate("", "General", None, -1))
-        self.label_2.setText(QtWidgets.QApplication.translate("", "Identifier:", None, -1))
-        self.b_changeTask.setText(QtWidgets.QApplication.translate("", "change", None, -1))
-        self.label_3.setText(QtWidgets.QApplication.translate("", "Framerange:", None, -1))
-        self.l_rangeEnd.setText(QtWidgets.QApplication.translate("", "1100", None, -1))
-        self.l_rangeStart.setText(QtWidgets.QApplication.translate("", "1001", None, -1))
-        self.l_rangeStartInfo.setText(QtWidgets.QApplication.translate("", "Start:", None, -1))
-        self.l_rangeEndInfo.setText(QtWidgets.QApplication.translate("", "End:", None, -1))
-        self.label.setText(QtWidgets.QApplication.translate("", "Camera:", None, -1))
-        self.label_6.setText(QtWidgets.QApplication.translate("", "Resolution override:", None, -1))
-        self.b_resPresets.setText(QtWidgets.QApplication.translate("", "▼", None, -1))
-        self.label_7.setText(QtWidgets.QApplication.translate("", "Display mode:", None, -1))
-        self.l_master.setText(QtWidgets.QApplication.translate("", "Master Version:", None, -1))
-        self.l_location.setText(QtWidgets.QApplication.translate("", "Location:", None, -1))
-        self.label_5.setText(QtWidgets.QApplication.translate("", "Format:", None, -1))
-        self.groupBox_3.setTitle(QtWidgets.QApplication.translate("", "Last playblast", None, -1))
-        self.l_pathLast.setText(QtWidgets.QApplication.translate("", "None", None, -1))
-        self.b_pathLast.setText(QtWidgets.QApplication.translate("", "...", None, -1))
+        wg_Playblast.setWindowTitle(QCoreApplication.translate("wg_Playblast", u"Playblast", None))
+        self.l_name.setText(QCoreApplication.translate("wg_Playblast", u"Name:", None))
+        self.l_class.setText(QCoreApplication.translate("wg_Playblast", u"Playblast", None))
+        self.gb_playblast.setTitle(QCoreApplication.translate("wg_Playblast", u"General", None))
+        self.l_comment.setText(QCoreApplication.translate("wg_Playblast", u"Comment:", None))
+        self.label_2.setText(QCoreApplication.translate("wg_Playblast", u"Identifier:", None))
+        self.l_taskName.setText("")
+        self.b_changeTask.setText(QCoreApplication.translate("wg_Playblast", u"change", None))
+        self.label_3.setText(QCoreApplication.translate("wg_Playblast", u"Framerange:", None))
+        self.l_rangeEnd.setText(QCoreApplication.translate("wg_Playblast", u"1100", None))
+        self.l_rangeStart.setText(QCoreApplication.translate("wg_Playblast", u"1001", None))
+        self.l_rangeStartInfo.setText(QCoreApplication.translate("wg_Playblast", u"Start:", None))
+        self.l_rangeEndInfo.setText(QCoreApplication.translate("wg_Playblast", u"End:", None))
+        self.label.setText(QCoreApplication.translate("wg_Playblast", u"Camera:", None))
+        self.label_6.setText(QCoreApplication.translate("wg_Playblast", u"Resolution override:", None))
+        self.chb_resOverride.setText("")
+        self.b_resPresets.setText(QCoreApplication.translate("wg_Playblast", u"\u25bc", None))
+        self.label_7.setText(QCoreApplication.translate("wg_Playblast", u"Display mode:", None))
+        self.l_master.setText(QCoreApplication.translate("wg_Playblast", u"Master Version:", None))
+        self.l_location.setText(QCoreApplication.translate("wg_Playblast", u"Location:", None))
+        self.label_5.setText(QCoreApplication.translate("wg_Playblast", u"Format:", None))
+        self.groupBox_3.setTitle(QCoreApplication.translate("wg_Playblast", u"Last playblast", None))
+        self.l_pathLast.setText(QCoreApplication.translate("wg_Playblast", u"None", None))
+        self.b_pathLast.setText(QCoreApplication.translate("wg_Playblast", u"...", None))
+    # retranslateUi
 

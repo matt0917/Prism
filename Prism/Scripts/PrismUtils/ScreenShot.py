@@ -32,7 +32,10 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from __future__ import annotations
+
 import sys
+from typing import Optional, Any
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -42,7 +45,25 @@ from PrismUtils.Decorators import err_catcher
 
 
 class ScreenShot(QDialog):
-    def __init__(self, core):
+    """Provides screen capture functionality for Prism.
+    
+    This class creates a transparent overlay window that allows users to
+    select a rectangular area of the screen to capture. Used for capturing
+    project previews, asset thumbnails, and other screenshots.
+    
+    Attributes:
+        core: PrismCore instance
+        imgmap: Captured image pixmap
+        origin (QPoint): Start point of selection rectangle
+        rubberband (QRubberBand): Visual selection rectangle
+    """
+
+    def __init__(self, core: Any) -> None:
+        """Initialize ScreenShot capture dialog.
+        
+        Args:
+            core: PrismCore instance
+        """
         super(ScreenShot, self).__init__()
         self.core = core
 
@@ -69,13 +90,23 @@ class ScreenShot(QDialog):
         self.setMouseTracking(True)
 
     @err_catcher(name=__name__)
-    def mousePressEvent(self, event):
+    def mousePressEvent(self, event: Any) -> None:
+        """Handle mouse press to start selection.
+        
+        Args:
+            event: Mouse event
+        """
         self.origin = event.pos()
         self.rubberband.setGeometry(QRect(self.origin, QSize()))
         QWidget.mousePressEvent(self, event)
 
     @err_catcher(name=__name__)
-    def mouseMoveEvent(self, event):
+    def mouseMoveEvent(self, event: Any) -> None:
+        """Handle mouse move to update selection rectangle.
+        
+        Args:
+            event: Mouse event
+        """
         if self.origin is not None:
             rect = QRect(self.origin, event.pos()).normalized()
             self.rubberband.setGeometry(rect)
@@ -84,7 +115,12 @@ class ScreenShot(QDialog):
         QWidget.mouseMoveEvent(self, event)
 
     @err_catcher(name=__name__)
-    def paintEvent(self, event):
+    def paintEvent(self, event: Any) -> None:
+        """Paint the overlay with semi-transparent background.
+        
+        Args:
+            event: Paint event
+        """
         painter = QPainter(self)
 
         painter.setBrush(QColor(0, 0, 0, 100))
@@ -107,7 +143,12 @@ class ScreenShot(QDialog):
         QWidget.paintEvent(self, event)
 
     @err_catcher(name=__name__)
-    def mouseReleaseEvent(self, event):
+    def mouseReleaseEvent(self, event: Any) -> None:
+        """Handle mouse release to capture selected area.
+        
+        Args:
+            event: Mouse event
+        """
         if self.origin is not None:
             self.rubberband.hide()
             self.hide()
@@ -117,29 +158,24 @@ class ScreenShot(QDialog):
             else:
                 screen = QPixmap
 
-            desktop = QApplication.desktop()
-            winID = desktop.winId()
-            if sys.version[0] == "2":
-                try:
-                    winID = long(winID)
-                except:
-                    pass
-
             pos = self.mapToGlobal(rect.topLeft())
-            try:
-                self.imgmap = screen.grabWindow(
-                    winID, pos.x(), pos.y(), rect.width(), rect.height()
-                )
-            except:
-                self.imgmap = screen.grabWindow(
-                    int(winID), pos.x(), pos.y(), rect.width(), rect.height()
-                )
+            self.imgmap = screen.grabWindow(
+                0, pos.x(), pos.y(), rect.width(), rect.height()
+            )
             self.close()
 
         QWidget.mouseReleaseEvent(self, event)
 
 
-def grabScreenArea(core):
+def grabScreenArea(core: Any) -> Optional[QPixmap]:
+    """Show screenshot tool to capture screen area.
+    
+    Args:
+        core: Prism core instance
+        
+    Returns:
+        Captured screen area as QPixmap or None if canceled
+    """
     ss = ScreenShot(core)
     ss.exec_()
     return ss.imgmap

@@ -31,8 +31,25 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing import Any
+
 
 class Prism_PureRef_Integration(object):
-    def __init__(self, core, plugin):
+    """Integration functionality for PureRef plugin.
+    
+    Handles DCC integration and interoperability features.
+    
+    Attributes:
+        core: PrismCore instance
+        plugin: Plugin instance
+    """
+
+    def __init__(self, core: Any, plugin: Any) -> None:
+        """Initialize PureRef integration.
+        
+        Args:
+            core: PrismCore instance.
+            plugin: Plugin instance.
+        """
         self.core = core
         self.plugin = plugin

@@ -37,6 +37,9 @@ import logging
 import shutil
 import platform
 import errno
+import copy
+import time
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from qtpy.QtCore import *
 from qtpy.QtGui import *
@@ -49,25 +52,62 @@ logger = logging.getLogger(__name__)
 
 
 class Products(object):
-    def __init__(self, core):
+    """Manages cache/export products including versioning and master versions.
+    
+    Handles creation, retrieval, and management of export products (caches, alembics, etc.)
+    Provides version management, master version updates, and product metadata.
+    
+    Attributes:
+        core: Reference to the Prism core instance.
+    """
+    
+    def __init__(self, core: Any) -> None:
+        """Initialize the Products manager.
+        
+        Args:
+            core: Reference to the Prism core instance.
+        """
         self.core = core
 
     @err_catcher(name=__name__)
-    def getProductNamesFromEntity(self, entity, locations=None):
+    def getProductNamesFromEntity(self, entity: Dict, locations: Optional[List[str]] = None) -> Dict[str, Dict]:
+        """Get all product names for an entity.
+        
+        Args:
+            entity: Entity dict containing type and other entity data.
+            locations: Optional list of storage locations to search.
+            
+        Returns:
+            Dict[str, Dict]: Dict mapping product names to product data dicts.
+        """
         data = self.getProductsFromEntity(entity, locations=locations)
         names = {}
+        useTasks = self.core.products.getLinkedToTasks()
         for product in data:
-            idf = product["product"]
-            if idf not in names:
-                names[idf] = product
-                names[idf]["locations"] = []
+            if useTasks:
+                idf = "%s/%s/%s" % (product.get("department", "unknown"), product.get("task", "unknown"), product["product"])
+            else:
+                idf = product["product"]
 
-            names[idf]["locations"].append(product["path"])
+            if idf not in names:
+                names[idf] = copy.deepcopy(product)
+                names[idf]["locations"] = {}
+
+            names[idf]["locations"].update(product["locations"])
 
         return names
 
     @err_catcher(name=__name__)
-    def getProductPathFromEntity(self, entity, includeProduct=False):
+    def getProductPathFromEntity(self, entity: Dict, includeProduct: bool = False) -> str:
+        """Get the base directory path for products from an entity.
+        
+        Args:
+            entity: Entity dict containing type and other entity data.
+            includeProduct: If True, includes product name in path.
+            
+        Returns:
+            str: Base path for products.
+        """
         key = "products"
         context = entity.copy()
         path = self.core.projects.getResolvedProjectStructurePath(
@@ -79,18 +119,35 @@ class Products(object):
         return path
 
     @err_catcher(name=__name__)
-    def getProductsFromEntity(self, entity, locations=None):
-        locationData = self.core.paths.getExportProductBasePaths()
-        searchLocations = []
-        for locData in locationData:
-            if not locations or locData in locations or "all" in locations:
-                searchLocations.append(locData)
+    def getProductsFromEntity(self, entity: Dict, locations: Optional[List[str]] = None) -> List[Dict]:
+        """Get all products for an entity across specified locations.
+        
+        Args:
+            entity: Entity dict containing type and other entity data.
+            locations: Optional list of storage locations to search. Searches all if None.
+            
+        Returns:
+            List[Dict]: List of product dicts with metadata and paths.
+        """
+        if locations == "project_path":
+            searchLocations = ["other"]
+        else:
+            locationData = self.core.paths.getExportProductBasePaths()
+            searchLocations = []
+            for locData in locationData:
+                if not locations or locData in locations or "all" in locations:
+                    searchLocations.append(locData)
 
         key = "products"
         products = []
         for loc in searchLocations:
             context = entity.copy()
-            context["project_path"] = locationData[loc]
+            if "product" in context:
+                del context["product"]
+
+            if locations != "project_path":
+                context["project_path"] = locationData[loc]
+
             template = self.core.projects.getResolvedProjectStructurePath(
                 key, context=context
             )
@@ -101,18 +158,39 @@ class Products(object):
 
                 d = context.copy()
                 d.update(data)
+                d["locations"] = {loc: data.get("path", "")}
                 products.append(d)
 
         return products
 
     @err_catcher(name=__name__)
-    def getLocationPathFromLocation(self, location):
+    def getLocationPathFromLocation(self, location: str) -> Optional[str]:
+        """Get the file system path for a specific storage location.
+        
+        Args:
+            location: Storage location identifier (e.g., 'global', 'local').
+            
+        Returns:
+            Optional[str]: Filesystem path for the location, or None if not found.
+        """
         locDict = self.core.paths.getExportProductBasePaths()
         if location in locDict:
             return locDict[location]
 
     @err_catcher(name=__name__)
-    def getLocationFromFilepath(self, path):
+    def getLocationFromFilepath(self, path: str) -> Optional[str]:
+        """Determine which storage location contains the given file path.
+        
+        Args:
+            path: File system path to check.
+            
+        Returns:
+            Optional[str]: Location identifier that contains the path, or None if not found.
+                         Returns the most specific location if multiple match.
+        """
+        if not path:
+            return
+
         locDict = self.core.paths.getExportProductBasePaths()
         nPath = os.path.normpath(path)
         locations = []
@@ -124,7 +202,19 @@ class Products(object):
             return sorted(locations, key=lambda x: len(locDict[x]), reverse=True)[0]
 
     @err_catcher(name=__name__)
-    def getVersionStackContextFromPath(self, filepath):
+    def getVersionStackContextFromPath(self, filepath: str) -> Dict[str, Any]:
+        """Extract version stack context from a file path (excluding version-specific data).
+        
+        A version stack is all versions of the same product. This method extracts
+        the common context (entity, product, etc.) while removing version-specific
+        information (version number, comment, user).
+        
+        Args:
+            filepath: Path to a product version file.
+            
+        Returns:
+            Dict[str, Any]: Context dict with entity and product info, but no version details.
+        """
         context = self.core.paths.getCachePathData(filepath)
         if "asset_path" in context:
             context["asset"] = os.path.basename(context["asset_path"])
@@ -139,7 +229,18 @@ class Products(object):
         return context
 
     @err_catcher(name=__name__)
-    def getVersionsFromSameVersionStack(self, path):
+    def getVersionsFromSameVersionStack(self, path: str) -> List[Dict[str, Any]]:
+        """Get all versions in the same version stack as the given path.
+        
+        This retrieves all versions of the same product from the same entity,
+        allowing comparison or selection of different versions.
+        
+        Args:
+            path: Path to any version file in the stack.
+            
+        Returns:
+            List[Dict[str, Any]]: List of version dicts in the same version stack.
+        """
         context = self.getVersionStackContextFromPath(path)
         if not context or "product" not in context:
             return []
@@ -148,12 +249,28 @@ class Products(object):
         return versionData
 
     @err_catcher(name=__name__)
-    def getVersionsFromProduct(self, entity, product, locations="all"):
+    def getVersionsFromProduct(self, entity: Dict[str, Any], product: str, locations: Union[str, List[str]] = "all") -> List[Dict[str, Any]]:
+        """Get all versions of a specific product for an entity across locations.
+        
+        Searches for all versions of a product and consolidates versions that exist
+        in multiple locations, tracking all paths for each version.
+        
+        Args:
+            entity: Entity dict with type and entity information.
+            product: Product name to search for.
+            locations: Storage locations to search ('all', 'project_path', or list of locations).
+            
+        Returns:
+            List[Dict[str, Any]]: List of version dicts with 'paths' list for multi-location versions.
+        """
+        locations = locations or "all"
         if locations == "all":
-            locations = self.core.paths.getExportProductBasePaths()
+            locPaths = self.core.paths.getExportProductBasePaths()
+        elif locations == "project_path":
+            locPaths = {"_other": entity["project_path"]}
 
         versions = []
-        for loc in locations:
+        for loc in locPaths:
             context = entity.copy()
             if "version" in context:
                 del context["version"]
@@ -165,24 +282,30 @@ class Products(object):
                 del context["paths"]
 
             context["product"] = product
-            context["project_path"] = locations[loc]
-            locVersions = self.getVersionsFromContext(context, locations={loc: locations[loc]})
+            context["project_path"] = locPaths[loc]
+            locVersions = self.getVersionsFromContext(context, locations={loc: locPaths[loc]})
             for locVersion in locVersions:
                 locVersion["paths"] = [locVersion.get("path")]
                 for version in versions:
-                    if version.get("version") == locVersion.get("version"):
+                    if version.get("version") == locVersion.get("version") and version.get("wedge") == locVersion.get("wedge"):
                         version["paths"].append(locVersion.get("path"))
                         break
                 else:
                     versions.append(locVersion)
                     continue
 
-                break
-
         return versions
 
     @err_catcher(name=__name__)
-    def getDataFromVersionContext(self, context):
+    def getDataFromVersionContext(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract full data from a version context, resolving the path if needed.
+        
+        Args:
+            context: Version context dict (may or may not include path).
+            
+        Returns:
+            Dict[str, Any]: Complete data extracted from the version path.
+        """
         path = context.get("path", "")
         if not path:
             path = self.getPreferredFileFromVersion(context)
@@ -191,7 +314,15 @@ class Products(object):
         return data
 
     @err_catcher(name=__name__)
-    def getVersionsFromPath(self, path):
+    def getVersionsFromPath(self, path: str) -> List[Dict[str, Any]]:
+        """Get all versions for the product referenced by the given path.
+        
+        Args:
+            path: Path to any file within a product version stack.
+            
+        Returns:
+            List[Dict[str, Any]]: List of all versions in the product's version stack.
+        """
         entityType = self.core.paths.getEntityTypeFromPath(path)
 
         key = "products"
@@ -203,39 +334,55 @@ class Products(object):
         return self.getVersionsFromContext(context)
 
     @err_catcher(name=__name__)
-    def getVersionsFromContext(self, context, locations=None):
+    def getVersionsFromContext(self, context: Dict[str, Any], locations: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+        """Get all versions matching a context specification across locations.
+        
+        Args:
+            context: Context dict specifying entity, product, etc.
+            locations: Optional dict mapping location names to paths.
+            
+        Returns:
+            List[Dict[str, Any]]: List of version dicts matching the context.
+        """
         locationData = self.core.paths.getExportProductBasePaths()
         searchLocations = []
-        for locData in locationData:
-            if not locations or locData in locations or "all" in locations:
-                searchLocations.append(locData)
+        if locations and "_other" in locations:
+            searchLocations = locations
+        else:
+            for locData in locationData:
+                if not locations or locData in locations or "all" in locations:
+                    searchLocations.append(locData)
 
         key = "productVersions"
         versions = []
         for loc in searchLocations:
             ctx = context.copy()
-            ctx["project_path"] = locationData[loc]
-            template = self.core.projects.getResolvedProjectStructurePath(
+            if loc != "_other":
+                ctx["project_path"] = locationData[loc]
+
+            templates = self.core.projects.getResolvedProjectStructurePaths(
                 key, context=ctx
             )
+            versionData = []
+            for template in templates:
+                versionData += self.core.projects.getMatchingPaths(template)
 
-            versionData = self.core.projects.getMatchingPaths(template)
             for data in versionData:
-                c = ctx.copy()
+                c = copy.deepcopy(ctx)
                 c.update(data)
                 if self.getIntVersionFromVersionName(c["version"]) is None and c["version"] != "master":
                     continue
 
+                c["locations"] = {}
                 c["paths"] = [data.get("path")]
+                c["locations"][loc] = data.get("path", "")
                 if c["version"] and "_" in c["version"] and c["version"].count("_") == 1:
                     c["version"], c["wedge"] = c["version"].split("_")
 
-                if "locations" in c:
-                    c["locations"] = list(c["locations"])
-
                 for version in versions:
-                    if version.get("version") == c.get("version"):
+                    if version.get("version") == c.get("version") and version.get("wedge") == c.get("wedge"):
                         version["paths"].append(c.get("path"))
+                        version["locations"].update(c.get("locations"))
                         break
                 else:
                     versions.append(c)
@@ -244,7 +391,16 @@ class Products(object):
         return versions
 
     @err_catcher(name=__name__)
-    def getVersionFromFilepath(self, path, num=False):
+    def getVersionFromFilepath(self, path: str, num: bool = False) -> Optional[Union[str, int]]:
+        """Extract version from a product file path.
+        
+        Args:
+            path: Product file path.
+            num: If True, returns version as int; if False, returns version string.
+            
+        Returns:
+            Optional[Union[str, int]]: Version string (e.g., 'v0001') or int (1), or None if not found.
+        """
         data = self.getProductDataFromFilepath(path)
         if "version" not in data:
             return
@@ -256,7 +412,18 @@ class Products(object):
         return version
 
     @err_catcher(name=__name__)
-    def getProductDataFromFilepath(self, filepath):
+    def getProductDataFromFilepath(self, filepath: str) -> Dict[str, Any]:
+        """Extract product metadata from a file path.
+        
+        Parses the filepath to extract entity, product, version, user, and other
+        metadata based on the project structure template.
+        
+        Args:
+            filepath: Path to a product file.
+            
+        Returns:
+            Dict[str, Any]: Dict containing extracted metadata (product, version, user, etc.).
+        """
         if not filepath:
             return {}
 
@@ -296,7 +463,18 @@ class Products(object):
         return data
 
     @err_catcher(name=__name__)
-    def getProductDataFromVersionFolder(self, path):
+    def getProductDataFromVersionFolder(self, path: str) -> Dict[str, Any]:
+        """Extract product metadata from a version folder path.
+        
+        Similar to getProductDataFromFilepath but operates on version folder paths
+        rather than individual files.
+        
+        Args:
+            path: Path to a product version folder.
+            
+        Returns:
+            Dict[str, Any]: Dict containing extracted metadata (product, version, etc.).
+        """
         if not path:
             return {}
 
@@ -340,7 +518,18 @@ class Products(object):
         return data
 
     @err_catcher(name=__name__)
-    def getIntVersionFromVersionName(self, versionName):
+    def getIntVersionFromVersionName(self, versionName: str) -> Optional[int]:
+        """Convert a version name string to an integer.
+        
+        Handles formats like 'v0001', 'v1', or just '1'. Extracts the numeric
+        portion and converts to int.
+        
+        Args:
+            versionName: Version string (e.g., 'v0001', 'v1_wedge1').
+            
+        Returns:
+            Optional[int]: Integer version number, or None if conversion fails.
+        """
         if versionName.startswith("v"):
             versionName = versionName[1:]
 
@@ -354,7 +543,20 @@ class Products(object):
         return version
 
     @err_catcher(name=__name__)
-    def getLatestVersionFromVersions(self, versions, includeMaster=True, wedge=None):
+    def getLatestVersionFromVersions(self, versions: List[Dict[str, Any]], includeMaster: bool = True, wedge: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Get the latest version from a list of versions.
+        
+        Sorts versions by version number and optionally includes or excludes the master version.
+        Validates that the version has an accessible preferred file.
+        
+        Args:
+            versions: List of version dicts to search.
+            includeMaster: Whether to consider the master version. Defaults to True.
+            wedge: Optional wedge identifier to filter by.
+            
+        Returns:
+            Optional[Dict[str, Any]]: Latest version dict, or None if no valid versions found.
+        """
         if not versions:
             return
 
@@ -390,7 +592,16 @@ class Products(object):
             highestVersion = version
 
     @err_catcher(name=__name__)
-    def getLatestVersionFromPath(self, path, includeMaster=True):
+    def getLatestVersionFromPath(self, path: str, includeMaster: bool = True) -> Optional[Dict[str, Any]]:
+        """Get the latest version from the same version stack as the given path.
+        
+        Args:
+            path: Path to any file in a version stack.
+            includeMaster: Whether to consider the master version. Defaults to True.
+            
+        Returns:
+            Optional[Dict[str, Any]]: Latest version dict from the version stack.
+        """
         if not path:
             return {}
 
@@ -403,14 +614,55 @@ class Products(object):
         return latestVersion
 
     @err_catcher(name=__name__)
-    def getLatestVersionpathFromProduct(self, product, entity=None, includeMaster=True, wedge=None):
+    def getLatestVersionFromProduct(self, product: str, entity: Optional[Dict[str, Any]] = None, includeMaster: bool = True, wedge: Optional[str] = None, locations: Optional[Union[str, List[str]]] = None) -> Optional[Dict[str, Any]]:
+        """Get the latest version of a specific product.
+        
+        Args:
+            product: Product name.
+            entity: Optional entity dict. Uses current scenefile entity if None.
+            includeMaster: Whether to include master version. Defaults to True.
+            wedge: Optional wedge identifier to filter by.
+            locations: Optional storage locations to search.
+            
+        Returns:
+            Optional[Dict[str, Any]]: Latest version dict for the product.
+        """
         if not entity:
             fname = self.core.getCurrentFileName()
             entity = self.core.getScenefileData(fname)
             if entity.get("type") not in ["asset", "shot"]:
                 return
 
-        versions = self.getVersionsFromProduct(entity, product)
+        versions = self.getVersionsFromProduct(entity, product, locations=locations)
+        version = self.getLatestVersionFromVersions(
+            versions, includeMaster=includeMaster, wedge=wedge
+        )
+        if not version:
+            return
+
+        return version
+
+    @err_catcher(name=__name__)
+    def getLatestVersionpathFromProduct(self, product: str, entity: Optional[Dict[str, Any]] = None, includeMaster: bool = True, wedge: Optional[str] = None, locations: Optional[Union[str, List[str]]] = None) -> Optional[str]:
+        """Get the file path of the latest version of a specific product.
+        
+        Args:
+            product: Product name.
+            entity: Optional entity dict. Uses current scenefile entity if None.
+            includeMaster: Whether to include master version. Defaults to True.
+            wedge: Optional wedge identifier to filter by.
+            locations: Optional storage locations to search.
+            
+        Returns:
+            Optional[str]: File path to the preferred file of the latest version.
+        """
+        if not entity:
+            fname = self.core.getCurrentFileName()
+            entity = self.core.getScenefileData(fname)
+            if entity.get("type") not in ["asset", "shot"]:
+                return
+
+        versions = self.getVersionsFromProduct(entity, product, locations=locations)
         version = self.getLatestVersionFromVersions(
             versions, includeMaster=includeMaster, wedge=wedge
         )
@@ -421,7 +673,17 @@ class Products(object):
         return filepath
 
     @err_catcher(name=__name__)
-    def getVersionInfoFromVersion(self, version):
+    def getVersionInfoFromVersion(self, version: Dict[str, Any]) -> Dict[str, Any]:
+        """Load version info metadata from a version dict.
+        
+        Reads the versioninfo config file for a version and returns its contents.
+        
+        Args:
+            version: Version dict containing at least a 'path' key.
+            
+        Returns:
+            Dict[str, Any]: Version info data (comment, user, preferredFile, etc.).
+        """
         if "path" not in version:
             return
 
@@ -430,7 +692,74 @@ class Products(object):
         return data
 
     @err_catcher(name=__name__)
-    def getPreferredFileFromVersion(self, version, location=None):
+    def getUseProductPreviews(self) -> bool:
+        """Check if product preview capturing is enabled.
+        
+        Returns:
+            bool: True if product preview capture is enabled in user settings.
+        """
+        return self.core.getConfig("globals", "capture_viewport_products", config="user", dft=False)
+
+    @err_catcher(name=__name__)
+    def getProductPreviewPath(self, productPath: str) -> str:
+        """Get the path where a product preview image should be stored.
+        
+        Args:
+            productPath: Path to the product version folder.
+            
+        Returns:
+            str: Path to the preview.jpg file.
+        """
+        return productPath + "/preview.jpg"
+
+    @err_catcher(name=__name__)
+    def generateProductPreview(self) -> Optional[QPixmap]:
+        """Generate a preview image for the current product.
+        
+        Captures the current viewport or uses a recent scene preview,
+        scaled to the standard preview dimensions.
+        
+        Returns:
+            Optional[QPixmap]: Preview pixmap, or None if capture fails.
+        """
+        scenePreviewPath = self.core.entities.getScenePreviewPath(self.core.getCurrentFileName())
+        previewTime = self.core.getFileModificationDate(scenePreviewPath, validate=True, asString=False)
+        if previewTime and (time.time() - previewTime) < 5:
+            return self.core.media.getPixmapFromPath(scenePreviewPath)
+
+        appPreview = getattr(self.core.appPlugin, "captureViewportThumbnail", lambda: None)()
+        if not appPreview:
+            return
+
+        preview = self.core.media.scalePixmap(appPreview, self.core.scenePreviewWidth, self.core.scenePreviewHeight, fitIntoBounds=False, crop=True)
+        return preview
+
+    @err_catcher(name=__name__)
+    def setProductPreview(self, productPath: str, preview: QPixmap) -> None:
+        """Save a preview image for a product.
+        
+        Args:
+            productPath: Path to the product version folder.
+            preview: Pixmap to save as preview.
+        """
+        prvPath = self.getProductPreviewPath(productPath)
+        logger.debug("saving product preview: %s" % prvPath)
+        self.core.media.savePixmap(preview, prvPath)
+
+    @err_catcher(name=__name__)
+    def getPreferredFileFromVersion(self, version: Dict[str, Any], location: Optional[str] = None) -> str:
+        """Get the preferred file path from a version.
+        
+        The preferred file is the main file users should reference when importing
+        the product. This can be explicitly set or automatically determined.
+        
+        Args:
+            version: Version dict containing path and product info.
+            location: Optional storage location to prefer.
+            
+        Returns:
+            str: Path to the preferred file for this version.
+        """
         if not version:
             return ""
 
@@ -513,13 +842,27 @@ class Products(object):
         return filepath
 
     @err_catcher(name=__name__)
-    def setPreferredFileForVersionDlg(self, version, callback=None):
-        self.dlg_prefVersion = PreferredVersionDialog(self, version)
+    def setPreferredFileForVersionDlg(self, version: Dict[str, Any], callback: Optional[callable] = None, parent: Optional[QWidget] = None) -> None:
+        """Show a dialog to select the preferred file for a version.
+        
+        Args:
+            version: Version dict to set preferred file for.
+            callback: Optional callback function to execute after selection.
+            parent: Optional parent widget for the dialog.
+        """
+        self.dlg_prefVersion = PreferredVersionDialog(self, version, parent=parent)
         self.dlg_prefVersion.signalSelected.connect(lambda x, y: self.setPreferredFileForVersion(x, y, callback))
         self.dlg_prefVersion.show()
 
     @err_catcher(name=__name__)
-    def setPreferredFileForVersion(self, version, preferredFile, callback=None):
+    def setPreferredFileForVersion(self, version: Dict[str, Any], preferredFile: str, callback: Optional[callable] = None) -> None:
+        """Set the preferred file for a version.
+        
+        Args:
+            version: Version dict to update.
+            preferredFile: Relative path to the preferred file within the version folder.
+            callback: Optional callback function to execute after setting.
+        """
         if "path" not in version:
             return
 
@@ -530,39 +873,125 @@ class Products(object):
             callback()
 
     @err_catcher(name=__name__)
-    def getVersionpathFromProductVersion(self, product, version, entity=None, wedge=None):
+    def getLocationFromPath(self, path: str) -> Optional[str]:
+        """Determine the storage location that contains a given path.
+        
+        Similar to getLocationFromFilepath. Returns the most specific matching location.
+        
+        Args:
+            path: Filesystem path to check.
+            
+        Returns:
+            Optional[str]: Storage location identifier, or None if not found.
+        """
+        locDict = self.core.paths.getExportProductBasePaths()
+        nPath = os.path.normpath(path)
+        validLocs = []
+        for location in locDict:
+            if nPath.startswith(locDict[location]):
+                validLocs.append(location)
+
+        if not validLocs:
+            return
+
+        validLocs = sorted(validLocs, key=lambda x: len(locDict[x]), reverse=True)
+        return validLocs[0]
+
+    @err_catcher(name=__name__)
+    def getProductVersion(self, product: str, version: str, entity: Optional[Dict[str, Any]] = None, wedge: Optional[str] = None, locations: Optional[Union[str, List[str]]] = None, includeMaster: bool = True) -> Optional[Dict[str, Any]]:
+        """Get a specific version of a product.
+        
+        Args:
+            product: Product name.
+            version: Version string ('v0001', 'latest', or 'master').
+            entity: Optional entity dict. Uses current file's entity if None.
+            wedge: Optional wedge identifier.
+            locations: Optional storage locations to search.
+            includeMaster: Whether to include master when version is 'latest'. Defaults to True.
+            
+        Returns:
+            Optional[Dict[str, Any]]: Version dict for the specified version.
+        """
         if not entity:
             fname = self.core.getCurrentFileName()
             entity = self.core.getScenefileData(fname)
             if entity.get("type") not in ["asset", "shot"]:
                 return
 
-        versions = self.getVersionsFromProduct(entity, product)
-        filepath = None
-        for v in versions:
-            if v["version"] == version:
-                if wedge is None or wedge == v.get("wedge"):
-                    filepath = self.getPreferredFileFromVersion(v)
-                    break
+        versionData = None
+        versions = self.getVersionsFromProduct(entity, product, locations=locations)
+        if version == "latest":
+            versionData = self.getLatestVersionFromVersions(
+                versions, includeMaster=includeMaster, wedge=wedge
+            )
+        else:
+            for v in versions:
+                if v["version"] == version:
+                    if wedge is None or wedge == v.get("wedge"):
+                        versionData = v
+                        break
 
+        return versionData
+
+    @err_catcher(name=__name__)
+    def getVersionpathFromProductVersion(self, product: str, version: str, entity: Optional[Dict[str, Any]] = None, wedge: Optional[str] = None, locations: Optional[Union[str, List[str]]] = None) -> Optional[str]:
+        """Get the file path for a specific version of a product.
+        
+        Args:
+            product: Product name.
+            version: Version string ('v0001', 'latest', or 'master').
+            entity: Optional entity dict. Uses current file's entity if None.
+            wedge: Optional wedge identifier.
+            locations: Optional storage locations to search.
+            
+        Returns:
+            Optional[str]: File path to the preferred file of the specified version.
+        """
+        versionData = self.getProductVersion(product, version, entity=entity, wedge=wedge, locations=locations)
+        if not versionData:
+            return
+
+        filepath = self.getPreferredFileFromVersion(versionData)
         return filepath
 
     @err_catcher(name=__name__)
     def generateProductPath(
         self,
-        entity,
-        task,
-        extension=None,
-        startframe=None,
-        endframe=None,
-        comment=None,
-        user=None,
-        version=None,
-        framePadding=None,
-        location=None,
-        returnDetails=False,
-        wedge=None
-    ):
+        entity: Dict[str, Any],
+        task: str,
+        extension: Optional[str] = None,
+        startframe: Optional[int] = None,
+        endframe: Optional[int] = None,
+        comment: Optional[str] = None,
+        user: Optional[str] = None,
+        version: Optional[str] = None,
+        framePadding: Optional[str] = None,
+        location: str = "global",
+        returnDetails: bool = False,
+        wedge: Optional[str] = None
+    ) -> Union[str, Dict[str, Any]]:
+        """Generate a product file path based on entity and version parameters.
+        
+        Constructs a complete file path for a product export based on the project
+        structure template and provided parameters.
+        
+        Args:
+            entity: Entity dict containing type and entity information.
+            task: Product/task name.
+            extension: File extension (e.g., '.abc', '.fbx'). Defaults to None.
+            startframe: Start frame number. Defaults to None.
+            endframe: End frame number. Defaults to None.
+            comment: Version comment. Defaults to empty string.
+            user: Username for the version. Defaults to current user.
+            version: Version string. Auto-generates next available if None.
+            framePadding: Frame padding string (e.g., '####'). Auto-determined if None.
+            location: Storage location ('global', 'local', etc.). Defaults to 'global'.
+            returnDetails: If True, returns full context dict; if False, returns path string.
+            wedge: Optional wedge identifier. Defaults to None.
+            
+        Returns:
+            Union[str, Dict[str, Any]]: Generated file path or context dict with path.
+        """
         if framePadding is None:
             if startframe == endframe or extension != ".obj":
                 framePadding = ""
@@ -601,9 +1030,9 @@ class Products(object):
         if "asset_path" in context:
             context["asset"] = os.path.basename(context["asset_path"])
 
-        if entity["type"] == "asset":
+        if entity.get("type") == "asset":
             key = "productFilesAssets"
-        elif entity["type"] == "shot":
+        elif entity.get("type") == "shot":
             key = "productFilesShots"
         else:
             return ""
@@ -619,11 +1048,23 @@ class Products(object):
             return outputPath
 
     @err_catcher(name=__name__)
-    def getNextAvailableVersion(self, entity, product):
-        if not self.core.separateOutputVersionStack:
+    def getNextAvailableVersion(self, entity: Dict[str, Any], product: str) -> str:
+        """Get the next available version number for a product.
+        
+        Determines the next version number based on existing versions or the current
+        scene file version, depending on settings.
+        
+        Args:
+            entity: Entity dict containing type and entity information.
+            product: Product name.
+            
+        Returns:
+            str: Next available version string (e.g., 'v0001').
+        """
+        if (not self.core.separateOutputVersionStack) and self.core.appPlugin.pluginName != "Standalone":
             fileName = self.core.getCurrentFileName()
             fnameData = self.core.getScenefileData(fileName)
-            if fnameData.get("type") in ["asset", "shot"]:
+            if fnameData.get("type") in ["asset", "shot"] and "version" in fnameData:
                 hVersion = fnameData["version"]
             else:
                 hVersion = self.core.versionFormat % self.core.lowestVersion
@@ -633,7 +1074,7 @@ class Products(object):
         versions = self.getVersionsFromProduct(entity, product)
         latest = self.getLatestVersionFromVersions(versions, includeMaster=False)
         if latest:
-            latestNum = self.getIntVersionFromVersionName(latest["version"])
+            latestNum = self.getIntVersionFromVersionName(latest.get("version", ""))
             if latestNum is not None:
                 num = latestNum + 1
                 version = self.core.versionFormat % num
@@ -645,11 +1086,25 @@ class Products(object):
         return version
 
     @err_catcher(name=__name__)
-    def getVersionInfoPathFromProductFilepath(self, filepath):
+    def getVersionInfoPathFromProductFilepath(self, filepath: str) -> str:
+        """Get the directory path containing version info for a product file.
+        
+        Args:
+            filepath: Path to a product file.
+            
+        Returns:
+            str: Directory path containing the versioninfo file.
+        """
         return os.path.dirname(filepath)
 
     @err_catcher(name=__name__)
-    def setComment(self, versionPath, comment):
+    def setComment(self, versionPath: str, comment: str) -> None:
+        """Set the comment for a product version.
+        
+        Args:
+            versionPath: Path to the version folder.
+            comment: Comment text to set.
+        """
         infoPath = self.core.getVersioninfoPath(versionPath)
         versionInfo = {}
         if os.path.exists(infoPath):
@@ -659,7 +1114,18 @@ class Products(object):
         self.core.setConfig(data=versionInfo, configPath=infoPath)
 
     @err_catcher(name=__name__)
-    def updateMasterVersion(self, path):
+    def updateMasterVersion(self, path: str) -> Optional[str]:
+        """Update the master version to point to a specific version.
+        
+        Copies or links files from a numbered version to the master version folder,
+        making it the current master.
+        
+        Args:
+            path: Path to the version that should become the new master.
+            
+        Returns:
+            Optional[str]: Path to the updated master version, or None if update failed.
+        """
         data = self.core.paths.getCachePathData(path)
 
         forcedLoc = os.getenv("PRISM_PRODUCT_MASTER_LOC")
@@ -707,6 +1173,7 @@ class Products(object):
 
         seqFiles = self.core.detectFileSequence(path)
         if not seqFiles:
+            logger.debug("no files exists for sequence: %s" % path)
             return
 
         useHL = os.getenv("PRISM_USE_HARDLINK_MASTER", None)
@@ -714,7 +1181,11 @@ class Products(object):
             if len(seqFiles) > 1:
                 extData = self.core.paths.splitext(seqFile)
                 base = extData[0]
-                frameStr = "." + base[-self.core.framePadding:]
+                if self.core.framePadding == 4 and len(base) > 8 and base[-4] == "." and base[-3:].isnumeric() and base[-8:-4].isnumeric() and base[-9] != "v":
+                    frameStr = "." + base[-8:]
+                else:
+                    frameStr = "." + base[-self.core.framePadding:]
+
                 base, ext = self.core.paths.splitext(masterPath)
                 masterPathPadded = base + frameStr + ext
             else:
@@ -728,7 +1199,22 @@ class Products(object):
             ):
                 self.core.createSymlink(masterPathPadded, seqFile)
             else:
-                shutil.copy2(seqFile, masterPathPadded)
+                while True:
+                    try:
+                        shutil.copy2(seqFile, masterPathPadded)
+                    except Exception as e:
+                        logger.warning(e)
+                        msg = "Couldn't copy file to master version:\n\nError: %s\n\nSource Path: %s\n\nTarget Path: %s" % (str(e), seqFile, masterPathPadded)
+                        result = self.core.popupQuestion(
+                            msg,
+                            buttons=["Retry", "Skip file"],
+                            escapeButton="Skip file",
+                            default="Skip file",
+                        )
+                        if result == "Retry":
+                            continue
+
+                    break
 
         folderPath = self.getVersionInfoPathFromProductFilepath(path)
         infoPath = self.core.getVersioninfoPath(folderPath)
@@ -782,7 +1268,17 @@ class Products(object):
         return masterPath
 
     @err_catcher(name=__name__)
-    def renameMaster(self, masterFolder):
+    def renameMaster(self, masterFolder: str) -> Optional[bool]:
+        """Rename a master folder to a .delete subfolder.
+        
+        Used when a master version needs to be archived before being replaced.
+        
+        Args:
+            masterFolder: Path to the master version folder to rename.
+            
+        Returns:
+            Optional[bool]: True if rename succeeded, None otherwise.
+        """
         delBasePath = os.path.join(os.path.dirname(masterFolder), ".delete")
         valid = True
         if os.path.exists(delBasePath):
@@ -818,10 +1314,27 @@ class Products(object):
                 return True
 
     @err_catcher(name=__name__)
-    def deleteMasterVersion(self, path, errorMsg=None, allowClear=True, allowRename=True):
+    def deleteMasterVersion(self, path: str, errorMsg: Optional[str] = None, allowClear: bool = True, allowRename: bool = True) -> bool:
+        """Delete a master version folder.
+        
+        Attempts to remove the master version folder, with fallback options to
+        rename or clear selections if deletion fails.
+        
+        Args:
+            path: Path to any file in the version stack.
+            errorMsg: Optional custom error message template.
+            allowClear: Whether to allow clearing UI selections on failure. Defaults to True.
+            allowRename: Whether to allow renaming instead of deleting. Defaults to True.
+            
+        Returns:
+            bool: True if deletion succeeded or user chose to skip deletion.
+        """
         context = self.getVersionStackContextFromPath(path)
         context["version"] = "master"
         key = "productVersions"
+        if "wedge" not in context:
+            context["wedge"] = ""
+
         masterFolder = self.core.projects.getResolvedProjectStructurePath(
             key, context=context
         )
@@ -854,8 +1367,17 @@ class Products(object):
         return True
 
     @err_catcher(name=__name__)
-    def getMasterVersionNumber(self, masterPath):
-        versionData = self.core.paths.getCachePathData(masterPath, addPathData=False, validateModTime=True)
+    def getMasterVersionNumber(self, masterPath: str, allowCache: bool = True) -> Optional[str]:
+        """Get the source version number that the master version points to.
+        
+        Args:
+            masterPath: Path to the master version folder.
+            allowCache: Whether to use cached data. Defaults to True.
+            
+        Returns:
+            Optional[str]: Source version number (e.g., 'v0005'), or None if not found.
+        """
+        versionData = self.core.paths.getCachePathData(masterPath, addPathData=False, validateModTime=True, allowCache=allowCache)
         if "sourceVersion" in versionData:
             return versionData["sourceVersion"]
 
@@ -863,7 +1385,15 @@ class Products(object):
             return versionData["version"]
 
     @err_catcher(name=__name__)
-    def getMasterVersionLabel(self, path):
+    def getMasterVersionLabel(self, path: str) -> str:
+        """Get a display label for a master version showing its source version.
+        
+        Args:
+            path: Path to the master version.
+            
+        Returns:
+            str: Label like 'master (v0005)' or just 'master'.
+        """
         versionName = "master"
         versionData = self.core.paths.getCachePathData(path, addPathData=False, validateModTime=True)
         if "sourceVersion" in versionData:
@@ -874,9 +1404,22 @@ class Products(object):
         return versionName
 
     @err_catcher(name=__name__)
-    def createProduct(self, entity, product):
+    def createProduct(self, entity: Dict[str, Any], product: str, location: str = "global") -> Optional[str]:
+        """Create a new product folder for an entity.
+        
+        Args:
+            entity: Entity dict containing type and entity information.
+            product: Product name to create.
+            location: Storage location where product should be created. Defaults to 'global'.
+            
+        Returns:
+            Optional[str]: Path to the created product folder, or None if creation failed.
+        """
         context = entity.copy()
         context["product"] = product
+        basePath = self.core.paths.getExportProductBasePaths()[location]
+        context["project_path"] = basePath
+
         path = self.core.projects.getResolvedProjectStructurePath("products", context)
 
         if not os.path.exists(path):
@@ -898,7 +1441,19 @@ class Products(object):
         return path
 
     @err_catcher(name=__name__)
-    def getPreferredFileFromFiles(self, files, relative=False):
+    def getPreferredFileFromFiles(self, files: List[str], relative: bool = False) -> Optional[str]:
+        """Select a preferred file from a list of files.
+        
+        Prefers regular files over directories, and if only directories exist,
+        finds the first file within them.
+        
+        Args:
+            files: List of file/folder paths to choose from.
+            relative: If True, returns relative path; if False, returns absolute. Defaults to False.
+            
+        Returns:
+            Optional[str]: Path to the preferred file, or None if no files found.
+        """
         for file in files:
             if os.path.isfile(file):
                 if relative:
@@ -920,12 +1475,30 @@ class Products(object):
                         return filepath
 
     @err_catcher(name=__name__)
-    def ingestProductVersion(self, files, entity, product, comment=None):
+    def ingestProductVersion(self, files: List[str], entity: Dict[str, Any], product: str, comment: Optional[str] = None, version: Optional[str] = None, location: str = "global") -> Dict[str, Any]:
+        """Ingest external files as a new product version.
+        
+        Copies files into the project structure as a new version of a product,
+        creating version info and setting up the preferred file.
+        
+        Args:
+            files: List of file/folder paths to ingest.
+            entity: Entity dict to ingest product for.
+            product: Product name.
+            comment: Optional version comment. Auto-generated if None.
+            version: Optional version number. Auto-generated if None.
+            location: Storage location. Defaults to 'global'.
+            
+        Returns:
+            Dict[str, Any]: Dict with 'createdFiles' list and 'versionPath' string.
+        """
         if comment is None:
             if len(files) > 1:
                 comment = "ingested files"
-            else:
+            elif files:
                 comment = "ingested file: %s" % os.path.basename(files[0])
+            else:
+                comment = ""
     
         kwargs = {
             "entity": entity,
@@ -933,22 +1506,21 @@ class Products(object):
             "comment": comment,
             "user": self.core.user,
         }
+        basePath = self.core.paths.getExportProductBasePaths()[location]
+        kwargs["entity"]["project_path"] = basePath
+        if version is None:
+            version = self.getNextAvailableVersion(entity=entity, product=product)
 
-        version = self.getNextAvailableVersion(entity=entity, product=product)
         kwargs["version"] = version
         prefFile = self.getPreferredFileFromFiles(files, relative=True)
-        if not prefFile:
-            msg = "No file to ingest."
-            self.core.popup(msg)
-            return
-
         createdFiles = []
         targetPath = self.generateProductPath(**kwargs)
+        versionPath = os.path.dirname(targetPath)
         for file in files:
-            fileTargetPath = os.path.join(os.path.dirname(targetPath), os.path.basename(file))
-            if not os.path.exists(os.path.dirname(fileTargetPath)):
+            fileTargetPath = os.path.join(versionPath, os.path.basename(file))
+            if not os.path.exists(versionPath):
                 try:
-                    os.makedirs(os.path.dirname(fileTargetPath))
+                    os.makedirs(versionPath)
                 except:
                     self.core.popup("The directory could not be created")
                     return
@@ -958,11 +1530,12 @@ class Products(object):
 
             isFolder = os.path.isdir(file)
             if isFolder:
-                msg = "Copying folder - please wait..\n\n\n"
+                msg = "Copying folder - please wait...    "
             else:
-                msg = "Copying file - please wait..\n\n\n"
+                msg = "Copying file - please wait...    "
 
             self.copyMsg = self.core.waitPopup(self.core, msg)
+            self.copyMsg.baseTxt = msg
 
             self.copyThread.updated.connect(lambda x: self.core.updateProgressPopup(x, self.copyMsg))
             self.copyThread.finished.connect(self.copyMsg.close)
@@ -982,22 +1555,45 @@ class Products(object):
         details["user"] = kwargs["user"]
         details["version"] = version
         details["comment"] = kwargs["comment"]
-        details["extension"] = os.path.splitext(prefFile)[1]
-        details["preferredFile"] = prefFile
+        if prefFile:
+            details["extension"] = os.path.splitext(prefFile)[1]
+            details["preferredFile"] = prefFile
 
         infoPath = self.getVersionInfoPathFromProductFilepath(targetPath)
         self.core.saveVersionInfo(filepath=infoPath, details=details)
 
-        return createdFiles
+        return {"createdFiles": createdFiles, "versionPath": versionPath}
 
     @err_catcher(name=__name__)
-    def getUseMaster(self):
+    def getUseMaster(self) -> bool:
+        """Check if master version usage is enabled for the project.
+        
+        Returns:
+            bool: True if master versions are enabled in project settings.
+        """
         return self.core.getConfig(
             "globals", "useMasterVersion", dft=True, config="project"
         )
 
     @err_catcher(name=__name__)
-    def checkMasterVersions(self, entities, parent=None):
+    def getLinkedToTasks(self) -> Optional[bool]:
+        """Check if products are organized by tasks/departments.
+        
+        Returns:
+            Optional[bool]: True if products are linked to tasks, False/None otherwise.
+        """
+        return self.core.getConfig("globals", "productTasks", config="project")
+
+    @err_catcher(name=__name__)
+    def checkMasterVersions(self, entities: List[Dict[str, Any]], parent: Optional[QWidget] = None) -> None:
+        """Check if master versions are outdated for given entities.
+        
+        Opens a dialog showing which master versions need updating.
+        
+        Args:
+            entities: List of entity dicts to check.
+            parent: Optional parent widget for the dialog.
+        """
         self.dlg_masterManager = self.core.paths.masterManager(self.core, entities, "products", parent=parent)
         self.dlg_masterManager.refreshData()
         if not self.dlg_masterManager.outdatedVersions:
@@ -1008,7 +1604,18 @@ class Products(object):
         self.dlg_masterManager.show()
 
     @err_catcher(name=__name__)
-    def getOutdatedMasterVersions(self, entities):
+    def getOutdatedMasterVersions(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Find all outdated master versions for given entities.
+        
+        Compares master versions with the latest numbered versions to identify
+        which masters need updating.
+        
+        Args:
+            entities: List of entity dicts to check.
+            
+        Returns:
+            List[Dict[str, Any]]: List of dicts with 'master' and 'latest' version info.
+        """
         outdatedVersions = []
         for entity in entities:
             products = self.getProductsFromEntity(entity)
@@ -1031,14 +1638,29 @@ class Products(object):
         return outdatedVersions
 
     @err_catcher(name=__name__)
-    def getGroupFromProduct(self, product):
+    def getGroupFromProduct(self, product: Dict[str, Any]) -> Optional[str]:
+        """Get the group assigned to a product.
+        
+        Args:
+            product: Product dict.
+            
+        Returns:
+            Optional[str]: Group name, or None if no group assigned.
+        """
         productPath = self.getProductPathFromEntity(product, includeProduct=False)
         cfgPath = os.path.join(productPath, "products" + self.core.configs.getProjectExtension())
         group = self.core.getConfig(product.get("product"), "group", configPath=cfgPath)
         return group
 
     @err_catcher(name=__name__)
-    def setProductsGroup(self, products, group, projectWide=False):
+    def setProductsGroup(self, products: List[Dict[str, Any]], group: str, projectWide: bool = False) -> None:
+        """Set the group for multiple products.
+        
+        Args:
+            products: List of product dicts to update.
+            group: Group name to assign.
+            projectWide: Whether to apply project-wide. Currently unused.
+        """
         productPath = self.getProductPathFromEntity(products[0], includeProduct=False)
         cfgPath = os.path.join(productPath, "products" + self.core.configs.getProjectExtension())
         data = self.core.getConfig(configPath=cfgPath) or {}
@@ -1051,20 +1673,106 @@ class Products(object):
         self.core.setConfig(data=data, configPath=cfgPath)
 
     @err_catcher(name=__name__)
-    def getTagsFromProduct(self, product):
+    def getTagsFromProduct(self, product: Dict[str, Any]) -> List[str]:
+        """Get tags assigned to a product.
+        
+        Falls back to project-wide tags if no entity-specific tags are set.
+        
+        Args:
+            product: Product dict.
+            
+        Returns:
+            List[str]: List of tag strings.
+        """
         productPath = self.getProductPathFromEntity(product, includeProduct=False)
         cfgPath = os.path.join(productPath, "products" + self.core.configs.getProjectExtension())
-        tags = self.core.getConfig(product.get("product"), "tags", configPath=cfgPath) or []
+        tags = self.core.getConfig(product.get("product"), "tags", configPath=cfgPath)
+        if tags is None:
+            tags = []
+            prjTags = self.getProjectTagsFromProduct(product["product"])
+            for prjTag in prjTags:
+                if prjTag not in tags:
+                    tags.append(prjTag)
+
         return tags
 
     @err_catcher(name=__name__)
-    def setProductTags(self, product, tags):
+    def getDefaultProjectProductTags(self) -> Dict[str, List[str]]:
+        """Get the default product tags for different departments.
+        
+        Returns:
+            Dict[str, List[str]]: Dict mapping department names to their default tag lists.
+        """
+        tags = {
+            "Modeling": ["to_surf"],
+            "Surfacing": ["to_rig, static"],
+            "Rigging": ["to_anm"],
+            "Animation": ["animated"],
+        }
+        return tags
+    
+    @err_catcher(name=__name__)
+    def getProjectTagsFromProduct(self, product: str) -> List[str]:
+        """Get project-wide tags for a specific product name.
+        
+        Args:
+            product: Product name.
+            
+        Returns:
+            List[str]: List of project tag strings for this product.
+        """
+        tagData = self.getProjectProductTags() or {}
+        if product not in list(tagData.keys()):
+            return []
+
+        tags = tagData[product] or []
+        return tags
+
+    @err_catcher(name=__name__)
+    def getProjectProductTags(self) -> Dict[str, List[str]]:
+        """Get all project-wide product tags.
+        
+        Returns:
+            Dict[str, List[str]]: Dict mapping product names to tag lists.
+        """
+        tagData = self.core.getConfig("products", "tags", config="project")
+        if tagData is None:
+            tagData = self.getDefaultProjectProductTags()
+
+        return tagData
+
+    @err_catcher(name=__name__)
+    def setProjectProductTags(self, tags: Dict[str, List[str]]) -> None:
+        """Set project-wide product tags.
+        
+        Args:
+            tags: Dict mapping product names to tag lists.
+        """
+        self.core.setConfig("products", "tags", val=tags, config="project")
+
+    @err_catcher(name=__name__)
+    def setProductTags(self, product: Dict[str, Any], tags: List[str]) -> None:
+        """Set tags for a specific product.
+        
+        Args:
+            product: Product dict.
+            tags: List of tag strings to assign.
+        """
         productPath = self.getProductPathFromEntity(product, includeProduct=False)
         cfgPath = os.path.join(productPath, "products" + self.core.configs.getProjectExtension())
         self.core.setConfig(product.get("product"), "tags", val=tags, configPath=cfgPath)
 
     @err_catcher(name=__name__)
-    def getProductsByTags(self, entity, tags):
+    def getProductsByTags(self, entity: Dict[str, Any], tags: List[str]) -> List[Dict[str, Any]]:
+        """Find all products for an entity that have any of the specified tags.
+        
+        Args:
+            entity: Entity dict to search products in.
+            tags: List of tag strings to search for.
+            
+        Returns:
+            List[Dict[str, Any]]: List of product dicts matching any of the tags.
+        """
         products = self.getProductsFromEntity(entity)
         foundProducts = []
         for tag in tags:
@@ -1078,25 +1786,259 @@ class Products(object):
 
         return foundProducts
 
+    @err_catcher(name=__name__)
+    def getRecommendedTags(self, context: Optional[Dict[str, Any]] = None) -> List[str]:
+        """Get a list of recommended product tags based on project setup.
+        
+        Generates tags from department abbreviations, task names, and common tags.
+        
+        Args:
+            context: Context dict (currently unused but available for filtering).
+            
+        Returns:
+            List[str]: List of recommended tag strings (deduplicated).
+        """
+        tags = []
+        departments = self.core.projects.getAssetDepartments()
+        departments += self.core.projects.getShotDepartments()
+        for department in departments:
+            depTag = "to_" + department.get("abbreviation", "").lower()
+            tags.append(depTag)
+
+            for defaultTask in department.get("defaultTasks", []):
+                taskTag = "to_" + defaultTask.lower()
+                tags.append(taskTag)
+
+        tags += ["main", "static", "animated"]
+        tags += getattr(self, "extraTags", [])
+        newTags = []
+        for tag in tags:
+            if tag not in newTags:
+                newTags.append(tag)
+
+        return newTags
+
+    @err_catcher(name=__name__)
+    def importConnectedAssetsForEntities(self, entities: Optional[List[Dict[str, Any]]] = None, parent: Optional[QWidget] = None, includeMaster: bool = True) -> None:
+        """Import connected assets for multiple entities.
+        
+        Args:
+            entities: List of entity dicts to import assets for.
+            parent: Optional parent widget.
+            includeMaster: Whether to include master versions. Defaults to True.
+        """
+        for entity in entities:
+            self.importConnectedAssets(entity, includeMaster=includeMaster)
+
+    @err_catcher(name=__name__)
+    def importConnectedAssets(self, entity: Optional[Dict[str, Any]] = None, quiet: bool = True, quietCheck: bool = False, includeMaster: bool = True, settings: Optional[Dict[str, Any]] = None) -> None:
+        """Import products from assets connected to a shot.
+        
+        Automatically imports products tagged for the current department/task
+        from all assets connected to the shot.
+        
+        Args:
+            entity: Optional entity dict. Uses current scenefile entity if None.
+            quiet: Whether to suppress import dialogs. Defaults to True.
+            quietCheck: Whether to suppress "no products" messages. Defaults to False.
+            includeMaster: Whether to include master versions. Defaults to True.
+            settings: Optional import settings dict.
+        """
+        logger.debug("importing connected assets")
+        sm = self.core.getStateManager()
+        if not sm:
+            return
+
+        if not entity:
+            filepath = self.core.getCurrentFileName()
+            entity = self.core.getScenefileData(filepath)
+
+        if not entity or entity.get("type") != "shot":
+            msg = "Importing connected assets is possible in shot scenefiles only."
+            logger.debug(msg)
+            if not quietCheck:
+                self.core.popup(msg)
+
+            return
+
+        productsToImport = []
+        entities = self.core.entities.getConnectedEntities(entity)
+        if not entities:
+            msg = "No assets are connected to the current shot."
+            logger.debug(msg)
+            if not quietCheck:
+                result = self.core.popupQuestion(msg, buttons=["Connect Assets...", "Close"], icon=QMessageBox.Information)
+                if result == "Connect Assets...":
+                    self.core.entities.connectEntityDlg(entities=[entity])
+
+            return
+
+        tags = [x.strip() for x in os.getenv("PRISM_AUTO_IMPORT_TAGS", "").split(",") if x]
+        if not tags:
+            tags = ["main"]
+
+        curDep = entity.get("department")
+        if curDep:
+            tags.insert(0, "to_%s" % curDep.lower())
+
+        task = entity.get("task")
+        if task:
+            tags.insert(0, "to_%s" % task.lower())
+
+        newTags = []
+        for tag in tags:
+            if tag not in newTags:
+                newTags.append(tag)
+
+        tags = newTags
+
+        for centity in entities:
+            products = self.core.products.getProductsByTags(centity, tags)
+            productsToImport += products
+
+        if not productsToImport:
+            msg = "No products to import.\n(checking for tags: \"%s\")" % "\", \"".join(tags)
+            logger.debug(msg)
+            if not quietCheck:
+                self.core.popup(msg)
+
+            return
+
+        settings = settings or{}
+        if quiet:
+            settings["quiet"] = True
+
+        importedProducts = []
+        for product in productsToImport:
+            if "asset_path" not in product:
+                continue
+
+            productPath = self.core.products.getLatestVersionpathFromProduct(product["product"], entity=product, includeMaster=includeMaster)
+            if not productPath:
+                continue
+
+            sm.importFile(productPath, settings=settings)
+            logger.debug("added product to shot: %s - %s" % (self.core.entities.getShotName(entity), productPath))
+            importedProducts.append(productPath)
+
+        if not importedProducts:
+            logger.debug("no products to import (%s)" % productsToImport)
+
+    @err_catcher(name=__name__)
+    def importProductsForTask(self, entity: Optional[Dict[str, Any]] = None, department: Optional[str] = None, task: Optional[str] = None, quiet: bool = True, quietCheck: bool = False, settings: Optional[Dict[str, Any]] = None, includeMaster: bool = True) -> None:
+        """Import products for a specific department and task.
+        
+        Imports products tagged for the specified department/task combination.
+        
+        Args:
+            entity: Optional entity dict. Uses current scenefile entity if None.
+            department: Department name to import for.
+            task: Task name to import for.
+            quiet: Whether to suppress import dialogs. Defaults to True.
+            quietCheck: Whether to suppress "no products" messages. Defaults to False.
+            settings: Optional import settings dict.
+            includeMaster: Whether to include master versions. Defaults to True.
+        """
+        logger.debug("importing products for entity %s for department %s" % (entity, department))
+        sm = self.core.getStateManager()
+        if not sm:
+            return
+
+        if not entity:
+            filepath = self.core.getCurrentFileName()
+            entity = self.core.getScenefileData(filepath)
+
+        productsToImport = []
+        tags = [x.strip() for x in os.getenv("PRISM_AUTO_IMPORT_TAGS", "").split(",") if x]
+        if not tags:
+            tags = ["main"]
+
+        tags.insert(0, "to_%s" % department.lower())
+        tags.insert(0, "to_%s" % task.lower())
+
+        newTags = []
+        for tag in tags:
+            if tag not in newTags:
+                newTags.append(tag)
+
+        tags = newTags
+
+        productsToImport = self.core.products.getProductsByTags(entity, tags)
+        if not productsToImport:
+            msg = "No products to import.\n(checking for tags: \"%s\")" % "\", \"".join(tags)
+            logger.debug(msg)
+            if not quietCheck:
+                self.core.popup(msg)
+
+            return
+
+        settings = settings or {}
+        if quiet:
+            settings["quiet"] = True
+
+        if self.core.appPlugin.pluginName == "Maya":
+            settings["useNamespace"] = bool(settings.get("namespace"))
+
+        importedProducts = []
+        for product in productsToImport:
+            productPath = self.core.products.getLatestVersionpathFromProduct(product["product"], entity=product, includeMaster=includeMaster)
+            if not productPath:
+                continue
+
+            sm.importFile(productPath, settings=settings)
+            logger.debug("imported product: %s - %s" % (self.core.entities.getEntityName(entity), productPath))
+            importedProducts.append(productPath)
+
+        if not importedProducts:
+            logger.debug("no products to import (%s)" % productsToImport)
+
 
 class PreferredVersionDialog(QDialog):
+    """Dialog for selecting the preferred file from a product version.
+    
+    Displays the file structure of a version folder and allows users to
+    select which file should be the default for imports.
+    
+    Signals:
+        signalSelected: Emitted when user selects a file. Args: (version dict, relative file path).
+    
+    Attributes:
+        origin: Products instance that created this dialog.
+        core: PrismCore instance.
+        version: Version dict being edited.
+        projectStructure: Folder structure dict of the version.
+    """
 
     signalSelected = Signal(object, object)
 
-    def __init__(self, origin, version):
+    def __init__(self, origin: 'Products', version: Dict[str, Any], parent: Optional[QWidget] = None) -> None:
+        """Initialize the PreferredVersionDialog.
+        
+        Args:
+            origin: Products instance.
+            version: Version dict to select preferred file for.
+            parent: Optional parent widget for the dialog.
+        """
         super(PreferredVersionDialog, self).__init__()
         self.origin = origin
         self.core = self.origin.core
+        self.core.parentWindow(self, parent=parent)
         self.version = version
         self.setupUi()
         self.refreshTree()
 
     @err_catcher(name=__name__)
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
+        """Get the preferred size for the dialog.
+        
+        Returns:
+            QSize: Preferred dialog size.
+        """
         return QSize(350, 400)
 
     @err_catcher(name=__name__)
-    def setupUi(self):
+    def setupUi(self) -> None:
+        """Set up the user interface for the dialog."""
         self.setWindowTitle("Select Preferred File")
         self.lo_main = QVBoxLayout()
         self.setLayout(self.lo_main)
@@ -1116,7 +2058,8 @@ class PreferredVersionDialog(QDialog):
         self.lo_main.addWidget(self.bb_main)
 
     @err_catcher(name=__name__)
-    def refreshTree(self):
+    def refreshTree(self) -> None:
+        """Refresh the file tree display and select the current preferred file."""
         self.projectStructure = self.core.projects.getFolderStructureFromPath(self.version["path"])
         self.projectStructure["name"] = os.path.basename(self.version["path"])
         self.tw_files.clear()
@@ -1127,7 +2070,16 @@ class PreferredVersionDialog(QDialog):
             self.navigate(file)
 
     @err_catcher(name=__name__)
-    def addItemToTree(self, entity, parent=None):
+    def addItemToTree(self, entity: Dict[str, Any], parent: Optional[QTreeWidgetItem] = None) -> QTreeWidgetItem:
+        """Recursively add a file/folder to the tree widget.
+        
+        Args:
+            entity: Dict representing a file or folder with 'name' and optional 'children'.
+            parent: Optional parent tree item. Adds to root if None.
+            
+        Returns:
+            QTreeWidgetItem: The created tree item.
+        """
         if entity["name"] == "versioninfo" + self.core.configs.getProjectExtension():
             return
 
@@ -1151,7 +2103,12 @@ class PreferredVersionDialog(QDialog):
         return item
 
     @err_catcher(name=__name__)
-    def navigate(self, file):
+    def navigate(self, file: str) -> None:
+        """Navigate to and select a file in the tree.
+        
+        Args:
+            file: Relative path to the file within the version folder.
+        """
         self.tw_files.selectionModel().clearSelection()
         hierarchy = file.replace("\\", "/").split("/")
         hierarchy = [x for x in hierarchy if x != ""]
@@ -1175,7 +2132,11 @@ class PreferredVersionDialog(QDialog):
         self.tw_files.setCurrentItem(hItem)
 
     @err_catcher(name=__name__)
-    def onAcceptClicked(self):
+    def onAcceptClicked(self) -> None:
+        """Handle when user clicks OK button.
+        
+        Validates selection and emits the signalSelected signal.
+        """
         item = self.tw_files.currentItem()
         if not item:
             msg = "No file selected."

@@ -32,6 +32,8 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from typing import Any
+
 from Prism_PureRef_Variables import Prism_PureRef_Variables
 from Prism_PureRef_externalAccess_Functions import (
     Prism_PureRef_externalAccess_Functions,
@@ -46,7 +48,18 @@ class Prism_Plugin_PureRef(
     Prism_PureRef_Functions,
     Prism_PureRef_Integration,
 ):
-    def __init__(self, core):
+    """Main PureRef plugin class for Prism.
+    
+    Combines all PureRef plugin functionality through multiple inheritance.
+    Provides integration with PureRef reference board software.
+    """
+
+    def __init__(self, core: Any) -> None:
+        """Initialize PureRef plugin.
+        
+        Args:
+            core: PrismCore instance.
+        """
         Prism_PureRef_Variables.__init__(self, core, self)
         Prism_PureRef_externalAccess_Functions.__init__(self, core, self)
         Prism_PureRef_Functions.__init__(self, core, self)

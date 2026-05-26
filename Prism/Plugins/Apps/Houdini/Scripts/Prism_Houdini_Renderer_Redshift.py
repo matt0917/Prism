@@ -32,9 +32,16 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+"""Houdini Redshift renderer implementation for Prism.
+
+Provides renderer-specific functionality for Redshift ROP nodes
+including AOV management, RS proxy generation, and parameter configuration.
+"""
+
 import os
 import time
 import glob
+from typing import Any, List, Optional, Union
 
 import hou
 
@@ -47,26 +54,60 @@ label = "Redshift"
 ropNames = ["Redshift_ROP"]
 
 
-def isActive():
+def isActive() -> bool:
+    """Check if Redshift renderer is available.
+    
+    Returns:
+        True if Redshift ROP node type exists.
+    """
     return hou.nodeType(hou.ropNodeTypeCategory(), "Redshift_ROP")
 
 
-def getCam(node):
+def getCam(node: Any) -> Any:
+    """Get camera node from renderer ROP.
+    
+    Args:
+        node: Redshift ROP node.
+    
+    Returns:
+        Camera node object.
+    """
     return hou.node(node.parm("RS_renderCamera").eval())
 
 
-def getFormatFromNode(node):
+def getFormatFromNode(node: Any) -> str:
+    """Get output format from renderer node.
+    
+    Args:
+        node: Redshift ROP node.
+    
+    Returns:
+        File format string.
+    """
     fmt = node.parm("RS_outputFileFormat").evalAsString()
     return fmt
 
 
-def createROP(origin):
+def createROP(origin: Any) -> None:
+    """Create Redshift ROP and IPR nodes.
+    
+    Args:
+        origin: State manager origin object.
+    """
     origin.node = origin.core.appPlugin.createRop("Redshift_ROP")
     origin.node2 = origin.core.appPlugin.createRop("Redshift_IPR")
     origin.node2.moveToGoodPosition()
 
 
-def setAOVData(origin, node, aovNum, item):
+def setAOVData(origin: Any, node: Any, aovNum: str, item: Any) -> None:
+    """Set AOV data on node from table widget item.
+    
+    Args:
+        origin: State manager origin object.
+        node: Redshift ROP node.
+        aovNum: AOV number string.
+        item: Table widget item with AOV data.
+    """
     if item.column() == 0:
         typeNames = node.parm("RS_aovID_" + aovNum).menuLabels()
         typeId = typeNames.index(item.text())
@@ -77,7 +118,17 @@ def setAOVData(origin, node, aovNum, item):
         )
 
 
-def getDefaultPasses(origin):
+def getDefaultPasses(origin: Any) -> List:
+    """Get default render passes for Redshift.
+    
+    Retrieves from config or plugin defaults.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        List of default AOV configurations.
+    """
     aovs = origin.core.getConfig(
         "defaultpasses", "houdini_redshift", configPath=origin.core.prismIni
     )
@@ -87,7 +138,15 @@ def getDefaultPasses(origin):
     return aovs
 
 
-def addAOV(origin, aovData):
+def addAOV(origin: Any, aovData: List) -> None:
+    """Add AOV to Redshift renderer.
+    
+    Creates new AOV with type and suffix.
+    
+    Args:
+        origin: State manager origin object.
+        aovData: List containing [aov_type, aov_suffix].
+    """
     passNum = origin.node.parm("RS_aov").eval() + 1
     origin.core.appPlugin.setNodeParm(origin.node, "RS_aov", val=passNum)
     typeID = origin.node.parm("RS_aovID_" + str(passNum)).menuLabels().index(aovData[0])
@@ -99,7 +158,14 @@ def addAOV(origin, aovData):
     )
 
 
-def refreshAOVs(origin):
+def refreshAOVs(origin: Any) -> None:
+    """Refresh AOV list in UI table.
+    
+    Reads AOVs from node and populates table widget.
+    
+    Args:
+        origin: State manager origin object.
+    """
     origin.tw_passes.horizontalHeaderItem(0).setText("Type")
     origin.tw_passes.horizontalHeaderItem(1).setText("Name")
 
@@ -127,12 +193,28 @@ def refreshAOVs(origin):
         passNum += 1
 
 
-def deleteAOV(origin, row):
+def deleteAOV(origin: Any, row: int) -> None:
+    """Delete AOV from renderer.
+    
+    Removes AOV multiparm instance.
+    
+    Args:
+        origin: State manager origin object.
+        row: Row index in table widget.
+    """
     pid = int(origin.tw_passes.item(row, 2).text())
     origin.node.parm("RS_aov").removeMultiParmInstance(pid)
 
 
-def aovDbClick(origin, event):
+def aovDbClick(origin: Any, event: Any) -> None:
+    """Handle AOV double-click event.
+    
+    Opens type menu for AOV type column.
+    
+    Args:
+        origin: State manager origin object.
+        event: Mouse event.
+    """
     if origin.node is None or event.button() != Qt.LeftButton:
         origin.tw_passes.mouseDbcEvent(event)
         return
@@ -155,11 +237,32 @@ def aovDbClick(origin, event):
         origin.tw_passes.mouseDbcEvent(event)
 
 
-def setCam(origin, node, val):
+def setCam(origin: Any, node: Any, val: str) -> bool:
+    """Set camera on renderer node.
+    
+    Args:
+        origin: State manager origin object.
+        node: Redshift ROP node.
+        val: Camera path string.
+    
+    Returns:
+        True if successful.
+    """
     return origin.core.appPlugin.setNodeParm(node, "RS_renderCamera", val=val)
 
 
-def executeAOVs(origin, outputName):
+def executeAOVs(origin: Any, outputName: str) -> Union[bool, List[str]]:
+    """Execute AOV setup and configure output paths.
+    
+    Handles RS proxy generation and AOV output configuration.
+    
+    Args:
+        origin: State manager origin object.
+        outputName: Primary render output file path.
+    
+    Returns:
+        True if successful, list of error messages otherwise.
+    """
     if (
         not origin.gb_submit.isHidden()
         and origin.gb_submit.isChecked()
@@ -181,7 +284,8 @@ def executeAOVs(origin, outputName):
                 + ": error - could not set archive filename. Publish canceled"
             ]
 
-        os.makedirs(os.path.dirname(rsOutput))
+        if not os.path.exists(os.path.dirname(rsOutput)):
+            os.makedirs(os.path.dirname(rsOutput))
 
     else:
         renderRS = False
@@ -249,7 +353,15 @@ def executeAOVs(origin, outputName):
     return True
 
 
-def setResolution(origin):
+def setResolution(origin: Any) -> Union[bool, List[str]]:
+    """Set render resolution on node.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful, list of error messages otherwise.
+    """
     # RS resolution override in config doesn't work with Deadline, so it will be set before submittig
     if not origin.core.appPlugin.setNodeParm(
         origin.node, "RS_overrideCameraRes", val=True
@@ -271,13 +383,31 @@ def setResolution(origin):
     return True
 
 
-def executeRender(origin):
+def executeRender(origin: Any) -> bool:
+    """Execute the render and wait for completion.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful.
+    """
     origin.node.parm("execute").pressButton()
     waitForRenderCompleted(origin.node)
     return True
 
 
-def waitForRenderCompleted(node):
+def waitForRenderCompleted(node: Any) -> bool:
+    """Wait for Redshift render to complete.
+    
+    Monitors lock files to detect render completion.
+    
+    Args:
+        node: Redshift ROP node.
+    
+    Returns:
+        True when render completes.
+    """
     outputPath = node.parm("RS_outputFileNamePrefix").eval()
     outputDir = os.path.dirname(outputPath)
     globPath = outputDir + "/*.lock"
@@ -292,11 +422,24 @@ def waitForRenderCompleted(node):
     return True
 
 
-def postExecute(origin):
+def postExecute(origin: Any) -> bool:
+    """Post-execution cleanup.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful.
+    """
     return True
 
 
-def getCleanupScript():
+def getCleanupScript() -> str:
+    """Get cleanup script for RS proxy file removal.
+    
+    Returns:
+        Python script string for post-render RS cleanup.
+    """
     script = """
 
 import os

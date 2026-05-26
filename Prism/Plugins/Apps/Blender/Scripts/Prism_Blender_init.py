@@ -32,6 +32,8 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from typing import Any
+
 from Prism_Blender_Variables import Prism_Blender_Variables
 from Prism_Blender_externalAccess_Functions import (
     Prism_Blender_externalAccess_Functions,
@@ -46,7 +48,19 @@ class Prism_Plugin_Blender(
     Prism_Blender_Functions,
     Prism_Blender_Integration,
 ):
-    def __init__(self, core):
+    """Main Blender plugin class.
+    
+    Combines all Blender plugin functionality including variables, external access,
+    core functions, and integration capabilities. This class is instantiated when
+    Blender is running and Prism is loaded.
+    """
+    
+    def __init__(self, core: Any) -> None:
+        """Initialize Blender plugin with full functionality.
+        
+        Args:
+            core: PrismCore instance.
+        """
         Prism_Blender_Variables.__init__(self, core, self)
         Prism_Blender_externalAccess_Functions.__init__(self, core, self)
         Prism_Blender_Functions.__init__(self, core, self)

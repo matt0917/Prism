@@ -32,7 +32,14 @@
 # along with Prism.  If not, see <https://www.gnu.org/licenses/>.
 
 
+"""Houdini Renderman (RIS) renderer implementation for Prism.
+
+Provides renderer-specific functionality for Renderman RIS ROP nodes
+including node creation, camera setup, and parameter configuration.
+"""
+
 import os
+from typing import Any, List, Optional, Union
 
 import hou
 
@@ -45,61 +52,162 @@ label = "Renderman"
 ropNames = ["ris", "ris::3.0"]
 
 
-def isActive():
+def isActive() -> bool:
+    """Check if Renderman renderer is available.
+    
+    Returns:
+        True if RIS node type exists.
+    """
     return hou.nodeType(hou.ropNodeTypeCategory(), "ris")
 
 
-def getCam(node):
+def getCam(node: Any) -> Any:
+    """Get camera node from renderer ROP.
+    
+    Args:
+        node: Renderman ROP node.
+    
+    Returns:
+        Camera node object.
+    """
     return hou.node(node.parm("camera").eval())
 
 
-def getFormatFromNode(node):
-    ext = os.path.splitext(node.parm("ri_display").eval())[1]
+def getFormatFromNode(node: Any) -> str:
+    """Get output format from renderer node.
+    
+    Args:
+        node: Renderman ROP node.
+    
+    Returns:
+        File extension string.
+    """
+    if node.parm("ri_display_0"):
+        parmName = "ri_display_0"
+    else:
+        parmName = "ri_display"
+
+    ext = os.path.splitext(node.parm(parmName).eval())[1]
     return ext
 
 
-def createROP(origin):
+def createROP(origin: Any) -> None:
+    """Create Renderman ROP node.
+    
+    Args:
+        origin: State manager origin object.
+    """
     origin.node = origin.core.appPlugin.createRop("ris")
 
 
-def setAOVData(origin, node, aovNum, item):
+def setAOVData(origin: Any, node: Any, aovNum: str, item: Any) -> None:
+    """Set AOV data on node (not supported for Renderman).
+    
+    Args:
+        origin: State manager origin object.
+        node: Renderman ROP node.
+        aovNum: AOV number string.
+        item: Table widget item.
+    """
     pass
 
 
-def getDefaultPasses(origin):
+def getDefaultPasses(origin: Any) -> None:
+    """Get default render passes (not supported for Renderman).
+    
+    Args:
+        origin: State manager origin object.
+    """
     pass
 
 
-def addAOV(origin, aovData):
+def addAOV(origin: Any, aovData: List) -> None:
+    """Add AOV to renderer (not supported for Renderman).
+    
+    Args:
+        origin: State manager origin object.
+        aovData: AOV data list.
+    """
     pass
 
 
-def refreshAOVs(origin):
+def refreshAOVs(origin: Any) -> None:
+    """Refresh AOV list (not supported for Renderman).
+    
+    Hides the passes group box.
+    
+    Args:
+        origin: State manager origin object.
+    """
     origin.gb_passes.setVisible(False)
     return
 
 
-def deleteAOV(origin, row):
+def deleteAOV(origin: Any, row: int) -> None:
+    """Delete AOV (not supported for Renderman).
+    
+    Args:
+        origin: State manager origin object.
+        row: Row index.
+    """
     pass
 
 
-def aovDbClick(origin, event):
+def aovDbClick(origin: Any, event: Any) -> None:
+    """Handle AOV double-click (not supported for Renderman).
+    
+    Args:
+        origin: State manager origin object.
+        event: Mouse event.
+    """
     pass
 
 
-def setCam(origin, node, val):
+def setCam(origin: Any, node: Any, val: str) -> bool:
+    """Set camera on renderer node.
+    
+    Args:
+        origin: State manager origin object.
+        node: Renderman ROP node.
+        val: Camera path string.
+    
+    Returns:
+        True if successful.
+    """
     return origin.core.appPlugin.setNodeParm(node, "camera", val=val)
 
 
-def executeAOVs(origin, outputName):
+def executeAOVs(origin: Any, outputName: str) -> Union[bool, List[str]]:
+    """Execute AOV setup and set output path.
+    
+    Args:
+        origin: State manager origin object.
+        outputName: Output file path.
+    
+    Returns:
+        True if successful, list of error messages otherwise.
+    """
     parmPath = origin.core.appPlugin.getPathRelativeToProject(outputName) if origin.core.appPlugin.getUseRelativePath() else outputName
-    if not origin.core.appPlugin.setNodeParm(origin.node, "ri_display", val=parmPath):
+    if origin.node.parm("ri_display_0"):
+        parmName = "ri_display_0"
+    else:
+        parmName = "ri_display"
+
+    if not origin.core.appPlugin.setNodeParm(origin.node, parmName, val=parmPath):
         return [origin.state.text(0) + ": error - Publish canceled"]
 
     return True
 
 
-def setResolution(origin):
+def setResolution(origin: Any) -> Union[bool, List[str]]:
+    """Set render resolution on node.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful, list of error messages otherwise.
+    """
     if not origin.core.appPlugin.setNodeParm(
         origin.node, "override_camerares", val=True
     ):
@@ -120,7 +228,15 @@ def setResolution(origin):
     return True
 
 
-def executeRender(origin):
+def executeRender(origin: Any) -> Union[bool, str]:
+    """Execute the render with user choice for foreground/background.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful, error message string otherwise.
+    """
     bkrender = origin.stateManager.publishInfos["backgroundRender"]
     if bkrender is None:
         msg = "How do you want to render?"
@@ -136,14 +252,22 @@ def executeRender(origin):
 
     if result == "Render":
         origin.node.parm("execute").pressButton()
-    elif result == "Remder in background":
+    elif result == "Render in background":
         hou.hipFile.save()
         origin.node.parm("executebackground").pressButton()
     else:
-        return "Rendering cancled."
+        return "Rendering canceled."
 
     return True
 
 
-def postExecute(origin):
+def postExecute(origin: Any) -> bool:
+    """Post-execution cleanup.
+    
+    Args:
+        origin: State manager origin object.
+    
+    Returns:
+        True if successful.
+    """
     return True

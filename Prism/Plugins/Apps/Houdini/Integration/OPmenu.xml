@@ -8,7 +8,7 @@
 
         <scriptItem id="opmenu.prism_actions">
             <insertAfter>opmenu.capture_sep</insertAfter>
-            <label>Prism actions...</label>
+            <label>Prism Actions...</label>
             <scriptCode><![CDATA[
 import PrismInit
 PrismInit.pcore.appPlugin.onOpmenuActionsTriggered(kwargs)

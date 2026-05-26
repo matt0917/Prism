@@ -15,14 +15,20 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Show repository contents
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path . -Force
 
       - name: Prepare build folder
         run: |
-          mkdir build\Prism
-          xcopy /E /I /Y src\Prism build\Prism
+          New-Item -ItemType Directory -Force -Path "build\Prism"
+          Copy-Item -Path "Prism\*" -Destination "build\Prism" -Recurse -Force
 
       - name: Install Inno Setup
-        run: choco install innosetup -y
+        shell: pwsh
+        run: |
+          choco install innosetup -y
 
       - name: Build installer
         run: |

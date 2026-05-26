@@ -2,8 +2,8 @@ name: Build Prism Installer and Release
 
 on:
   push:
-    branches:
-      - master
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -14,13 +14,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Show repository contents
-        shell: pwsh
-        run: |
-          Get-ChildItem -Path . -Force
+        uses: actions/checkout@v5
 
       - name: Prepare build folder
+        shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "build\Prism"
           Copy-Item -Path "Prism\*" -Destination "build\Prism" -Recurse -Force
@@ -31,15 +28,16 @@ jobs:
           choco install innosetup -y
 
       - name: Build installer
+        shell: pwsh
         run: |
           iscc installer\PrismInstaller.iss
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: Prism v1.0.${{ github.run_number }}
+          tag_name: ${{ github.ref_name }}
+          name: Prism ${{ github.ref_name }}
           body: |
-            Auto release from main branch.
+            Official Prism release.
             Commit: ${{ github.sha }}
           files: dist/PrismInstaller.exe

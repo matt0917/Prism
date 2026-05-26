@@ -87,7 +87,7 @@ class MediaBrowser(QWidget, MediaBrowser_ui.Ui_w_mediaBrowser):
         Args:
             core: The Prism core instance
             projectBrowser: Parent ProjectBrowser widget (optional)
-            refresh: Whether to refresh/load entities immediately
+            refresh: Whether to refresh/load entities immediately.
         """
         QWidget.__init__(self)
         self.setupUi(self)

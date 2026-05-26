@@ -1,0 +1,39 @@
+name: Build Prism Installer and Release
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare build folder
+        run: |
+          mkdir build\Prism
+          xcopy /E /I /Y src\Prism build\Prism
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+
+      - name: Build installer
+        run: |
+          iscc installer\PrismInstaller.iss
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Prism v1.0.${{ github.run_number }}
+          body: |
+            Auto release from main branch.
+            Commit: ${{ github.sha }}
+          files: dist/PrismInstaller.exe

@@ -179,7 +179,7 @@ static PyModuleDef_Slot module_slots[] = {
 #ifdef Py_mod_multiple_interpreters  // Python 3.12+
 	{Py_mod_multiple_interpreters, Py_MOD_PER_INTERPRETER_GIL_SUPPORTED},
 #endif
-#ifdef Py_mod_gil  // Python 3.13+
+#ifdef Py_mod_gil  // Python 3.11+
 	{Py_mod_gil, Py_MOD_GIL_NOT_USED},
 #endif
 	{0, NULL}  /* Sentinel */

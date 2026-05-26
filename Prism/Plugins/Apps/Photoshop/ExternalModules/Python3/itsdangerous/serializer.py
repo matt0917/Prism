@@ -19,7 +19,7 @@ if t.TYPE_CHECKING:
         "_TSerialized", bound=t.Union[str, bytes], default=t.Union[str, bytes]
     )
 else:
-    # Still available at runtime on Python < 3.13, but without the default.
+    # Still available at runtime on Python < 3.11, but without the default.
     _TSerialized = t.TypeVar("_TSerialized", bound=t.Union[str, bytes])
 
 
@@ -31,7 +31,7 @@ class _PDataSerializer(t.Protocol[_TSerialized]):
     def dumps(self, obj: t.Any, /) -> _TSerialized: ...
 
 
-# Use TypeIs once it's available in typing_extensions or 3.13.
+# Use TypeIs once it's available in typing_extensions or 3.11.
 def is_text_serializer(
     serializer: _PDataSerializer[t.Any],
 ) -> te.TypeGuard[_PDataSerializer[str]]:

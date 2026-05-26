@@ -2538,7 +2538,7 @@ path = r\"%s\"
     def submitPythonJob(
         self,
         code: str = "",
-        version: str = "3.13",
+        version: str = "3.11",
         jobName: Optional[str] = None,
         jobOutput: Optional[str] = None,
         jobPool: str = "None",
@@ -2569,7 +2569,7 @@ path = r\"%s\"
         
         Args:
             code: Python code to execute
-            version: Python version ("3.13", "3.11", etc)
+            version: Python version ("3.11", "3.11", etc)
             jobName: Job name (defaults to current scene filename)
             jobOutput: Output file path for job
             jobPool: Deadline pool name

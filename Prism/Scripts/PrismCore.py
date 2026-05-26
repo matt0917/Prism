@@ -235,7 +235,7 @@ class PrismCore:
 
             self.prismRoot = prismRoot.replace("\\", "/")
             self.prismLibs = prismLibs.replace("\\", "/")
-            self.pythonVersion = "Python" + os.getenv("PRISM_PYTHON_VERSION", "3.13").replace(".", "")
+            self.pythonVersion = "Python" + os.getenv("PRISM_PYTHON_VERSION", "3.11").replace(".", "")
 
             self.userini = self.getUserPrefConfigPath()
             prjScriptPath = os.path.abspath(

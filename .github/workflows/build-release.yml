@@ -4,8 +4,10 @@ name: Build Prism Installer and Release
 # Run this workflow when a Git tag is pushed that starts with "v"
 on:
   push:
-    tags:
-      - 'v*'
+    # tags:
+    #   - 'v*'
+    branches:
+      - development
 
 # Give the workflow permission to create and update repository content
 permissions:
